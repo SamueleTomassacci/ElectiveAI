@@ -1,0 +1,22 @@
+[
+  {
+    "subject": "cup",
+    "relation": "on",
+    "object": "table"
+  },
+  {
+    "subject": "cup",
+    "relation": "right to",
+    "object": "plate"
+  },
+  {
+    "subject": "plate",
+    "relation": "on",
+    "object": "table"
+  },
+  {
+    "subject": "table",
+    "relation": "in front of",
+    "object": "person"
+  }
+]

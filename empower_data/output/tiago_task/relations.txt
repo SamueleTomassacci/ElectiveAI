@@ -1,0 +1,4 @@
+1) (cup, on, table)
+2) (cup, right to, plate)
+3) (plate, on, table)
+4) (table, in front of, person)

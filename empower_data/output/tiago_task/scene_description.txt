@@ -1,0 +1,14 @@
+The scene consists of the following elements:
+
+1. A table is in front of a person.
+2. A plate is on the table.
+3. A cup is on the table, positioned to the right of the plate.
+
+To bring the cup near the person, follow these steps:
+
+1. Identify the cup on the table, which is to the right of the plate.
+2. Pick up the cup.
+3. Move the cup towards the person standing in front of the table.
+4. Place the cup near the person.
+
+This plan minimizes the steps required to complete the task.

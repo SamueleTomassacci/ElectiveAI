@@ -1,0 +1,28 @@
+[
+  {
+    "step": 1,
+    "action": "NAVIGATE",
+    "description": "NAVIGATE to the table",
+    "target": "the table"
+  },
+  {
+    "step": 2,
+    "action": "GRAB",
+    "description": "GRAB cup",
+    "target": "cup"
+  },
+  {
+    "step": 3,
+    "action": "NAVIGATE",
+    "description": "NAVIGATE to the person",
+    "target": "the person"
+  },
+  {
+    "step": 4,
+    "action": "DROP",
+    "description": "DROP cup near person",
+    "spatial_relation": "near",
+    "reference": "person",
+    "target": "cup"
+  }
+]

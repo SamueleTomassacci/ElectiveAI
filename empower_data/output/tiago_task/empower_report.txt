@@ -1,0 +1,34 @@
+EMPOWER readable report
+
+Relations:
+1) (cup, on, table)
+2) (cup, right to, plate)
+3) (plate, on, table)
+4) (table, in front of, person)
+
+Scene description:
+The scene consists of the following elements:
+
+1. A table is in front of a person.
+2. A plate is on the table.
+3. A cup is on the table, positioned to the right of the plate.
+
+To bring the cup near the person, follow these steps:
+
+1. Identify the cup on the table, which is to the right of the plate.
+2. Pick up the cup.
+3. Move the cup towards the person standing in front of the table.
+4. Place the cup near the person.
+
+This plan minimizes the steps required to complete the task.
+
+Symbolic plan:
+NAVIGATE to the table  
+GRAB cup  
+NAVIGATE to the person  
+DROP cup near person
+
+Detections:
+- 0: table bbox=[133.35858154296875, 286.717041015625, 514.04248046875, 430.49066162109375]
+- 1: person bbox=[3.0956344604492188, 136.24229431152344, 89.01483917236328, 417.7652587890625]
+- 2: cup bbox=[367.4512023925781, 281.8854064941406, 381.8672180175781, 303.8348083496094]

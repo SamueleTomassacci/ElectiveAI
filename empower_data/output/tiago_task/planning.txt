@@ -1,0 +1,4 @@
+NAVIGATE to the table  
+GRAB cup  
+NAVIGATE to the person  
+DROP cup near person

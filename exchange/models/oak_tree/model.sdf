@@ -1,0 +1,52 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="oak_tree">
+    <static>true</static>
+    <link name="link">
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>file:///root/exchange/exchange/models/oak_tree/meshes/oak_tree.dae</uri>
+            <scale>0.16 0.16 0.16</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name="branch">
+        <geometry>
+          <mesh>
+            <uri>file:///root/exchange/exchange/models/oak_tree/meshes/oak_tree.dae</uri>
+            <scale>0.16 0.16 0.16</scale>
+            <submesh>
+              <name>Branch</name>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <script>
+            <uri>file:///root/exchange/exchange/models/oak_tree/materials/scripts/</uri>
+            <uri>file:///root/exchange/exchange/models/oak_tree/materials/textures/</uri>
+            <name>OakTree/Branch</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="bark">
+        <geometry>
+          <mesh>
+            <uri>file:///root/exchange/exchange/models/oak_tree/meshes/oak_tree.dae</uri>
+            <scale>0.16 0.16 0.16</scale>
+            <submesh>
+              <name>Bark</name>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <script>
+            <uri>file:///root/exchange/exchange/models/oak_tree/materials/scripts/</uri>
+            <uri>file:///root/exchange/exchange/models/oak_tree/materials/textures/</uri>
+            <name>OakTree/Bark</name>
+          </script>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

@@ -1,0 +1,1 @@
+/root/exchange/src/empower_ros2/config/yolow/yolo_world_l_t2i_bn_2e-4_100e_4x8gpus_obj365v1_goldg_train_lvis_minival.py
