@@ -1,0 +1,44 @@
+[0.693s] Invoking command in '/root/exchange/build/empower_ros2': PYTHONPATH=/root/exchange/build/empower_ros2/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/root/exchange/install/empower_ros2/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /root/exchange/build/empower_ros2/build --no-deps symlink_data
+[0.885s] running develop
+[0.982s] running egg_info
+[0.982s] creating empower_ros2.egg-info
+[0.982s] writing empower_ros2.egg-info/PKG-INFO
+[0.983s] writing dependency_links to empower_ros2.egg-info/dependency_links.txt
+[0.983s] writing entry points to empower_ros2.egg-info/entry_points.txt
+[0.983s] writing requirements to empower_ros2.egg-info/requires.txt
+[0.983s] writing top-level names to empower_ros2.egg-info/top_level.txt
+[0.983s] writing manifest file 'empower_ros2.egg-info/SOURCES.txt'
+[0.985s] reading manifest file 'empower_ros2.egg-info/SOURCES.txt'
+[0.986s] writing manifest file 'empower_ros2.egg-info/SOURCES.txt'
+[1.021s] running build_ext
+[1.021s] Creating /root/exchange/install/empower_ros2/lib/python3.10/site-packages/empower-ros2.egg-link (link to .)
+[1.021s] Installing color_pcl_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.022s] Installing export_reports script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.022s] Installing ground_truth_localizer_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.022s] Installing low_level_execution_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.023s] Installing marker_centroids_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.023s] Installing models_cacher_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.023s] Installing plan_generator_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.023s] Installing scene_capture_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.023s] 
+[1.023s] Installed /root/exchange/build/empower_ros2
+[1.023s] running symlink_data
+[1.023s] creating /root/exchange/install/empower_ros2/share/ament_index
+[1.023s] creating /root/exchange/install/empower_ros2/share/ament_index/resource_index
+[1.023s] creating /root/exchange/install/empower_ros2/share/ament_index/resource_index/packages
+[1.023s] symbolically linking /root/exchange/build/empower_ros2/resource/empower_ros2 -> /root/exchange/install/empower_ros2/share/ament_index/resource_index/packages
+[1.023s] symbolically linking /root/exchange/build/empower_ros2/package.xml -> /root/exchange/install/empower_ros2/share/empower_ros2
+[1.023s] symbolically linking /root/exchange/build/empower_ros2/EMPOWER_LICENSE -> /root/exchange/install/empower_ros2/share/empower_ros2
+[1.023s] creating /root/exchange/install/empower_ros2/share/empower_ros2/launch
+[1.023s] symbolically linking /root/exchange/build/empower_ros2/launch/empower_capture.launch.py -> /root/exchange/install/empower_ros2/share/empower_ros2/launch
+[1.023s] symbolically linking /root/exchange/build/empower_ros2/launch/empower_visualization.launch.py -> /root/exchange/install/empower_ros2/share/empower_ros2/launch
+[1.024s] symbolically linking /root/exchange/build/empower_ros2/launch/empower_plan.launch.py -> /root/exchange/install/empower_ros2/share/empower_ros2/launch
+[1.024s] symbolically linking /root/exchange/build/empower_ros2/launch/tiago_nav2_ground_truth.launch.py -> /root/exchange/install/empower_ros2/share/empower_ros2/launch
+[1.024s] symbolically linking /root/exchange/build/empower_ros2/launch/empower_execute.launch.py -> /root/exchange/install/empower_ros2/share/empower_ros2/launch
+[1.024s] symbolically linking /root/exchange/build/empower_ros2/launch/empower_models_cacher.launch.py -> /root/exchange/install/empower_ros2/share/empower_ros2/launch
+[1.024s] creating /root/exchange/install/empower_ros2/share/empower_ros2/config
+[1.024s] symbolically linking /root/exchange/build/empower_ros2/config/empower_tiago.yaml -> /root/exchange/install/empower_ros2/share/empower_ros2/config
+[1.024s] symbolically linking /root/exchange/build/empower_ros2/config/nav2_tiago_ground_truth.yaml -> /root/exchange/install/empower_ros2/share/empower_ros2/config
+[1.024s] creating /root/exchange/install/empower_ros2/share/empower_ros2/config/yolow
+[1.024s] symbolically linking /root/exchange/build/empower_ros2/config/yolow/yolo_world_l_t2i_bn_2e-4_100e_4x8gpus_obj365v1_goldg_train_lvis_minival.py -> /root/exchange/install/empower_ros2/share/empower_ros2/config/yolow
+[1.049s] Invoked command in '/root/exchange/build/empower_ros2' returned '0': PYTHONPATH=/root/exchange/build/empower_ros2/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/root/exchange/install/empower_ros2/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /root/exchange/build/empower_ros2/build --no-deps symlink_data

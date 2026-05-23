@@ -18,6 +18,7 @@ empower_ros2.egg-info/requires.txt
 empower_ros2.egg-info/top_level.txt
 empower_ros2.egg-info/zip-safe
 launch/empower_capture.launch.py
+launch/empower_execute.launch.py
 launch/empower_models_cacher.launch.py
 launch/empower_plan.launch.py
 launch/empower_visualization.launch.py
@@ -69,11 +70,13 @@ python/empower_ros2/color_pcl_node.py
 python/empower_ros2/export_reports.py
 python/empower_ros2/ground_truth_localizer_node.py
 python/empower_ros2/loader_adapter.py
+python/empower_ros2/low_level_execution_node.py
 python/empower_ros2/marker_centroids_node.py
 python/empower_ros2/models_cacher_node.py
 python/empower_ros2/plan_generator_node.py
 python/empower_ros2/plan_parser.py
 python/empower_ros2/pointcloud_utils.py
+python/empower_ros2/primitive_actions.py
 python/empower_ros2/report_writer.py
 python/empower_ros2/scene_capture_node.py
 python/yolo_world/__init__.py

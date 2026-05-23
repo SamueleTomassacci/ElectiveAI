@@ -50,6 +50,7 @@ setup(
             "color_pcl_node = empower_ros2.color_pcl_node:main",
             "marker_centroids_node = empower_ros2.marker_centroids_node:main",
             "ground_truth_localizer_node = empower_ros2.ground_truth_localizer_node:main",
+            "low_level_execution_node = empower_ros2.low_level_execution_node:main",
         ],
     },
 )
