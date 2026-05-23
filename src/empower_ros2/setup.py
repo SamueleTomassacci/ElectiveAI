@@ -15,6 +15,10 @@ def package_files(directory):
     return paths
 
 
+def existing_files(paths):
+    return [path for path in paths if os.path.isfile(path)]
+
+
 setup(
     name=package_name,
     version="0.1.0",
@@ -27,7 +31,7 @@ setup(
     py_modules=["agents", "detection", "loader", "models", "paths"],
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
-        (f"share/{package_name}", ["package.xml", "README.md", "EMPOWER_LICENSE"]),
+        (f"share/{package_name}", existing_files(["package.xml", "README.md", "EMPOWER_LICENSE"])),
         (f"share/{package_name}/launch", glob("launch/*.py")),
     ]
     + package_files("config"),
@@ -45,6 +49,7 @@ setup(
             "export_reports = empower_ros2.export_reports:main",
             "color_pcl_node = empower_ros2.color_pcl_node:main",
             "marker_centroids_node = empower_ros2.marker_centroids_node:main",
+            "ground_truth_localizer_node = empower_ros2.ground_truth_localizer_node:main",
         ],
     },
 )

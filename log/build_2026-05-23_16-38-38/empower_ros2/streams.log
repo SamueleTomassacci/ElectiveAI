@@ -1,0 +1,23 @@
+[0.892s] Invoking command in '/root/exchange/build/empower_ros2': PYTHONPATH=/root/exchange/build/empower_ros2/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/root/exchange/install/empower_ros2/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /root/exchange/build/empower_ros2/build --no-deps symlink_data
+[1.175s] running develop
+[1.358s] running egg_info
+[1.358s] writing empower_ros2.egg-info/PKG-INFO
+[1.358s] writing dependency_links to empower_ros2.egg-info/dependency_links.txt
+[1.358s] writing entry points to empower_ros2.egg-info/entry_points.txt
+[1.359s] writing requirements to empower_ros2.egg-info/requires.txt
+[1.359s] writing top-level names to empower_ros2.egg-info/top_level.txt
+[1.362s] reading manifest file 'empower_ros2.egg-info/SOURCES.txt'
+[1.364s] writing manifest file 'empower_ros2.egg-info/SOURCES.txt'
+[1.415s] running build_ext
+[1.415s] Creating /root/exchange/install/empower_ros2/lib/python3.10/site-packages/empower-ros2.egg-link (link to .)
+[1.417s] Installing color_pcl_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.417s] Installing export_reports script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.417s] Installing ground_truth_localizer_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.418s] Installing marker_centroids_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.418s] Installing models_cacher_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.418s] Installing plan_generator_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.418s] Installing scene_capture_node script to /root/exchange/install/empower_ros2/lib/empower_ros2
+[1.419s] 
+[1.419s] Installed /root/exchange/build/empower_ros2
+[1.419s] running symlink_data
+[1.463s] Invoked command in '/root/exchange/build/empower_ros2' returned '0': PYTHONPATH=/root/exchange/build/empower_ros2/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/root/exchange/install/empower_ros2/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /root/exchange/build/empower_ros2/build --no-deps symlink_data

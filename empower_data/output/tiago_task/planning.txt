@@ -1,4 +1,4 @@
 NAVIGATE to the table  
 GRAB cup  
-NAVIGATE to the person  
-DROP cup near person
+NAVIGATE to the chair on the right  
+DROP cup on the chair on the right

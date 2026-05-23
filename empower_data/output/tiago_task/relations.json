@@ -6,8 +6,8 @@
   },
   {
     "subject": "cup",
-    "relation": "right to",
-    "object": "plate"
+    "relation": "left to",
+    "object": "chair on the right"
   },
   {
     "subject": "plate",
@@ -15,8 +15,18 @@
     "object": "table"
   },
   {
-    "subject": "table",
-    "relation": "in front of",
-    "object": "person"
+    "subject": "plate",
+    "relation": "left to",
+    "object": "cup"
+  },
+  {
+    "subject": "plant",
+    "relation": "behind to",
+    "object": "chair on the left"
+  },
+  {
+    "subject": "person",
+    "relation": "left to",
+    "object": "chair on the left"
   }
 ]

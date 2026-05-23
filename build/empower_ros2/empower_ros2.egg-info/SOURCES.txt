@@ -1,5 +1,4 @@
 EMPOWER_LICENSE
-README.md
 agents.py
 detection.py
 loader.py
@@ -9,6 +8,7 @@ paths.py
 setup.cfg
 setup.py
 config/empower_tiago.yaml
+config/nav2_tiago_ground_truth.yaml
 config/yolow/yolo_world_l_t2i_bn_2e-4_100e_4x8gpus_obj365v1_goldg_train_lvis_minival.py
 empower_ros2.egg-info/PKG-INFO
 empower_ros2.egg-info/SOURCES.txt
@@ -21,6 +21,7 @@ launch/empower_capture.launch.py
 launch/empower_models_cacher.launch.py
 launch/empower_plan.launch.py
 launch/empower_visualization.launch.py
+launch/tiago_nav2_ground_truth.launch.py
 python/efficientvit/__init__.py
 python/efficientvit/export_encoder.py
 python/efficientvit/inference.py
@@ -66,6 +67,7 @@ python/efficientvit/models/utils/random.py
 python/empower_ros2/__init__.py
 python/empower_ros2/color_pcl_node.py
 python/empower_ros2/export_reports.py
+python/empower_ros2/ground_truth_localizer_node.py
 python/empower_ros2/loader_adapter.py
 python/empower_ros2/marker_centroids_node.py
 python/empower_ros2/models_cacher_node.py

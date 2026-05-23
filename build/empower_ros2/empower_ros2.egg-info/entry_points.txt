@@ -1,6 +1,7 @@
 [console_scripts]
 color_pcl_node = empower_ros2.color_pcl_node:main
 export_reports = empower_ros2.export_reports:main
+ground_truth_localizer_node = empower_ros2.ground_truth_localizer_node:main
 marker_centroids_node = empower_ros2.marker_centroids_node:main
 models_cacher_node = empower_ros2.models_cacher_node:main
 plan_generator_node = empower_ros2.plan_generator_node:main
