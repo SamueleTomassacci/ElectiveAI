@@ -9,16 +9,17 @@ La pipeline arriva fino a:
 - detection/segmentation/grounding con logica EMPOWER;
 - generazione piano simbolico;
 - esportazione file leggibili;
-- visualizzazione RViz.
+- visualizzazione RViz;
+- esecuzione low-level degli step `NAVIGATE` tramite Nav2.
 
-Non esegue navigazione reale, MoveIt, Nav2, `cmd_vel`, manipolazione o primitive fisiche.
+La parte low-level esegue solo navigazione mobile. Le azioni `GRAB`, `DROP`, `PUSH` e `PULL` vengono riconosciute, loggate e saltate in modo sicuro. Non viene eseguita manipolazione, MoveIt, MoveIt2, grasping o controllo del gripper.
 
 ## 0. Chiave OpenAI
 
 Sul tuo host, nel file:
 
 ```text
-/home/samuele/ElectiveAI-2/openai_api_key.txt
+/home/samuele/ElectiveAI/openai_api_key.txt
 ```
 
 deve esserci solo la chiave, una riga:
@@ -27,20 +28,12 @@ deve esserci solo la chiave, una riga:
 sk-...
 ```
 
-Non serve più fare:
-
-```bash
-export OPENAI_API_KEY=...
-```
-
-Il file è ignorato da git.
-
 ## 1. Avviare Il Container
 
 Sul tuo host:
 
 ```bash
-cd /home/samuele/ElectiveAI-2
+cd /home/samuele/ElectiveAI
 bash start_tiago.sh
 ```
 
@@ -92,7 +85,31 @@ ros2 launch tiago_gazebo tiago_gazebo.launch.py \
 
 Lascia questo terminale aperto.
 
-## 4. Configurare Il Task
+## 4. Avviare Nav2 Con Ground Truth
+
+In un secondo terminale container:
+
+```bash
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py
+```
+
+Questo launch usa:
+
+- mappa statica `exchange/maps/myWorld_static.yaml`;
+- niente SLAM;
+- niente laser;
+- localizzazione ground truth da Gazebo;
+- TF `map -> odom` pubblicata da `ground_truth_localizer_node`;
+- backend Nav2 `NavigateToPose`.
+
+Lascia anche questo terminale aperto. 
+
+## 5. Configurare Il Task
 
 Modifica da VS Code:
 
@@ -106,30 +123,39 @@ Esempio:
 /**:
   ros__parameters:
     use_case: tiago_task
-    task_description: "talk to the person"
+    task_description: "Move the cup on the chair"
     output_root: /root/exchange/empower_data
     rgb_topic: /head_front_camera/rgb/image_raw
     depth_topic: /head_front_camera/depth/image_raw
     camera_info_topic: /head_front_camera/depth/camera_info
     pointcloud_topic: /empower/colored_pointcloud
-    fixed_frame: base_footprint
-    camera_frame: base_footprint
+    fixed_frame: map
+    camera_frame: head_front_camera_color_optical_frame
     depth_unit_scale_to_mm: -1.0
     server_host: 127.0.0.1
     server_port: 10000
     openai_api_key_file: /root/exchange/openai_api_key.txt
+    centroids_topic: /pcl_centroids
+    names_topic: /pcl_names
+    map_frame: map
+    base_frame: base_footprint
+    nav_action_name: navigate_to_pose
+    marker_timeout_sec: 30.0
+    tf_timeout_sec: 2.0
+    action_server_timeout_sec: 20.0
+    nav_result_timeout_sec: 300.0
+    standoff_distance: 0.8
+    continue_on_nav_failure: false
 ```
 
 Non serve ricompilare se cambi solo questo file.
 
-Se cambi `task_description`, rilancia almeno:
+`standoff_distance` controlla quanto il goal Nav2 resta distante dal centroide dell'oggetto. Se il goal cade dentro l'ostacolo o nella sua inflation, Nav2 fallisce con messaggi tipo `failed to create plan`; in quel caso aumenta leggermente il valore.
 
-- `empower_models_cacher`;
-- `empower_plan`.
 
-## 5. Catturare La Scena RGB-D
+## 6. Catturare La Scena RGB-D
 
-In un secondo terminale container:
+In un terminale container:
 
 ```bash
 cd /root/exchange
@@ -150,7 +176,7 @@ empower_data/output/tiago_task/depth_pointcloud.pcd
 empower_data/output/tiago_task/camera_info.json
 ```
 
-## 6. Avviare Il Model Cacher
+## 7. Avviare Il Model Cacher
 
 In un terminale container separato, da lasciare aperto:
 
@@ -177,9 +203,8 @@ Questo nodo carica:
 - EfficientViT-SAM;
 - spaCy;
 - word2vec;
-- logica EMPOWER originale.
 
-## 7. Generare Il Piano
+## 8. Generare Il Piano
 
 In un altro terminale container:
 
@@ -207,38 +232,7 @@ empower_data/output/tiago_task/detections.json
 empower_data/output/tiago_task/empower_report.txt
 ```
 
-Per leggere il report completo:
-
-```bash
-cat /root/exchange/empower_data/output/tiago_task/empower_report.txt
-```
-
-Esempio di contenuto:
-
-```text
-Relations:
-1) (person, left to, chair)
-2) (chair, left to, table)
-
-Scene description:
-...
-
-Symbolic plan:
-NAVIGATE to the chair
-NAVIGATE to the left of the chair
-
-Detections:
-- 0: table bbox=...
-```
-
-## 8. Visualizzazione RViz
-
-Prima pulisci eventuali vecchie visualizzazioni duplicate:
-
-```bash
-pkill -f color_pcl_node
-pkill -f marker_centroids_node
-```
+## 9. Visualizzazione RViz
 
 Poi lancia la visualizzazione:
 
@@ -265,36 +259,67 @@ rviz2
 
 In RViz:
 
-- Fixed Frame: `base_footprint`
+- Fixed Frame: `map`
 - Add `PointCloud2`: `/empower/colored_pointcloud`
 - Add `MarkerArray`: `/pcl_centroids`
 - Add `MarkerArray`: `/pcl_names`
 - opzionale `MarkerArray`: `/pcl_maximum`
 
-Per controllare che non ci siano publisher duplicati:
+
+## 10. Eseguire Il Piano Low-Level
+
+Prerequisiti:
+
+- Gazebo TIAGo avviato;
+- Nav2 ground truth avviato;
+- `planning.json` o `planning.txt` gia' generato;
+- `detection.pkl`, `colors_dict.pkl` e file RGB-D gia' presenti nella cartella di output;
+- robot nella stessa posa usata per catturare la scena, se stai riusando output salvati senza rifare capture.
+
+Poi lancia l'esecuzione:
 
 ```bash
-ros2 node list | grep empower
-ros2 topic info /pcl_centroids -v | grep "Publisher count"
-ros2 topic info /empower/colored_pointcloud -v | grep "Publisher count"
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+PARAMS=/root/exchange/src/empower_ros2/config/empower_tiago.yaml
+ros2 launch empower_ros2 empower_execute.launch.py params_file:=$PARAMS
 ```
 
-I publisher devono essere:
+Comportamento atteso:
 
 ```text
-Publisher count: 1
+NAVIGATE table        -> eseguito con Nav2 NavigateToPose
+GRAB cup              -> skipped, not implemented
+NAVIGATE chair ...    -> eseguito con Nav2 NavigateToPose
+DROP cup ...          -> skipped, not implemented
 ```
 
-Se sono `2`, hai lanciato due volte la visualizzazione. Ferma i nodi con:
+Nel terminale dell'executor dovresti vedere log simili:
 
-```bash
-pkill -f color_pcl_node
-pkill -f marker_centroids_node
+```text
+Loaded parsed plan from .../planning.json
+Loaded EMPOWER object centroids: ...
+Executing NAVIGATE to 'table' from EMPOWER centroid (...)
+Sending NAVIGATE goal to Nav2: frame=map x=... y=...
+NAVIGATE succeeded
+Skipping GRAB cup: action not implemented in ROS2 port
 ```
 
-e rilancia una sola visualizzazione.
+Nel terminale Nav2 dovresti vedere:
 
-## 9. Rigenerare Solo I Report Leggibili
+```text
+Begin navigating from current location (...) to (...)
+Reached the goal!
+Goal succeeded
+```
+
+Se vuoi riusare il piano gia' salvato senza rifare perception/planning, tieni aperti solo Gazebo e Nav2, verifica che i file in `empower_data/output/tiago_task` siano presenti, e lancia direttamente `empower_execute.launch.py`.
+
+
+## 11. Rigenerare Solo I Report Leggibili
 
 Se hai già `planning.pkl` e `detection.pkl`, puoi rigenerare i file `.txt/.json` leggibili senza rifare planning:
 
@@ -309,7 +334,7 @@ ros2 run empower_ros2 export_reports \
   --params-file /root/exchange/src/empower_ros2/config/empower_tiago.yaml
 ```
 
-## 10. File Di Output
+## 12. File Di Output
 
 Output immagine:
 
@@ -350,7 +375,7 @@ empower_data/output/tiago_task/symbolic_plan.txt
 empower_data/output/tiago_task/empower_report.txt
 ```
 
-## 11. Rebuild Docker Futuro
+## 13. Rebuild Docker Futuro
 
 Per ora, se lavori con la repo montata, non serve rifare Docker build per modifiche Python/YAML: basta:
 
@@ -361,7 +386,7 @@ colcon build --symlink-install --packages-select empower_ros2
 In futuro, per creare una nuova immagine con tutti i fix inclusi:
 
 ```bash
-cd /home/samuele/ElectiveAI-2
+cd /home/samuele/ElectiveAI
 docker build -t hrai-2025:v1 dockerfiles
 ```
 
@@ -380,12 +405,13 @@ docker build -t hrai-2025:v1 dockerfiles \
   --build-arg EMPOWER_PRECACHE_HF=false
 ```
 
-## 12. Note Importanti
+## 14. Note Importanti
 
 - `start_tiago.sh` si esegue solo sull'host, non dentro il container.
 - Ogni nuovo terminale `docker exec` deve fare il `source` dell'ambiente.
-- Il sistema non esegue fisicamente azioni come `NAVIGATE`, `GRAB`, `DROP`.
-- Il piano è solo simbolico/testuale.
+- Il sistema esegue fisicamente solo `NAVIGATE` tramite Nav2.
+- Il sistema non esegue fisicamente `GRAB`, `DROP`, `PUSH`, `PULL` o manipolazione.
 - La visualizzazione RViz mostra point cloud colorata, centroidi e nomi degli oggetti groundati.
 - Se cambi solo `task_description`, non serve rebuildare; rilancia model cacher e planner.
+- Se cambi solo `standoff_distance` o altri parametri YAML, non serve rebuildare; rilancia l'execution.
 - Se cambi codice Python, rebuilda solo `empower_ros2` con `colcon`.
