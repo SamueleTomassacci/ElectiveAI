@@ -1,1 +1,0 @@
-/root/exchange/build/empower_ros2/launch/empower_capture.launch.py

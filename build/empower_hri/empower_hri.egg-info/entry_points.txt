@@ -1,3 +1,0 @@
-[console_scripts]
-voice_llm_node = empower_hri.voice_llm_node:main
-

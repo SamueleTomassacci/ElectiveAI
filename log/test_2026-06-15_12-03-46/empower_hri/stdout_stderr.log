@@ -1,9 +1,0 @@
-test_mock_client_mentions_latest_user_message (test.test_ollama_client.LlmClientTest) ... ok
-test_ollama_client_selects_installed_fallback (test.test_ollama_client.LlmClientTest) ... ok
-test_mock_tts_prints_response (test.test_text_to_speech.TextToSpeechTest) ... ok
-test_system_tts_prefers_espeak_ng (test.test_text_to_speech.TextToSpeechTest) ... ok
-
-----------------------------------------------------------------------
-Ran 4 tests in 0.001s
-
-OK

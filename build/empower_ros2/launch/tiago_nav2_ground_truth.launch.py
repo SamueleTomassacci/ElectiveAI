@@ -1,1 +1,0 @@
-/root/exchange/src/empower_ros2/launch/tiago_nav2_ground_truth.launch.py

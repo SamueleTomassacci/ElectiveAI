@@ -1,1 +1,0 @@
-/root/exchange/build/empower_hri/README_QWEN_ENGLISH.md
