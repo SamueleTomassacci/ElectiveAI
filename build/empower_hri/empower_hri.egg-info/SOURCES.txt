@@ -1,4 +1,5 @@
 README.md
+README_QWEN_ENGLISH.md
 package.xml
 setup.cfg
 setup.py
