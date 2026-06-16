@@ -1,3 +1,0 @@
-1) (cup, on, table)
-2) (round table, left to, table)
-3) (plant, on, round table)

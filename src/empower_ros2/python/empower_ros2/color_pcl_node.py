@@ -26,7 +26,7 @@ class ColorPclNode(Node):
 
     def __init__(self):
         super().__init__("empower_color_pcl")
-        self.declare_parameter("use_case", "tiago_task")
+        self.declare_parameter("use_case", "person_table_child_task")
         self.declare_parameter("output_root", "/root/exchange/empower_data")
         self.declare_parameter("camera_frame", "head_front_camera_rgb_optical_frame")
         self.declare_parameter("pointcloud_topic", "/empower/colored_pointcloud")

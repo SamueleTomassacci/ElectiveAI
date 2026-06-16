@@ -13,7 +13,7 @@ def generate_launch_description():
     nav2_share = get_package_share_directory("nav2_bringup")
 
     default_params = os.path.join(empower_share, "config", "nav2_tiago_ground_truth.yaml")
-    default_map = "/root/exchange/exchange/maps/myWorld_static.yaml"
+    default_map = "/root/exchange/exchange/maps/person_table_child_static.yaml"
 
     params_file = LaunchConfiguration("params_file")
     map_file = LaunchConfiguration("map")

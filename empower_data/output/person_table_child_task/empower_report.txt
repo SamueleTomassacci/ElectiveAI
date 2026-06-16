@@ -1,0 +1,23 @@
+EMPOWER readable report
+
+Relations:
+1) (book, on, table)
+
+Scene description:
+The image shows a table with a book on it. 
+
+To take the book from the table, follow these steps:
+
+1. Approach the table.
+2. Reach out and grasp the book.
+3. Lift the book off the table.
+
+There is only one book visible, so no further specification is needed.
+
+Symbolic plan:
+NAVIGATE to the table  
+GRAB book
+
+Detections:
+- 0: table bbox=[267.9180908203125, 323.90789794921875, 600.665771484375, 478.4569091796875]
+- 1: book bbox=[362.6368713378906, 310.5208740234375, 543.695068359375, 361.8453674316406]

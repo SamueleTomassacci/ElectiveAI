@@ -28,7 +28,7 @@ class LowLevelExecutionNode(Node):
 
     def __init__(self):
         super().__init__("empower_low_level_execution")
-        self.declare_parameter("use_case", "tiago_task")
+        self.declare_parameter("use_case", "person_table_child_task")
         self.declare_parameter("output_root", "/root/exchange/empower_data")
         self.declare_parameter("plan_json_path", "")
         self.declare_parameter("plan_txt_path", "")

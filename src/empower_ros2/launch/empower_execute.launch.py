@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    default_params = os.path.join(get_package_share_directory("empower_ros2"), "config", "empower_tiago.yaml")
+    default_params = os.path.join(get_package_share_directory("empower_ros2"), "config", "empower_person_table_child.yaml")
     use_sim_time = LaunchConfiguration("use_sim_time")
     return LaunchDescription(
         [
