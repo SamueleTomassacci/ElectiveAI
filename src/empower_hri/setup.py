@@ -7,6 +7,10 @@ from setuptools import find_packages, setup
 package_name = "empower_hri"
 
 
+def existing_files(paths):
+    return [path for path in paths if os.path.isfile(path)]
+
+
 setup(
     name=package_name,
     version="0.1.0",
@@ -15,7 +19,7 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (
             f"share/{package_name}",
-            ["package.xml", "README.md", "README_QWEN_ENGLISH.md"],
+            existing_files(["package.xml", "README.md", "README_QWEN_ENGLISH.md"]),
         ),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
