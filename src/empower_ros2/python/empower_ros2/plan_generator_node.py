@@ -36,17 +36,10 @@ class PlanGeneratorNode(Node):
             "command": "detection",
             "task_description": self.get_parameter("task_description").value,
         }
-        host = self.get_parameter("server_host").value
-        port = int(self.get_parameter("server_port").value)
-        self.get_logger().info("Triggering empower detection/planning through the model cacher")
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            client_socket.connect((host, port))
-            client_socket.sendall(json.dumps(payload).encode())
-            response = client_socket.recv(1024).decode()
-            if not response.startswith("ok"):
-                raise RuntimeError(response)
+        timeout_sec = float(self.get_parameter("timeout_sec").value)
+        deadline = time.time() + timeout_sec
+        self._send_trigger(payload, deadline)
 
-        deadline = time.time() + float(self.get_parameter("timeout_sec").value)
         while time.time() < deadline:
             if os.path.exists(planning_txt):
                 with open(planning_txt, "r", encoding="utf-8") as plan_file:
@@ -61,6 +54,30 @@ class PlanGeneratorNode(Node):
                 return
             time.sleep(0.5)
         raise TimeoutError(f"Timed out waiting for {planning_txt}")
+
+    def _send_trigger(self, payload, deadline):
+        host = self.get_parameter("server_host").value
+        port = int(self.get_parameter("server_port").value)
+        while time.time() < deadline:
+            self.get_logger().info("Triggering empower detection/planning through the model cacher")
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                    client_socket.settimeout(5.0)
+                    client_socket.connect((host, port))
+                    client_socket.sendall(json.dumps(payload).encode())
+                    response_timeout = max(1.0, deadline - time.time())
+                    client_socket.settimeout(response_timeout)
+                    response = client_socket.recv(1024).decode()
+                    if not response.startswith("ok"):
+                        raise RuntimeError(response)
+                return
+            except (ConnectionRefusedError, socket.timeout, OSError) as exc:
+                self.get_logger().warn(
+                    f"Model cacher not ready at {host}:{port}: {exc}; retrying",
+                    throttle_duration_sec=5.0,
+                )
+                time.sleep(1.0)
+        raise TimeoutError(f"Timed out connecting to model cacher at {host}:{port}")
 
 
 def main(args=None):

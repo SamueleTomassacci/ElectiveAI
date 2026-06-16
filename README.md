@@ -316,3 +316,330 @@ Valori principali:
 - Se cambi `standoff_distance`, rilancia execution.
 - Se cambi codice Python o launch file, rebuilda `empower_ros2`.
 - Se cambi la world o la mappa, riavvia Gazebo e Nav2.
+
+## 15. Missione Completa HRI + EMPOWER
+
+Questa sezione avvia il flusso orchestrato:
+
+```text
+TIAGo -> terapista -> task vocale HRI -> spawn -> EMPOWER -> bambino -> child_ready
+```
+
+Il launch principale e':
+
+```bash
+ros2 launch empower_ros2 hri_empower_mission.launch.py
+```
+
+ma per usare microfono, Qwen e speaker serve avviare il container con audio.
+
+### 15.1 Host: Avvia Ollama
+
+Terminale host 1:
+
+```bash
+ollama serve
+```
+
+Lascialo aperto.
+
+Terminale host 2:
+
+```bash
+ollama pull qwen2.5:1.5b
+```
+
+Quando il download e' finito, questo secondo terminale puo' essere chiuso.
+
+### 15.2 Host: Avvia Il Container Con Audio
+
+Terminale host 3:
+
+```bash
+cd /home/samuele/ElectiveAI
+
+docker rm -f hrai_sim 2>/dev/null || true
+
+xhost +local:docker
+
+HOST_UID=$(id -u)
+PULSE_SOCKET="/run/user/${HOST_UID}/pulse/native"
+PULSE_COOKIE="${HOME}/.config/pulse/cookie"
+
+docker run \
+  --gpus all \
+  --name hrai_sim \
+  --rm \
+  -it \
+  --net host \
+  --privileged \
+  --device /dev/snd \
+  --env DISPLAY \
+  --env QT_X11_NO_MITSHM=1 \
+  --env __NV_PRIME_RENDER_OFFLOAD=1 \
+  --env __GLX_VENDOR_LIBRARY_NAME=nvidia \
+  -e PULSE_SERVER="unix:${PULSE_SOCKET}" \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+  -v "${PULSE_SOCKET}:${PULSE_SOCKET}" \
+  -v "${PULSE_COOKIE}:/root/.config/pulse/cookie:ro" \
+  -v /home/samuele/ElectiveAI:/root/exchange \
+  -w /root/exchange \
+  hrai-2025:v1 \
+  /root/exchange/docker/entrypoint_tiago.sh
+```
+
+Se Docker non supporta `--gpus all`, rilancia lo stesso comando togliendo solo quella riga.
+
+### 15.3 Container: Installa Audio, STT E TTS
+
+Dentro il container:
+
+```bash
+cd /root/exchange
+
+apt update
+
+apt install -y \
+  python3-pip \
+  libportaudio2 \
+  portaudio19-dev \
+  libsndfile1 \
+  libasound2-plugins \
+  pulseaudio-utils \
+  alsa-utils \
+  espeak-ng \
+  speech-dispatcher \
+  curl
+
+python3 -m pip install \
+  faster-whisper \
+  sounddevice \
+  soundfile \
+  pyttsx3
+```
+
+Configura microfono e speaker. Nella configurazione testata il microfono e' `hw:0,7`.
+
+```bash
+mkdir -p /root/.config/pulse
+
+cat > /root/.asoundrc <<'EOF'
+pcm.!default {
+    type asym
+    playback.pcm "pulse_output"
+    capture.pcm "microphone"
+}
+
+pcm.pulse_output {
+    type pulse
+}
+
+pcm.microphone {
+    type plug
+    slave.pcm "hw:0,7"
+}
+
+ctl.!default {
+    type pulse
+}
+EOF
+```
+
+Scarica in cache il modello Whisper inglese:
+
+```bash
+python3 -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
+```
+
+### 15.4 Container: Build ROS2
+
+```bash
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+
+colcon build --symlink-install --packages-select empower_ros2 empower_hri
+
+source /root/exchange/install/setup.bash
+```
+
+Se modifichi codice Python o launch file, riesegui almeno:
+
+```bash
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+colcon build --symlink-install --packages-select empower_ros2 empower_hri
+source /root/exchange/install/setup.bash
+```
+
+### 15.5 Terminale Container 1: Gazebo
+
+Se non sei gia' nel container:
+
+```bash
+docker exec -it hrai_sim bash
+```
+
+Poi:
+
+```bash
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
+WORLD=/root/exchange/exchange/person_table_child.world
+
+ros2 launch tiago_gazebo tiago_gazebo.launch.py \
+  is_public_sim:=True \
+  gazebo_version:=classic \
+  world_name:=$WORLD
+```
+
+Lascia aperto questo terminale.
+
+### 15.6 Terminale Container 2: Nav2
+
+```bash
+docker exec -it hrai_sim bash
+
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+MAP=/root/exchange/exchange/maps/person_table_child_static.yaml
+
+ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
+  map:=$MAP
+```
+
+Lascia aperto anche questo terminale.
+
+### 15.7 Terminale Container 3: Missione Orchestrata
+
+```bash
+docker exec -it hrai_sim bash
+
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+rm -rf /root/exchange/empower_data/images/person_table_child_task
+rm -rf /root/exchange/empower_data/output/person_table_child_task
+
+ros2 launch empower_ros2 hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+  hri_input_mode:=voice
+```
+
+Quando TIAGo arriva dalla terapista, il nodo HRI passa a `waiting_for_push_to_talk`.
+Premi INVIO nel terminale della missione e parla in inglese durante la registrazione, ad esempio:
+
+```text
+Take the book from the table
+```
+
+Flusso atteso nei log:
+
+```text
+Mission state: GO_TO_THERAPIST
+Mission state: WAIT_TASK
+Task captured from /hri/user_utterance
+Mission state: GO_TO_SPAWN
+Mission state: RUN_EMPOWER
+EMPOWER scene capture completed
+Running EMPOWER planning
+Detection, grounding and planning completed
+EMPOWER planning completed
+Running EMPOWER low-level execution
+Mission state: GO_TO_CHILD
+Mission state: CHILD_READY
+```
+
+### 15.8 Monitor Della Missione
+
+In altri terminali container:
+
+```bash
+docker exec -it hrai_sim bash
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+ros2 topic echo /mission/state
+```
+
+```bash
+docker exec -it hrai_sim bash
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+ros2 topic echo /mission/feedback
+```
+
+```bash
+docker exec -it hrai_sim bash
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+ros2 topic echo /mission/task_description
+```
+
+```bash
+docker exec -it hrai_sim bash
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+ros2 topic echo /mission/child_ready
+```
+
+### 15.9 Debug Senza Microfono
+
+Per validare la missione senza input vocale:
+
+```bash
+docker exec -it hrai_sim bash
+
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+rm -rf /root/exchange/empower_data/images/person_table_child_task
+rm -rf /root/exchange/empower_data/output/person_table_child_task
+
+ros2 launch empower_ros2 hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+  hri_input_mode:=text
+```
+
+Oppure pubblica direttamente il task quando lo stato e' `WAIT_TASK`:
+
+```bash
+ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Take the book from the table'}"
+```
+
+### 15.10 Note Sulla Missione
+
+- `models_cacher_node` carica i modelli e poi resta in ascolto su `127.0.0.1:10000`.
+- Il planning non parte quando il cacher e' pronto: parte nello stato `RUN_EMPOWER`, dopo che TIAGo e' tornato allo spawn.
+- Il task passato a EMPOWER e' il primo testo utile ricevuto da `/hri/user_utterance`.
+- Le azioni EMPOWER diverse da `NAVIGATE`, come `GRAB` e `DROP`, restano simboliche/loggate.
+- Se Nav2 fallisce nel ritorno allo spawn con `Failed to make progress`, ferma solo la missione, resetta/sposta TIAGo o correggi le pose in `src/empower_ros2/config/hri_empower_mission.yaml`, poi rilancia la missione.
+- Se cambi le pose in YAML non serve rebuildare; se cambi Python o launch file serve rebuildare.

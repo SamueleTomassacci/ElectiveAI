@@ -1,0 +1,18 @@
+mission_orchestrator_node:
+  ros__parameters:
+    therapist_pose: [0.0, -1.6, -1.5708]
+    spawn_pose: [0.0, 0.0, 0.0]
+    child_pose: [0.0, 1.6, 1.5708]
+    map_frame: "map"
+    nav_action_name: "navigate_to_pose"
+    params_file: "/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml"
+    wait_for_task_timeout_sec: 120.0
+    auto_start: true
+    action_server_timeout_sec: 20.0
+    nav_result_timeout_sec: 300.0
+    empower_process_timeout_sec: 0.0
+    capture_timeout_sec: 60.0
+    capture_before_empower: true
+    execute_empower_plan: true
+    use_case: "person_table_child_task"
+    output_root: "/root/exchange/empower_data"

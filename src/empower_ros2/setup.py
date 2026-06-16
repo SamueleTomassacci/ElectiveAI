@@ -51,6 +51,7 @@ setup(
             "marker_centroids_node = empower_ros2.marker_centroids_node:main",
             "ground_truth_localizer_node = empower_ros2.ground_truth_localizer_node:main",
             "low_level_execution_node = empower_ros2.low_level_execution_node:main",
+            "mission_orchestrator_node = empower_ros2.mission_orchestrator_node:main",
         ],
     },
 )
