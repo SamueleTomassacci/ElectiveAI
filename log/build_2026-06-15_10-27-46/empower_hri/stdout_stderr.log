@@ -1,0 +1,15 @@
+running develop
+running egg_info
+writing empower_hri.egg-info/PKG-INFO
+writing dependency_links to empower_hri.egg-info/dependency_links.txt
+writing entry points to empower_hri.egg-info/entry_points.txt
+writing requirements to empower_hri.egg-info/requires.txt
+writing top-level names to empower_hri.egg-info/top_level.txt
+reading manifest file 'empower_hri.egg-info/SOURCES.txt'
+writing manifest file 'empower_hri.egg-info/SOURCES.txt'
+running build_ext
+Creating /root/exchange/install/empower_hri/lib/python3.10/site-packages/empower-hri.egg-link (link to .)
+Installing voice_llm_node script to /root/exchange/install/empower_hri/lib/empower_hri
+
+Installed /root/exchange/build/empower_hri
+running symlink_data

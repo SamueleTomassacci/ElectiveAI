@@ -1,0 +1,23 @@
+voice_llm_node:
+  ros__parameters:
+    input_mode: "voice"
+    llm_provider: "ollama"
+    llm_base_url: "http://localhost:11434"
+    llm_model: "qwen2.5:1.5b"
+    llm_fallback_model: "llama3.2:1b"
+    llm_timeout: 60.0
+    temperature: 0.4
+    max_response_tokens: 120
+    max_history_turns: 4
+    stt_provider: "faster_whisper"
+    stt_model: "base"
+    stt_device: "cpu"
+    stt_compute_type: "int8"
+    language: "en"
+    record_seconds: 5.0
+    sample_rate: 16000
+    tts_provider: "system"
+    tts_timeout: 30.0
+    piper_model_path: ""
+    piper_config_path: ""
+    system_prompt: "You are TIAGo, a social robot in a Gazebo simulation. At this stage, you can only speak with the user. You cannot move, grasp objects, recognize people, or perform physical actions from this module. Always answer in English in a short, clear, kind, and child-friendly manner suitable for children and therapists. If the user asks you to perform a physical action, explain that you are currently testing voice dialogue only. Do not claim robotic capabilities that have not been implemented."

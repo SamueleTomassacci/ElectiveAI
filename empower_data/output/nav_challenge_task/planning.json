@@ -1,0 +1,28 @@
+[
+  {
+    "step": 1,
+    "action": "GRAB",
+    "description": "GRAB cup",
+    "target": "cup"
+  },
+  {
+    "step": 2,
+    "action": "NAVIGATE",
+    "description": "NAVIGATE to the round table",
+    "target": "the round table"
+  },
+  {
+    "step": 3,
+    "action": "DROP",
+    "description": "DROP cup on the round table",
+    "spatial_relation": "on",
+    "reference": "the round table",
+    "target": "cup"
+  },
+  {
+    "step": 4,
+    "action": "NAVIGATE",
+    "description": "NAVIGATE to the table",
+    "target": "the table"
+  }
+]

@@ -1,0 +1,17 @@
+[
+  {
+    "subject": "cup",
+    "relation": "on",
+    "object": "table"
+  },
+  {
+    "subject": "round table",
+    "relation": "left to",
+    "object": "table"
+  },
+  {
+    "subject": "plant",
+    "relation": "on",
+    "object": "round table"
+  }
+]

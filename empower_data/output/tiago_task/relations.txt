@@ -1,6 +1,0 @@
-1) (cup, on, table)
-2) (cup, left to, chair on the right)
-3) (plate, on, table)
-4) (plate, left to, cup)
-5) (plant, behind to, chair on the left)
-6) (person, left to, chair on the left)

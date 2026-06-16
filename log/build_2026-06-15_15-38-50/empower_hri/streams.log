@@ -1,0 +1,19 @@
+[0.767s] Invoking command in '/root/exchange/build/empower_hri': PYTHONPATH=/root/exchange/build/empower_hri/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/root/exchange/install/empower_hri/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /root/exchange/build/empower_hri/build --no-deps symlink_data
+[1.010s] running develop
+[1.143s] running egg_info
+[1.143s] writing empower_hri.egg-info/PKG-INFO
+[1.143s] writing dependency_links to empower_hri.egg-info/dependency_links.txt
+[1.143s] writing entry points to empower_hri.egg-info/entry_points.txt
+[1.144s] writing requirements to empower_hri.egg-info/requires.txt
+[1.144s] writing top-level names to empower_hri.egg-info/top_level.txt
+[1.145s] reading manifest file 'empower_hri.egg-info/SOURCES.txt'
+[1.148s] writing manifest file 'empower_hri.egg-info/SOURCES.txt'
+[1.195s] running build_ext
+[1.195s] Creating /root/exchange/install/empower_hri/lib/python3.10/site-packages/empower-hri.egg-link (link to .)
+[1.196s] Installing voice_llm_node script to /root/exchange/install/empower_hri/lib/empower_hri
+[1.196s] 
+[1.196s] Installed /root/exchange/build/empower_hri
+[1.197s] running symlink_data
+[1.197s] symbolically linking /root/exchange/build/empower_hri/config/hri_cpu_english.yaml -> /root/exchange/install/empower_hri/share/empower_hri/config
+[1.197s] symbolically linking /root/exchange/build/empower_hri/launch/hri_voice_llm_english.launch.py -> /root/exchange/install/empower_hri/share/empower_hri/launch
+[1.228s] Invoked command in '/root/exchange/build/empower_hri' returned '0': PYTHONPATH=/root/exchange/build/empower_hri/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/root/exchange/install/empower_hri/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /root/exchange/build/empower_hri/build --no-deps symlink_data

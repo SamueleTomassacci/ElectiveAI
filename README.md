@@ -319,7 +319,90 @@ Goal succeeded
 Se vuoi riusare il piano gia' salvato senza rifare perception/planning, tieni aperti solo Gazebo e Nav2, verifica che i file in `empower_data/output/tiago_task` siano presenti, e lancia direttamente `empower_execute.launch.py`.
 
 
-## 11. Rigenerare Solo I Report Leggibili
+## 11. Scena Alternativa Per Test NAVIGATE
+
+La repo contiene anche una scena pensata per testare meglio la primitiva `NAVIGATE`, con piu' target distribuiti nello spazio:
+
+```text
+exchange/nav_challenge.world
+exchange/maps/nav_challenge_static.yaml
+src/empower_ros2/config/empower_nav_challenge.yaml
+```
+
+Oggetti principali:
+
+- cup su un tavolo;
+- bowl su un tavolo rotondo;
+- chair;
+- person;
+- sofa;
+- cabinet;
+- plant/tree.
+
+Avvia Gazebo con la nuova world:
+
+```bash
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
+
+ros2 launch tiago_gazebo tiago_gazebo.launch.py \
+  is_public_sim:=True \
+  gazebo_version:=classic \
+  world_name:=/root/exchange/exchange/nav_challenge.world
+```
+
+Avvia Nav2 con la mappa statica della scena:
+
+```bash
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
+  map:=/root/exchange/exchange/maps/nav_challenge_static.yaml
+```
+
+Usa il params file dedicato:
+
+```bash
+PARAMS=/root/exchange/src/empower_ros2/config/empower_nav_challenge.yaml
+```
+
+Poi esegui normalmente capture, model cacher, planning ed execution:
+
+```bash
+ros2 launch empower_ros2 empower_capture.launch.py params_file:=$PARAMS
+ros2 launch empower_ros2 empower_models_cacher.launch.py params_file:=$PARAMS
+ros2 launch empower_ros2 empower_plan.launch.py params_file:=$PARAMS
+ros2 launch empower_ros2 empower_execute.launch.py params_file:=$PARAMS
+```
+
+Il task di default e':
+
+```text
+visit the cup, then the person, then the plant, then the cabinet
+```
+
+Questa scena salva gli output in:
+
+```text
+empower_data/output/nav_challenge_task
+```
+
+Per verificare che i target siano coerenti con la world:
+
+```bash
+ros2 topic echo /pcl_names --once
+ros2 topic echo /pcl_centroids --once
+```
+
+I marker devono essere in `map` e in posizioni compatibili con la disposizione della scena.
+
+## 12. Rigenerare Solo I Report Leggibili
 
 Se hai già `planning.pkl` e `detection.pkl`, puoi rigenerare i file `.txt/.json` leggibili senza rifare planning:
 
@@ -334,7 +417,7 @@ ros2 run empower_ros2 export_reports \
   --params-file /root/exchange/src/empower_ros2/config/empower_tiago.yaml
 ```
 
-## 12. File Di Output
+## 13. File Di Output
 
 Output immagine:
 
@@ -375,7 +458,7 @@ empower_data/output/tiago_task/symbolic_plan.txt
 empower_data/output/tiago_task/empower_report.txt
 ```
 
-## 13. Rebuild Docker Futuro
+## 14. Rebuild Docker Futuro
 
 Per ora, se lavori con la repo montata, non serve rifare Docker build per modifiche Python/YAML: basta:
 
@@ -405,7 +488,7 @@ docker build -t hrai-2025:v1 dockerfiles \
   --build-arg EMPOWER_PRECACHE_HF=false
 ```
 
-## 14. Note Importanti
+## 15. Note Importanti
 
 - `start_tiago.sh` si esegue solo sull'host, non dentro il container.
 - Ogni nuovo terminale `docker exec` deve fare il `source` dell'ambiente.

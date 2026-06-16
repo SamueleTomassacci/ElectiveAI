@@ -1,0 +1,17 @@
+[0.513s] Invoking command in '/root/exchange/build/empower_hri': PYTHONPATH=/root/exchange/build/empower_hri/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/root/exchange/install/empower_hri/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /root/exchange/build/empower_hri/build --no-deps symlink_data
+[0.679s] running develop
+[0.770s] running egg_info
+[0.770s] writing empower_hri.egg-info/PKG-INFO
+[0.770s] writing dependency_links to empower_hri.egg-info/dependency_links.txt
+[0.770s] writing entry points to empower_hri.egg-info/entry_points.txt
+[0.771s] writing requirements to empower_hri.egg-info/requires.txt
+[0.771s] writing top-level names to empower_hri.egg-info/top_level.txt
+[0.772s] reading manifest file 'empower_hri.egg-info/SOURCES.txt'
+[0.773s] writing manifest file 'empower_hri.egg-info/SOURCES.txt'
+[0.803s] running build_ext
+[0.803s] Creating /root/exchange/install/empower_hri/lib/python3.10/site-packages/empower-hri.egg-link (link to .)
+[0.804s] Installing voice_llm_node script to /root/exchange/install/empower_hri/lib/empower_hri
+[0.804s] 
+[0.804s] Installed /root/exchange/build/empower_hri
+[0.804s] running symlink_data
+[0.828s] Invoked command in '/root/exchange/build/empower_hri' returned '0': PYTHONPATH=/root/exchange/build/empower_hri/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/root/exchange/install/empower_hri/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /root/exchange/build/empower_hri/build --no-deps symlink_data
