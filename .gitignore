@@ -1,0 +1,21 @@
+# Secrets
+openai_api_key.txt
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# ROS2 colcon build artifacts
+build/
+install/
+log/
+
+# Generated EMPOWER pipeline output (overwritten each run)
+empower_data/output/
+
+# ROS2 runtime logs
+.ros/
+
+# AI model weights (large binaries — download separately)
+*.pth
+*.onnx
