@@ -19,7 +19,7 @@ def generate_launch_description():
     hri_params = os.path.join(
         get_package_share_directory("empower_hri"),
         "config",
-        "hri_cpu_local.yaml",
+        "hri_cpu_english.yaml",
     )
     use_sim_time = ParameterValue(
         LaunchConfiguration("use_sim_time"),
