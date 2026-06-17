@@ -111,6 +111,10 @@ class VoiceLlmNode(Node):
         self.declare_parameter("piper_config_path", "")
         self.declare_parameter("system_prompt", DEFAULT_SYSTEM_PROMPT)
         self.declare_parameter("storytelling_max_turns", 10)
+        self.declare_parameter("storytelling_auto_listen", True)
+        self.declare_parameter("stt_vad_energy_threshold", 0.01)
+        self.declare_parameter("stt_vad_silence_sec", 1.5)
+        self.declare_parameter("stt_vad_max_duration_sec", 30.0)
 
     def _validate_parameters(self) -> None:
         input_mode = str(self.get_parameter("input_mode").value)
@@ -217,6 +221,20 @@ class VoiceLlmNode(Node):
         self._publish_state("waiting_for_push_to_talk")
         return self.stt.transcribe_push_to_talk()
 
+    def _read_child_text(self) -> str:
+        """Listen for child input. Uses auto-VAD in voice mode if enabled."""
+        if (
+            str(self.get_parameter("input_mode").value) == "voice"
+            and bool(self.get_parameter("storytelling_auto_listen").value)
+            and hasattr(self.stt, "transcribe_auto")
+        ):
+            return self.stt.transcribe_auto(
+                energy_threshold=float(self.get_parameter("stt_vad_energy_threshold").value),
+                silence_duration_sec=float(self.get_parameter("stt_vad_silence_sec").value),
+                max_duration_sec=float(self.get_parameter("stt_vad_max_duration_sec").value),
+            )
+        return self._read_user_text()
+
     def _messages(self, user_text: str) -> List[Dict[str, str]]:
         return [
             {"role": "system", "content": self._current_system_prompt()},
@@ -306,9 +324,12 @@ class VoiceLlmNode(Node):
             and (max_turns <= 0 or turns < max_turns)
         ):
             try:
-                child_text = self._read_user_text()
-                if not child_text or child_text.lower() in {"/quit", "/exit", "quit", "exit"}:
+                child_text = self._read_child_text()
+                if child_text.lower() in {"/quit", "/exit", "quit", "exit"}:
                     break
+                if not child_text:
+                    # VAD: no speech detected within max_duration — keep listening
+                    continue
                 self._handle_utterance(child_text)
                 turns += 1
                 self._publish_state("ready")
