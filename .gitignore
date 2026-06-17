@@ -18,5 +18,9 @@ empower_data/images/
 .ros/
 
 # AI model weights (large binaries — download separately)
+models/gaze_estimation/
+weights/
+*.pt
 *.pth
 *.onnx
+*.engine

@@ -1,0 +1,27 @@
+gaze_estimation:
+  ros__parameters:
+    camera_index: 0
+    device: "auto"
+
+    target_classes:
+      - "book"
+
+    show_window: true
+    window_name: "Gaze Estimation Webcam"
+
+    resize_width: 640
+    process_every_n_frames: 2
+
+    yolo_confidence: 0.10
+    gaze_inout_threshold: 0.50
+    bbox_margin_px: 30
+
+    use_heatmap_ratio_check: true
+    heatmap_inside_bbox_threshold: 0.15
+
+    weights_dir: "/root/exchange/models/gaze_estimation"
+    gazelle_checkpoint: "gazelle_dinov2_vitl14_inout.pt"
+    yolo_world_checkpoint: "yolov8x-worldv2.pt"
+    face_detector_checkpoint: "best.pt"
+
+    print_debug: true
