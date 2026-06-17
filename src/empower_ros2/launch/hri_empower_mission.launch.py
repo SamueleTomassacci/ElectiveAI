@@ -60,6 +60,8 @@ def generate_launch_description():
                     {
                         "input_mode": LaunchConfiguration("hri_input_mode"),
                         "stt_device_index": stt_device_index,
+                        "therapist_llm_replies": False,
+                        "follow_mission_state_for_therapist_input": True,
                         "use_sim_time": use_sim_time,
                     },
                 ],

@@ -24,7 +24,7 @@
       Adulto  davanti a TIAGo:       x = 0.00, y = -2.15
       TIAGo   al centro:             x = 0.00, y =  0.00
       Bambino dietro TIAGo:          x = 0.00, y = +2.15
-      Tavolo con libro sul lato +X:  x = 2.05, y =  0.00
+      Tavolo con oggetti sul lato +X: x = 2.40, y =  0.25
 
       Le persone sono allineate lungo l'asse Y, non lungo X.
       Il tavolo non e' vicino al bambino: occupa uno dei lati liberi
@@ -253,7 +253,7 @@
     -->
     <model name="right_table_after_turn">
       <static>true</static>
-      <pose>2.05 0.00 0 0 0 0.10</pose>
+      <pose>2.40 0.25 0 0 0 0</pose>
 
       <link name="top">
         <pose>0 0 0.72 0 0 0</pose>
@@ -261,7 +261,7 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>1.12 0.78 0.08</size>
+              <size>0.95 1.50 0.08</size>
             </box>
           </geometry>
         </collision>
@@ -269,7 +269,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>1.12 0.78 0.08</size>
+              <size>0.95 1.50 0.08</size>
             </box>
           </geometry>
           <material>
@@ -283,7 +283,7 @@
         <pose>0 0 0.35 0 0 0</pose>
 
         <visual name="front_left">
-          <pose>0.47 0.31 0 0 0 0</pose>
+          <pose>0.40 0.64 0 0 0 0</pose>
           <geometry>
             <box>
               <size>0.07 0.07 0.70</size>
@@ -296,7 +296,7 @@
         </visual>
 
         <visual name="front_right">
-          <pose>0.47 -0.31 0 0 0 0</pose>
+          <pose>0.40 -0.64 0 0 0 0</pose>
           <geometry>
             <box>
               <size>0.07 0.07 0.70</size>
@@ -309,7 +309,7 @@
         </visual>
 
         <visual name="back_left">
-          <pose>-0.47 0.31 0 0 0 0</pose>
+          <pose>-0.40 0.64 0 0 0 0</pose>
           <geometry>
             <box>
               <size>0.07 0.07 0.70</size>
@@ -322,7 +322,7 @@
         </visual>
 
         <visual name="back_right">
-          <pose>-0.47 -0.31 0 0 0 0</pose>
+          <pose>-0.40 -0.64 0 0 0 0</pose>
           <geometry>
             <box>
               <size>0.07 0.07 0.70</size>
@@ -339,23 +339,23 @@
     <!-- Libro rosso sul tavolo laterale -->
     <model name="clear_red_book_on_right_table">
       <static>true</static>
-      <pose>2.16 -0.07 0.760 0 0 -0.18</pose>
+      <pose>2.38 -0.23 0.760 0 0 -0.10</pose>
 
       <link name="link">
         <collision name="collision">
-          <pose>0 0 0.050 0 0 0</pose>
+          <pose>0 0 0.040 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.56 0.39 0.10</size>
+              <size>0.38 0.27 0.08</size>
             </box>
           </geometry>
         </collision>
 
         <visual name="page_block">
-          <pose>0.025 0.010 0.050 0 0 0</pose>
+          <pose>0.018 0.008 0.040 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.50 0.33 0.085</size>
+              <size>0.33 0.21 0.062</size>
             </box>
           </geometry>
           <material>
@@ -365,10 +365,10 @@
         </visual>
 
         <visual name="hard_cover_bottom">
-          <pose>0 0 0.012 0 0 0</pose>
+          <pose>0 0 0.009 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.58 0.41 0.024</size>
+              <size>0.40 0.29 0.018</size>
             </box>
           </geometry>
           <material>
@@ -378,10 +378,10 @@
         </visual>
 
         <visual name="hard_cover_top">
-          <pose>0 0 0.102 0 0 0</pose>
+          <pose>0 0 0.081 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.58 0.41 0.024</size>
+              <size>0.40 0.29 0.018</size>
             </box>
           </geometry>
           <material>
@@ -391,11 +391,11 @@
         </visual>
 
         <visual name="rounded_spine">
-          <pose>-0.285 0 0.058 1.5708 0 0</pose>
+          <pose>-0.195 0 0.045 1.5708 0 0</pose>
           <geometry>
             <cylinder>
-              <radius>0.055</radius>
-              <length>0.41</length>
+              <radius>0.038</radius>
+              <length>0.29</length>
             </cylinder>
           </geometry>
           <material>
@@ -405,10 +405,10 @@
         </visual>
 
         <visual name="front_page_edges">
-          <pose>0.028 -0.177 0.060 0 0 0</pose>
+          <pose>0.020 -0.123 0.047 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.48 0.018 0.060</size>
+              <size>0.32 0.014 0.046</size>
             </box>
           </geometry>
           <material>
@@ -418,10 +418,10 @@
         </visual>
 
         <visual name="side_page_edges">
-          <pose>0.285 0.010 0.060 0 0 0</pose>
+          <pose>0.197 0.008 0.047 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.018 0.32 0.060</size>
+              <size>0.014 0.21 0.046</size>
             </box>
           </geometry>
           <material>
@@ -431,10 +431,10 @@
         </visual>
 
         <visual name="gold_title_plate">
-          <pose>0.055 0.035 0.118 0 0 0</pose>
+          <pose>0.040 0.026 0.093 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.25 0.090 0.010</size>
+              <size>0.16 0.060 0.008</size>
             </box>
           </geometry>
           <material>
@@ -444,10 +444,10 @@
         </visual>
 
         <visual name="gold_spine_line_upper">
-          <pose>-0.250 0.115 0.120 0 0 0</pose>
+          <pose>-0.173 0.080 0.094 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.020 0.130 0.012</size>
+              <size>0.014 0.085 0.009</size>
             </box>
           </geometry>
           <material>
@@ -457,10 +457,10 @@
         </visual>
 
         <visual name="gold_spine_line_lower">
-          <pose>-0.250 -0.115 0.120 0 0 0</pose>
+          <pose>-0.173 -0.080 0.094 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.020 0.130 0.012</size>
+              <size>0.014 0.085 0.009</size>
             </box>
           </geometry>
           <material>
@@ -469,6 +469,345 @@
           </material>
         </visual>
 
+      </link>
+    </model>
+
+    <!-- Computer portatile sul tavolo laterale -->
+    <model name="laptop_computer_on_right_table">
+      <static>true</static>
+      <pose>2.48 0.25 0.765 0 0 0.04</pose>
+
+      <link name="link">
+        <collision name="collision">
+          <pose>0 0 0.030 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.46 0.34 0.060</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="base">
+          <pose>0 0 0.018 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.46 0.34 0.035</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.18 0.19 0.20 1</ambient>
+            <diffuse>0.30 0.31 0.33 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="keyboard_deck">
+          <pose>-0.040 0 0.041 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.250 0.250 0.008</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.04 0.045 0.050 1</ambient>
+            <diffuse>0.06 0.065 0.070 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="keyboard_row_upper">
+          <pose>-0.035 0.070 0.048 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.210 0.020 0.006</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.16 0.17 0.18 1</ambient>
+            <diffuse>0.22 0.23 0.24 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="keyboard_row_middle">
+          <pose>-0.035 0.025 0.048 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.230 0.020 0.006</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.16 0.17 0.18 1</ambient>
+            <diffuse>0.22 0.23 0.24 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="keyboard_row_lower">
+          <pose>-0.035 -0.020 0.048 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.200 0.020 0.006</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.16 0.17 0.18 1</ambient>
+            <diffuse>0.22 0.23 0.24 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="trackpad">
+          <pose>-0.150 0 0.047 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.095 0.120 0.006</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.40 0.41 0.43 1</ambient>
+            <diffuse>0.52 0.53 0.56 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="screen_back">
+          <pose>0.185 0 0.190 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.030 0.430 0.290</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.09 0.10 0.11 1</ambient>
+            <diffuse>0.13 0.14 0.16 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="screen_display">
+          <pose>0.168 0 0.190 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.006 0.370 0.230</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.08 0.30 0.55 1</ambient>
+            <diffuse>0.10 0.46 0.82 1</diffuse>
+            <emissive>0.02 0.08 0.16 1</emissive>
+          </material>
+        </visual>
+
+        <visual name="emotion_photo_panel">
+          <pose>0.164 0 0.192 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.004 0.170 0.130</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.92 0.82 0.58 1</ambient>
+            <diffuse>1.00 0.90 0.64 1</diffuse>
+            <emissive>0.04 0.03 0.02 1</emissive>
+          </material>
+        </visual>
+
+        <visual name="webcam">
+          <pose>0.162 0 0.320 0 1.5708 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.010</radius>
+              <length>0.006</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.01 0.01 0.012 1</ambient>
+            <diffuse>0.00 0.00 0.00 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="left_hinge">
+          <pose>0.155 0.145 0.065 0 1.5708 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.012</radius>
+              <length>0.070</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.12 0.12 0.13 1</ambient>
+            <diffuse>0.18 0.18 0.19 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="right_hinge">
+          <pose>0.155 -0.145 0.065 0 1.5708 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.012</radius>
+              <length>0.070</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.12 0.12 0.13 1</ambient>
+            <diffuse>0.18 0.18 0.19 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Peluche a forma di orsetto sul tavolo laterale -->
+    <model name="teddy_bear_on_right_table">
+      <static>true</static>
+      <pose>2.47 0.75 0.760 0 0 3.14159</pose>
+
+      <link name="link">
+        <collision name="collision">
+          <pose>0 0 0.175 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.18</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name="body">
+          <pose>0 0 0.140 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.130</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.55 0.33 0.17 1</ambient>
+            <diffuse>0.72 0.45 0.24 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="belly">
+          <pose>-0.012 -0.020 0.125 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.075</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.82 0.62 0.38 1</ambient>
+            <diffuse>0.96 0.76 0.48 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="head">
+          <pose>0 0 0.315 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.095</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.55 0.33 0.17 1</ambient>
+            <diffuse>0.72 0.45 0.24 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="left_ear">
+          <pose>0 0.070 0.395 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.040</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.50 0.29 0.14 1</ambient>
+            <diffuse>0.66 0.39 0.20 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="right_ear">
+          <pose>0 -0.070 0.395 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.040</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.50 0.29 0.14 1</ambient>
+            <diffuse>0.66 0.39 0.20 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="muzzle">
+          <pose>0.070 0 0.292 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.042</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.86 0.66 0.42 1</ambient>
+            <diffuse>1.00 0.80 0.52 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="nose">
+          <pose>0.105 0 0.305 0 1.5708 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.018</radius>
+              <length>0.010</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.04 0.03 0.025 1</ambient>
+            <diffuse>0.02 0.02 0.018 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="left_arm">
+          <pose>0.015 0.115 0.155 0.35 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.052</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.55 0.33 0.17 1</ambient>
+            <diffuse>0.72 0.45 0.24 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="right_arm">
+          <pose>0.015 -0.115 0.155 -0.35 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.052</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.55 0.33 0.17 1</ambient>
+            <diffuse>0.72 0.45 0.24 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="left_foot">
+          <pose>0.070 0.075 0.035 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.055</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.50 0.29 0.14 1</ambient>
+            <diffuse>0.66 0.39 0.20 1</diffuse>
+          </material>
+        </visual>
+
+        <visual name="right_foot">
+          <pose>0.070 -0.075 0.035 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.055</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.50 0.29 0.14 1</ambient>
+            <diffuse>0.66 0.39 0.20 1</diffuse>
+          </material>
+        </visual>
       </link>
     </model>
 

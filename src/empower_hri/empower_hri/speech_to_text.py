@@ -15,10 +15,10 @@ class MockSpeechToText:
     """Manual transcription provider used when audio is unavailable."""
 
     def transcribe_push_to_talk(self) -> str:
-        return read_terminal("Trascrizione simulata (oppure /quit): ").strip()
+        return read_terminal("Simulated transcription (or /quit): ").strip()
 
     def transcribe_auto(self, **kwargs) -> str:
-        return read_terminal("Auto-ascolto simulato (oppure /quit): ").strip()
+        return read_terminal("Simulated auto-listening (or /quit): ").strip()
 
 
 class FasterWhisperSpeechToText:
@@ -38,7 +38,7 @@ class FasterWhisperSpeechToText:
     ):
         if device.lower() != "cpu":
             raise SpeechToTextError(
-                "Questo MVP supporta solo STT CPU. Imposta stt_device:=cpu."
+                "This MVP supports CPU STT only. Set stt_device:=cpu."
             )
         self.model_name = model_name
         self.device = "cpu"
@@ -62,15 +62,15 @@ class FasterWhisperSpeechToText:
             from faster_whisper import WhisperModel
         except ImportError as exc:
             raise SpeechToTextError(
-                "faster-whisper non è installato. Esegui: "
+                "faster-whisper is not installed. Run: "
                 "python3 -m pip install faster-whisper"
             ) from exc
 
         if self.logger is not None:
             self.logger.warning(
-                f"Caricamento STT '{self.model_name}' su CPU/{self.compute_type}. "
-                "Se il modello non è già in cache, faster-whisper potrebbe "
-                "scaricarlo ora; consulta il README per precaricarlo."
+                f"Loading STT '{self.model_name}' on CPU/{self.compute_type}. "
+                "If the model is not already cached, faster-whisper may download it now; "
+                "see the README for preloading instructions."
             )
         try:
             self._model = WhisperModel(
@@ -80,7 +80,7 @@ class FasterWhisperSpeechToText:
             )
         except Exception as exc:
             raise SpeechToTextError(
-                f"Impossibile caricare il modello faster-whisper "
+                f"Could not load faster-whisper model "
                 f"'{self.model_name}': {exc}"
             ) from exc
         return self._model
@@ -91,18 +91,18 @@ class FasterWhisperSpeechToText:
             import soundfile as sf
         except ImportError as exc:
             raise SpeechToTextError(
-                "Per registrare servono sounddevice e soundfile. Esegui: "
+                "Recording requires sounddevice and soundfile. Run: "
                 "python3 -m pip install sounddevice soundfile"
             ) from exc
 
         frame_count = int(self.record_seconds * self.sample_rate)
         if frame_count <= 0:
-            raise SpeechToTextError("record_seconds deve essere maggiore di zero.")
+            raise SpeechToTextError("record_seconds must be greater than zero.")
         try:
             self._set_state("recording")
             if self.logger is not None:
                 self.logger.info(
-                    f"Registrazione dal microfono per {self.record_seconds:.1f} secondi..."
+                    f"Recording from microphone for {self.record_seconds:.1f} seconds..."
                 )
             audio = sd.rec(
                 frame_count,
@@ -115,13 +115,13 @@ class FasterWhisperSpeechToText:
             sf.write(wav_path, audio, self.sample_rate, subtype="PCM_16")
         except Exception as exc:
             raise SpeechToTextError(
-                f"Microfono non disponibile o registrazione fallita: {exc}. "
-                "Prova input_mode:=text oppure stt_provider:=mock."
+                f"Microphone unavailable or recording failed: {exc}. "
+                "Try input_mode:=text or stt_provider:=mock."
             ) from exc
 
     def transcribe_push_to_talk(self) -> str:
         command = read_terminal(
-            "Premi INVIO per registrare (oppure digita /quit): "
+            "Press ENTER to record (or type /quit): "
         ).strip()
         if command:
             return command
@@ -142,7 +142,7 @@ class FasterWhisperSpeechToText:
         except SpeechToTextError:
             raise
         except Exception as exc:
-            raise SpeechToTextError(f"Trascrizione STT fallita: {exc}") from exc
+            raise SpeechToTextError(f"STT transcription failed: {exc}") from exc
         finally:
             if wav_path and os.path.exists(wav_path):
                 os.unlink(wav_path)
@@ -164,10 +164,10 @@ class FasterWhisperSpeechToText:
             import soundfile as sf
         except ImportError as exc:
             raise SpeechToTextError(
-                "Per la registrazione automatica servono sounddevice, soundfile e numpy."
+                "Automatic recording requires sounddevice, soundfile, and numpy."
             ) from exc
 
-        chunk_sec = 0.05  # 50 ms per chunk — responsive VAD
+        chunk_sec = 0.05  # 50 ms per chunk for responsive VAD
         chunk_frames = int(self.sample_rate * chunk_sec)
         silence_chunks_needed = max(1, int(silence_duration_sec / chunk_sec))
         max_chunks = int(max_duration_sec / chunk_sec)
@@ -180,7 +180,7 @@ class FasterWhisperSpeechToText:
 
         self._set_state("listening")
         if self.logger is not None:
-            self.logger.info("In ascolto automatico... (parla quando sei pronto)")
+            self.logger.info("Auto-listening... (speak when you are ready)")
 
         try:
             with sd.InputStream(
@@ -199,7 +199,7 @@ class FasterWhisperSpeechToText:
                             speech_started = True
                             self._set_state("recording")
                             if self.logger is not None:
-                                self.logger.info("Voce rilevata, registrazione...")
+                                self.logger.info("Voice detected, recording...")
                         silence_count = 0
                         speech_chunk_count += 1
                         recorded_chunks.append(chunk.copy())
@@ -210,8 +210,8 @@ class FasterWhisperSpeechToText:
                             break
         except Exception as exc:
             raise SpeechToTextError(
-                f"Ascolto automatico fallito: {exc}. "
-                "Prova storytelling_auto_listen:=false per tornare al push-to-talk."
+                f"Auto-listening failed: {exc}. "
+                "Try storytelling_auto_listen:=false to return to push-to-talk."
             ) from exc
 
         if not speech_started or speech_chunk_count < min_speech_chunks:
@@ -235,7 +235,7 @@ class FasterWhisperSpeechToText:
         except SpeechToTextError:
             raise
         except Exception as exc:
-            raise SpeechToTextError(f"Trascrizione STT automatica fallita: {exc}") from exc
+            raise SpeechToTextError(f"Automatic STT transcription failed: {exc}") from exc
         finally:
             if wav_path and os.path.exists(wav_path):
                 os.unlink(wav_path)

@@ -19,7 +19,7 @@ class TextToSpeech:
         provider: str,
         piper_model_path: str = "",
         piper_config_path: str = "",
-        language: str = "it",
+        language: str = "en",
         timeout: float = 30.0,
         logger=None,
     ):
@@ -41,13 +41,13 @@ class TextToSpeech:
     def _speak_piper(self, text: str) -> None:
         executable = shutil.which("piper")
         if executable is None:
-            raise TextToSpeechError("Il comando 'piper' non è installato.")
+            raise TextToSpeechError("The 'piper' command is not installed.")
         if not self.piper_model_path or not os.path.isfile(self.piper_model_path):
             raise TextToSpeechError(
-                "piper_model_path non è configurato o il file non esiste."
+                "piper_model_path is not configured or the file does not exist."
             )
         if self.piper_config_path and not os.path.isfile(self.piper_config_path):
-            raise TextToSpeechError("Il file piper_config_path non esiste.")
+            raise TextToSpeechError("The piper_config_path file does not exist.")
 
         wav_path = ""
         try:
@@ -74,11 +74,11 @@ class TextToSpeech:
             self._play_wav(wav_path)
         except subprocess.TimeoutExpired as exc:
             raise TextToSpeechError(
-                f"Piper non ha terminato entro {self.timeout:.0f} secondi."
+                f"Piper did not finish within {self.timeout:.0f} seconds."
             ) from exc
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or "").strip()
-            raise TextToSpeechError(f"Piper non ha generato l'audio: {detail}") from exc
+            raise TextToSpeechError(f"Piper did not generate audio: {detail}") from exc
         finally:
             if wav_path and os.path.exists(wav_path):
                 os.unlink(wav_path)
@@ -94,7 +94,7 @@ class TextToSpeech:
                 subprocess.run(command, check=True, timeout=self.timeout)
                 return
         raise TextToSpeechError(
-            "Piper ha creato il WAV, ma manca un player (aplay, paplay o ffplay)."
+            "Piper created the WAV, but no player is available (aplay, paplay, or ffplay)."
         )
 
     def _speak_pyttsx3(self, text: str) -> None:
@@ -102,10 +102,17 @@ class TextToSpeech:
             import pyttsx3
         except ImportError as exc:
             raise TextToSpeechError(
-                "pyttsx3 non è installato. Esegui: python3 -m pip install pyttsx3"
+                "pyttsx3 is not installed. Run: python3 -m pip install pyttsx3"
             ) from exc
         try:
             engine = pyttsx3.init()
+            language = (self.language or "").lower()
+            if language.startswith("en"):
+                preferred_markers = ("english", "en_", "en-")
+            elif language.startswith("it"):
+                preferred_markers = ("ital", "it_", "it-")
+            else:
+                preferred_markers = ()
             for voice in engine.getProperty("voices"):
                 descriptor = " ".join(
                     [
@@ -114,20 +121,20 @@ class TextToSpeech:
                         str(getattr(voice, "languages", "")),
                     ]
                 ).lower()
-                if "ital" in descriptor or "it_" in descriptor or "it-" in descriptor:
+                if any(marker in descriptor for marker in preferred_markers):
                     engine.setProperty("voice", voice.id)
                     break
             engine.say(text)
             engine.runAndWait()
             engine.stop()
         except Exception as exc:
-            raise TextToSpeechError(f"pyttsx3 non riesce a riprodurre l'audio: {exc}") from exc
+            raise TextToSpeechError(f"pyttsx3 cannot play audio: {exc}") from exc
 
     def _speak_system(self, text: str) -> None:
         for executable in ("espeak-ng", "espeak"):
             executable_path = shutil.which(executable)
             if executable_path:
-                self._info(f"TTS system: uso '{executable}'.")
+                self._info(f"TTS system: using '{executable}'.")
                 try:
                     subprocess.run(
                         [executable_path, "-v", self.language, text],
@@ -139,11 +146,11 @@ class TextToSpeech:
                     return
                 except subprocess.TimeoutExpired as exc:
                     raise TextToSpeechError(
-                        f"'{executable}' non ha terminato entro "
-                        f"{self.timeout:.0f} secondi."
+                        f"'{executable}' did not finish within "
+                        f"{self.timeout:.0f} seconds."
                     ) from exc
         if shutil.which("spd-say"):
-            self._info("TTS system: uso 'spd-say'.")
+            self._info("TTS system: using 'spd-say'.")
             try:
                 subprocess.run(
                     ["spd-say", "-l", self.language, "--wait", text],
@@ -152,11 +159,11 @@ class TextToSpeech:
                 )
             except subprocess.TimeoutExpired as exc:
                 raise TextToSpeechError(
-                    f"'spd-say' non ha terminato entro {self.timeout:.0f} secondi."
+                    f"'spd-say' did not finish within {self.timeout:.0f} seconds."
                 ) from exc
             return
         raise TextToSpeechError(
-            "Né espeak-ng, espeak né spd-say sono disponibili."
+            "None of espeak-ng, espeak, or spd-say is available."
         )
 
     @staticmethod
@@ -188,8 +195,8 @@ class TextToSpeech:
             providers = [("mock", self._speak_mock)]
         else:
             raise TextToSpeechError(
-                f"Provider TTS non supportato: '{self.provider}'. "
-                "Usa piper, pyttsx3, system oppure mock."
+                f"Unsupported TTS provider: '{self.provider}'. "
+                "Use piper, pyttsx3, system, or mock."
             )
 
         failures = []
@@ -197,9 +204,9 @@ class TextToSpeech:
             try:
                 speak_function(text)
                 if name != self.provider:
-                    self._warn(f"TTS fallback attivo: uso '{name}'.")
+                    self._warn(f"TTS fallback active: using '{name}'.")
                 return name
             except (TextToSpeechError, subprocess.SubprocessError, OSError) as exc:
                 failures.append(f"{name}: {exc}")
-                self._warn(f"TTS '{name}' non disponibile: {exc}")
+                self._warn(f"TTS '{name}' unavailable: {exc}")
         raise TextToSpeechError("; ".join(failures))

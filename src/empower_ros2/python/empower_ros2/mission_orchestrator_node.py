@@ -5,6 +5,7 @@ import signal
 import subprocess
 import threading
 import time
+from dataclasses import dataclass
 from enum import Enum
 
 import rclpy
@@ -20,12 +21,22 @@ from std_msgs.msg import String
 class MissionState(str, Enum):
     GO_TO_THERAPIST = "GO_TO_THERAPIST"
     WAIT_TASK = "WAIT_TASK"
+    ACK_TASK = "ACK_TASK"
+    WAIT_ACTIVITY = "WAIT_ACTIVITY"
+    ACK_ACTIVITY = "ACK_ACTIVITY"
     GO_TO_SPAWN = "GO_TO_SPAWN"
     RUN_EMPOWER = "RUN_EMPOWER"
     GO_TO_CHILD = "GO_TO_CHILD"
     CHILD_READY = "CHILD_READY"
-    STORYTELLING = "STORYTELLING"
+    CHILD_ACTIVITY = "CHILD_ACTIVITY"
     MISSION_COMPLETE = "MISSION_COMPLETE"
+
+
+@dataclass
+class MissionInteractionSpec:
+    task_description: str = ""
+    activity_description: str = ""
+    activity_type: str = "generic_child_activity"
 
 
 class MissionOrchestratorNode(Node):
@@ -53,8 +64,11 @@ class MissionOrchestratorNode(Node):
         )
         self._state_lock = threading.Lock()
         self._state = None
-        self._task_description = None
+        self._interaction_spec = MissionInteractionSpec(
+            activity_type=str(self.get_parameter("default_activity_type").value)
+        )
         self._task_event = threading.Event()
+        self._activity_event = threading.Event()
         self._stop_event = threading.Event()
         self._dialog_complete_event = threading.Event()
         self._dialog_complete_payload = ""
@@ -81,6 +95,10 @@ class MissionOrchestratorNode(Node):
             "/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml",
         )
         self.declare_parameter("wait_for_task_timeout_sec", 120.0)
+        self.declare_parameter("wait_for_activity_timeout_sec", 120.0)
+        self.declare_parameter("task_ack_text", "Okay, I understood the task.")
+        self.declare_parameter("activity_ack_text", "Okay, I understood the activity.")
+        self.declare_parameter("default_activity_type", "generic_child_activity")
         self.declare_parameter("auto_start", True)
         self.declare_parameter("action_server_timeout_sec", 20.0)
         self.declare_parameter("nav_result_timeout_sec", 300.0)
@@ -91,27 +109,51 @@ class MissionOrchestratorNode(Node):
         self.declare_parameter("use_case", "person_table_child_task")
         self.declare_parameter("output_root", "/root/exchange/empower_data")
         self.declare_parameter("storytelling_timeout_sec", 300.0)
+        self.declare_parameter("child_activity_timeout_sec", 300.0)
 
     def _task_callback(self, msg):
         text = msg.data.strip()
         if not text:
             return
-        if self._current_state() != MissionState.WAIT_TASK:
+        state = self._current_state()
+        if state not in {MissionState.WAIT_TASK, MissionState.WAIT_ACTIVITY}:
             self._publish_feedback(
-                f"Ignoring HRI utterance outside WAIT_TASK: {text}",
+                f"Ignoring HRI utterance outside task/activity capture: {text}",
                 log_level="debug",
             )
             return
-        if self._task_description:
+        if state == MissionState.WAIT_TASK:
+            self._capture_physical_task(text)
+            return
+        if state == MissionState.WAIT_ACTIVITY:
+            self._capture_child_activity(text)
+
+    def _capture_physical_task(self, text):
+        if self._interaction_spec.task_description:
             self._publish_feedback(
                 f"Ignoring extra HRI utterance after task capture: {text}",
                 log_level="debug",
             )
             return
-        self._task_description = text
+        self._interaction_spec.task_description = text
         self._publish(self.task_pub, text)
-        self._publish_feedback(f"Task captured from /hri/user_utterance: {text}")
+        self._publish_feedback(f"Received physical task: {text}")
         self._task_event.set()
+
+    def _capture_child_activity(self, text):
+        if self._interaction_spec.activity_description:
+            self._publish_feedback(
+                f"Ignoring extra HRI utterance after activity capture: {text}",
+                log_level="debug",
+            )
+            return
+        self._interaction_spec.activity_description = text
+        self._interaction_spec.activity_type = self._normalize_activity_type(text)
+        self._publish_feedback(f"Received child activity: {text}")
+        self._publish_feedback(
+            f"Normalized activity type: {self._interaction_spec.activity_type}"
+        )
+        self._activity_event.set()
 
     def _dialog_complete_callback(self, msg):
         self._dialog_complete_payload = msg.data
@@ -127,12 +169,22 @@ class MissionOrchestratorNode(Node):
             if not self._wait_for_task():
                 return
 
+            self._transition(MissionState.ACK_TASK)
+            self._say(str(self.get_parameter("task_ack_text").value))
+
+            self._transition(MissionState.WAIT_ACTIVITY)
+            if not self._wait_for_activity():
+                return
+
+            self._transition(MissionState.ACK_ACTIVITY)
+            self._say(str(self.get_parameter("activity_ack_text").value))
+
             self._transition(MissionState.GO_TO_SPAWN)
             if not self._navigate_to_pose("spawn", self._pose_parameter("spawn_pose")):
                 return
 
             self._transition(MissionState.RUN_EMPOWER)
-            if not self._run_empower(self._task_description):
+            if not self._run_empower(self._interaction_spec.task_description):
                 return
 
             self._transition(MissionState.GO_TO_CHILD)
@@ -143,8 +195,8 @@ class MissionOrchestratorNode(Node):
             self._publish(self.child_ready_pub, "child_ready")
             self._publish_feedback("Child interaction can start")
 
-            self._transition(MissionState.STORYTELLING)
-            self._run_storytelling()
+            self._transition(MissionState.CHILD_ACTIVITY)
+            self._run_child_activity()
 
             self._transition(MissionState.MISSION_COMPLETE)
             self._publish_feedback("Mission complete")
@@ -158,37 +210,111 @@ class MissionOrchestratorNode(Node):
     def _wait_for_task(self):
         timeout_sec = float(self.get_parameter("wait_for_task_timeout_sec").value)
         self._publish_feedback(
-            f"Waiting up to {timeout_sec:.1f}s for /hri/user_utterance"
+            f"Waiting up to {timeout_sec:.1f}s for the physical task on /hri/user_utterance"
         )
         if self._task_event.wait(timeout=timeout_sec):
             return True
         self._publish_feedback(
-            "Timed out waiting for a task from /hri/user_utterance",
+            "Timed out waiting for a physical task from /hri/user_utterance",
             log_level="error",
         )
         return False
 
-    def _run_storytelling(self):
-        self._dialog_complete_event.clear()
-        context = {"task": self._task_description or ""}
-        payload = json.dumps({"command": "start_storytelling", "context": context})
-        self._publish(self.dialog_command_pub, payload)
-        self._publish_feedback("Storytelling session triggered on HRI node")
-
-        timeout_sec = float(self.get_parameter("storytelling_timeout_sec").value)
+    def _wait_for_activity(self):
+        timeout_sec = float(self.get_parameter("wait_for_activity_timeout_sec").value)
         self._publish_feedback(
-            f"Waiting up to {timeout_sec:.0f}s for storytelling to complete"
+            f"Waiting up to {timeout_sec:.1f}s for the child activity on /hri/user_utterance"
+        )
+        if self._activity_event.wait(timeout=timeout_sec):
+            return True
+        self._publish_feedback(
+            "Timed out waiting for a child activity from /hri/user_utterance",
+            log_level="error",
+        )
+        return False
+
+    def _say(self, text):
+        payload = json.dumps({"command": "say", "text": text})
+        self._publish(self.dialog_command_pub, payload)
+        self._publish_feedback(f"Requested robot speech: {text}")
+
+    def _run_child_activity(self):
+        self._dialog_complete_event.clear()
+        context = {
+            "task": self._interaction_spec.task_description,
+            "activity_description": self._interaction_spec.activity_description,
+            "activity_type": self._interaction_spec.activity_type,
+        }
+        payload = json.dumps({"command": "start_child_activity", "context": context})
+        self._publish(self.dialog_command_pub, payload)
+        self._publish_feedback(f"Starting child activity: {payload}")
+
+        timeout_sec = float(self.get_parameter("child_activity_timeout_sec").value)
+        if timeout_sec <= 0:
+            timeout_sec = float(self.get_parameter("storytelling_timeout_sec").value)
+        self._publish_feedback(
+            f"Waiting up to {timeout_sec:.0f}s for child activity to complete"
         )
         completed = self._dialog_complete_event.wait(
             timeout=timeout_sec if timeout_sec > 0 else None
         )
         if completed:
             self._publish_feedback(
-                f"Storytelling session complete: {self._dialog_complete_payload}"
+                f"Child activity complete: {self._dialog_complete_payload}"
             )
         else:
-            self._publish_feedback("Storytelling timed out; stopping HRI", log_level="warn")
+            self._publish_feedback("Child activity timed out; stopping HRI", log_level="warn")
             self._publish(self.dialog_command_pub, json.dumps({"command": "stop"}))
+
+    def _normalize_activity_type(self, activity_description):
+        text = activity_description.lower()
+        rules = [
+            (
+                "computer_emotion_recognition",
+                [
+                    "computer emotion recognition",
+                    "emotion recognition with the computer",
+                    "use the computer for emotion recognition",
+                    "show emotion pictures",
+                    "recognize emotions from photos",
+                    "recognize emotions from pictures",
+                    "look at emotion photos",
+                    "look at pictures of emotions",
+                    "emotion recognition",
+                    "recognize emotions",
+                    "emotion pictures",
+                    "emotion photos",
+                    "emotions",
+                ],
+            ),
+            (
+                "mood_check_teddy",
+                [
+                    "how they feel",
+                    "how he feels",
+                    "how she feels",
+                    "feelings",
+                    "mood",
+                    "state of mind",
+                    "teddy",
+                    "teddy bear",
+                    "plush",
+                ],
+            ),
+            (
+                "storytelling",
+                [
+                    "story",
+                    "storytelling",
+                    "read the story",
+                    "tell a story",
+                ],
+            ),
+        ]
+        for activity_type, keywords in rules:
+            if any(keyword in text for keyword in keywords):
+                return activity_type
+        return str(self.get_parameter("default_activity_type").value)
 
     def _navigate_to_pose(self, label, pose_values):
         pose = self._make_pose_stamped(pose_values)

@@ -50,19 +50,19 @@ class OllamaClient:
                 detail = json.loads(detail).get("error", detail)
             except json.JSONDecodeError:
                 pass
-            raise LlmError(f"Errore HTTP da Ollama ({exc.code}): {detail}") from exc
+            raise LlmError(f"Ollama HTTP error ({exc.code}): {detail}") from exc
         except error.URLError as exc:
             reason = getattr(exc, "reason", exc)
             raise LlmError(
-                f"Impossibile contattare Ollama su {self.base_url}: {reason}. "
-                "Avvia il server con: ollama serve"
+                f"Could not contact Ollama at {self.base_url}: {reason}. "
+                "Start the server with: ollama serve"
             ) from exc
         except TimeoutError as exc:
             raise LlmError(
-                f"Ollama non ha risposto entro {self.timeout:.0f} secondi."
+                f"Ollama did not respond within {self.timeout:.0f} seconds."
             ) from exc
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise LlmError("Ollama ha restituito una risposta non valida.") from exc
+            raise LlmError("Ollama returned an invalid response.") from exc
 
     def _available_models(self) -> List[str]:
         response = self._request_json("/api/tags")
@@ -92,14 +92,14 @@ class OllamaClient:
         ):
             if self.logger is not None:
                 self.logger.warning(
-                    f"Modello '{self.model}' non disponibile; uso il fallback "
+                    f"Model '{self.model}' is not available; using fallback "
                     f"'{self.fallback_model}'."
                 )
             return self.fallback_model
 
         raise LlmError(
-            "Ollama è attivo ma il modello non sembra disponibile. "
-            f"Esegui: ollama pull {self.model}"
+            "Ollama is running, but the configured model does not seem available. "
+            f"Run: ollama pull {self.model}"
         )
 
     def chat(
@@ -124,7 +124,7 @@ class OllamaClient:
         )
         content = response.get("message", {}).get("content", "").strip()
         if not content:
-            raise LlmError("Ollama ha restituito una risposta vuota.")
+            raise LlmError("Ollama returned an empty response.")
         return content
 
 
@@ -146,21 +146,8 @@ class MockLlmClient:
             ),
             "",
         )
-        system_prompt = next(
-            (
-                message["content"]
-                for message in messages
-                if message.get("role") == "system"
-            ),
-            "",
-        )
-        if "answer in english" in system_prompt.lower():
-            return (
-                f"Hello! I received: \"{user_text}\". "
-                "At this stage I can talk with you, but I cannot perform "
-                "physical actions."
-            )
         return (
-            f"Ciao! Ho ricevuto: \"{user_text}\". "
-            "In questa fase posso parlare con te, ma non eseguire azioni fisiche."
+            f"Hello! I received: \"{user_text}\". "
+            "At this stage I can talk with you, but I cannot perform "
+            "physical actions."
         )

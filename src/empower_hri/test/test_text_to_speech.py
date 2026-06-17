@@ -28,7 +28,7 @@ class TextToSpeechTest(unittest.TestCase):
 
         self.assertEqual(tts.speak("ciao"), "system")
         run.assert_called_once_with(
-            ["/usr/bin/espeak-ng", "-v", "it", "ciao"],
+            ["/usr/bin/espeak-ng", "-v", "en", "ciao"],
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,

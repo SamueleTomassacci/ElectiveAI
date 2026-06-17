@@ -552,7 +552,12 @@ Flusso atteso nei log:
 ```text
 Mission state: GO_TO_THERAPIST
 Mission state: WAIT_TASK
-Task captured from /hri/user_utterance
+Received physical task
+Mission state: ACK_TASK
+Mission state: WAIT_ACTIVITY
+Received child activity
+Normalized activity type
+Mission state: ACK_ACTIVITY
 Mission state: GO_TO_SPAWN
 Mission state: RUN_EMPOWER
 EMPOWER scene capture completed
@@ -562,6 +567,7 @@ EMPOWER planning completed
 Running EMPOWER low-level execution
 Mission state: GO_TO_CHILD
 Mission state: CHILD_READY
+Mission state: CHILD_ACTIVITY
 ```
 
 ### 15.8 Monitor Della Missione
@@ -629,10 +635,27 @@ ros2 launch empower_ros2 hri_empower_mission.launch.py \
   hri_input_mode:=text
 ```
 
-Oppure pubblica direttamente il task quando lo stato e' `WAIT_TASK`:
+Oppure pubblica direttamente i due input della terapeuta. Il primo va pubblicato
+quando lo stato e' `WAIT_TASK`; il secondo quando lo stato e' `WAIT_ACTIVITY`.
+
+Caso computer + emotion recognition:
 
 ```bash
-ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Take the book from the table'}"
+ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Take the computer'}"
+```
+
+```bash
+ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Do emotion recognition with the computer'}"
+```
+
+Caso teddy bear + mood questions:
+
+```bash
+ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Take the teddy bear'}"
+```
+
+```bash
+ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Ask the child how they feel'}"
 ```
 
 ### 15.10 Note Sulla Missione
@@ -640,6 +663,8 @@ ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Take the 
 - `models_cacher_node` carica i modelli e poi resta in ascolto su `127.0.0.1:10000`.
 - Il planning non parte quando il cacher e' pronto: parte nello stato `RUN_EMPOWER`, dopo che TIAGo e' tornato allo spawn.
 - Il task passato a EMPOWER e' il primo testo utile ricevuto da `/hri/user_utterance`.
+- L'attivita' sociale e' il secondo testo utile ricevuto da `/hri/user_utterance` e determina il comando `start_child_activity`.
+- Dopo l'avvio della child activity, l'orchestratore ignora le nuove utterance su `/hri/user_utterance`.
 - Le azioni EMPOWER diverse da `NAVIGATE`, come `GRAB` e `DROP`, restano simboliche/loggate.
 - Se Nav2 fallisce nel ritorno allo spawn con `Failed to make progress`, ferma solo la missione, resetta/sposta TIAGo o correggi le pose in `src/empower_ros2/config/hri_empower_mission.yaml`, poi rilancia la missione.
 - Se cambi le pose in YAML non serve rebuildare; se cambi Python o launch file serve rebuildare.
