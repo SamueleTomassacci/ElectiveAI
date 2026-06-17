@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import signal
@@ -23,6 +24,8 @@ class MissionState(str, Enum):
     RUN_EMPOWER = "RUN_EMPOWER"
     GO_TO_CHILD = "GO_TO_CHILD"
     CHILD_READY = "CHILD_READY"
+    STORYTELLING = "STORYTELLING"
+    MISSION_COMPLETE = "MISSION_COMPLETE"
 
 
 class MissionOrchestratorNode(Node):
@@ -38,7 +41,10 @@ class MissionOrchestratorNode(Node):
         self.feedback_pub = self.create_publisher(String, "/mission/feedback", 10)
         self.task_pub = self.create_publisher(String, "/mission/task_description", status_qos)
         self.child_ready_pub = self.create_publisher(String, "/mission/child_ready", status_qos)
+        self.dialog_command_pub = self.create_publisher(String, "/hri/dialog_command", 10)
+
         self.create_subscription(String, "/hri/user_utterance", self._task_callback, 10)
+        self.create_subscription(String, "/hri/dialog_complete", self._dialog_complete_callback, 10)
 
         self.nav_client = ActionClient(
             self,
@@ -50,6 +56,8 @@ class MissionOrchestratorNode(Node):
         self._task_description = None
         self._task_event = threading.Event()
         self._stop_event = threading.Event()
+        self._dialog_complete_event = threading.Event()
+        self._dialog_complete_payload = ""
         self._mission_thread = None
 
         if bool(self.get_parameter("auto_start").value):
@@ -82,6 +90,7 @@ class MissionOrchestratorNode(Node):
         self.declare_parameter("execute_empower_plan", True)
         self.declare_parameter("use_case", "person_table_child_task")
         self.declare_parameter("output_root", "/root/exchange/empower_data")
+        self.declare_parameter("storytelling_timeout_sec", 300.0)
 
     def _task_callback(self, msg):
         text = msg.data.strip()
@@ -103,6 +112,10 @@ class MissionOrchestratorNode(Node):
         self._publish(self.task_pub, text)
         self._publish_feedback(f"Task captured from /hri/user_utterance: {text}")
         self._task_event.set()
+
+    def _dialog_complete_callback(self, msg):
+        self._dialog_complete_payload = msg.data
+        self._dialog_complete_event.set()
 
     def _run_mission(self):
         try:
@@ -129,6 +142,13 @@ class MissionOrchestratorNode(Node):
             self._transition(MissionState.CHILD_READY)
             self._publish(self.child_ready_pub, "child_ready")
             self._publish_feedback("Child interaction can start")
+
+            self._transition(MissionState.STORYTELLING)
+            self._run_storytelling()
+
+            self._transition(MissionState.MISSION_COMPLETE)
+            self._publish_feedback("Mission complete")
+
         except Exception as exc:
             self._publish_feedback(
                 f"Mission failed with {type(exc).__name__}: {exc}",
@@ -147,6 +167,28 @@ class MissionOrchestratorNode(Node):
             log_level="error",
         )
         return False
+
+    def _run_storytelling(self):
+        self._dialog_complete_event.clear()
+        context = {"task": self._task_description or ""}
+        payload = json.dumps({"command": "start_storytelling", "context": context})
+        self._publish(self.dialog_command_pub, payload)
+        self._publish_feedback("Storytelling session triggered on HRI node")
+
+        timeout_sec = float(self.get_parameter("storytelling_timeout_sec").value)
+        self._publish_feedback(
+            f"Waiting up to {timeout_sec:.0f}s for storytelling to complete"
+        )
+        completed = self._dialog_complete_event.wait(
+            timeout=timeout_sec if timeout_sec > 0 else None
+        )
+        if completed:
+            self._publish_feedback(
+                f"Storytelling session complete: {self._dialog_complete_payload}"
+            )
+        else:
+            self._publish_feedback("Storytelling timed out; stopping HRI", log_level="warn")
+            self._publish(self.dialog_command_pub, json.dumps({"command": "stop"}))
 
     def _navigate_to_pose(self, label, pose_values):
         pose = self._make_pose_stamped(pose_values)

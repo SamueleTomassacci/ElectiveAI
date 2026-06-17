@@ -1,6 +1,6 @@
 # Stato dell'arte tecnico della repo ElectiveAI
 
-Ultimo aggiornamento del documento: 2026-06-17.
+Ultimo aggiornamento del documento: 2026-06-17 (rev 2).
 
 Questo file descrive lo stato attuale del codice nella repo `/home/lorenzo/Scrivania/ElectiveAI` (montata nel container come `/root/exchange`).
 L'obiettivo e' fornire contesto tecnico preciso a un altro LLM o a un nuovo sviluppatore.
@@ -12,7 +12,7 @@ La repo e' un workspace ROS 2/colcon orientato a una simulazione TIAGo in Gazebo
 1. `empower_ros2`: adattamento ROS 2 della pipeline EMPOWER per percezione, grounding, pianificazione simbolica, visualizzazione e esecuzione low-level su TIAGo.
 2. `empower_hri`: MVP locale di dialogo vocale/testuale basato su STT -> LLM -> TTS, usabile con microfono e speaker dentro il container.
 
-Le due componenti sono integrate dal `mission_orchestrator_node` (in `empower_ros2`), che coordina la navigazione Nav2, attende un task dall'HRI via `/hri/user_utterance`, lancia la pipeline EMPOWER e porta TIAGo fino al bambino.
+Le due componenti sono integrate dal `mission_orchestrator_node` (in `empower_ros2`), che coordina la navigazione Nav2, attende un task dall'HRI via `/hri/user_utterance`, lancia la pipeline EMPOWER, porta TIAGo fino al bambino e avvia un loop interattivo di storytelling con il bambino stesso.
 
 L'avvio completo richiede **tre terminali**:
 1. Gazebo
@@ -569,22 +569,26 @@ WAIT_TASK        -> aspetta utterance su /hri/user_utterance (timeout 120s)
 GO_TO_SPAWN      -> naviga all'origine (x=0, y=0)
 RUN_EMPOWER      -> esegue capture -> planning -> execution
 GO_TO_CHILD      -> naviga verso il bambino (x=0, y=1.6)
-CHILD_READY      -> pubblica "child_ready" e termina
+CHILD_READY      -> pubblica "child_ready" su /mission/child_ready
+STORYTELLING     -> attiva loop storytelling sull'HRI (timeout 300s)
+MISSION_COMPLETE -> missione terminata
 ```
 
 Topic pubblicati:
 
 ```text
-/mission/state          std_msgs/String  (QoS transient local)
-/mission/feedback       std_msgs/String
-/mission/task_description std_msgs/String (QoS transient local)
-/mission/child_ready    std_msgs/String  (QoS transient local)
+/mission/state            std_msgs/String  (QoS transient local)
+/mission/feedback         std_msgs/String
+/mission/task_description std_msgs/String  (QoS transient local)
+/mission/child_ready      std_msgs/String  (QoS transient local)
+/hri/dialog_command       std_msgs/String  (JSON)
 ```
 
 Topic sottoscritti:
 
 ```text
 /hri/user_utterance     std_msgs/String
+/hri/dialog_complete    std_msgs/String  (JSON)
 ```
 
 Comportamento in `RUN_EMPOWER`:
@@ -592,6 +596,13 @@ Comportamento in `RUN_EMPOWER`:
 - se `capture_before_empower: true`, lancia `scene_capture_node` come subprocess e aspetta i file output;
 - lancia `empower_plan.launch.py` (subprocess bloccante) con il `task_description` ricevuto dall'HRI;
 - se `execute_empower_plan: true`, avvia `color_pcl_node`, `marker_centroids_node`, `low_level_execution_node` (subprocess) in sequenza.
+
+Comportamento in `STORYTELLING`:
+
+- pubblica su `/hri/dialog_command` il JSON `{"command": "start_storytelling", "context": {"task": "<task>"}}`;
+- blocca in attesa di un messaggio su `/hri/dialog_complete`;
+- timeout configurabile con `storytelling_timeout_sec` (default 300s);
+- se il timeout scade, pubblica `{"command": "stop"}` e avanza comunque a MISSION_COMPLETE.
 
 Parametri principali in `hri_empower_mission.yaml`:
 
@@ -605,6 +616,7 @@ capture_before_empower: true
 execute_empower_plan: true
 use_case: "person_table_child_task"
 output_root: "/root/exchange/empower_data"
+storytelling_timeout_sec: 300.0
 ```
 
 ### Launch EMPOWER disponibili
@@ -685,23 +697,25 @@ Ruolo:
 - mantiene una history conversazionale limitata;
 - chiama un provider LLM;
 - riproduce la risposta con TTS;
-- pubblica topic ROS informativi.
+- pubblica topic ROS informativi;
+- gestisce due modalita' operative distinte: terapista e storytelling con bambino.
 
 Topic pubblicati:
 
 ```text
-/hri/user_utterance
-/hri/robot_utterance
-/hri/dialog_state
+/hri/user_utterance     std_msgs/String
+/hri/robot_utterance    std_msgs/String
+/hri/dialog_state       std_msgs/String
+/hri/dialog_complete    std_msgs/String  (JSON: {"reason": "...", "turns": N})
 ```
 
-Tipo:
+Topic sottoscritti:
 
 ```text
-std_msgs/String
+/hri/dialog_command     std_msgs/String  (JSON)
 ```
 
-Stati pubblicati tipici:
+Stati pubblicati (`/hri/dialog_state`):
 
 ```text
 ready
@@ -711,13 +725,41 @@ recording
 transcribing
 thinking
 speaking
+storytelling_active
 error
 stopped
 ```
 
-Non ci sono subscriber nel nodo HRI. Non riceve comandi ROS da altri nodi.
+### Modalita' operative
 
-Il `mission_orchestrator_node` sottoscrive `/hri/user_utterance` per ricevere il task dalla voce.
+Il nodo opera in due modalita' selezionate dal parametro interno `_mode`:
+
+**`therapist_command`** (default):
+- ciclo standard STT/LLM/TTS;
+- system prompt orientato al dialogo con il terapista;
+- il terapista da' il task all'orchestratore tramite questo canale.
+
+**`child_storytelling`**:
+- attivata dal comando `start_storytelling` su `/hri/dialog_command`;
+- la history viene svuotata e il contesto del task viene iniettato nel system prompt;
+- il robot genera l'apertura della storia autonomamente (messaggio speciale `[START_STORY]`) senza aspettare input del bambino;
+- loop interattivo: il bambino risponde via STT, il robot reagisce e continua la storia;
+- il prompt storytelling mantiene continuita' narrativa tra i turni grazie alla history;
+- al termine (per `max_turns` o comando `stop`) pubblica su `/hri/dialog_complete` e torna in modalita' `therapist_command`.
+
+### System prompt storytelling
+
+Il template in `STORYTELLING_SYSTEM_PROMPT_TEMPLATE` include il task come contesto e istruisce il modello a:
+- rispondere in 2-4 frasi brevi e coinvolgenti;
+- mantenere la continuita' narrativa tra i turni;
+- chiudere ogni risposta con una domanda semplice per il bambino;
+- rispondere solo in inglese.
+
+### Parametri aggiuntivi
+
+```yaml
+storytelling_max_turns: 10   # numero massimo di turni bambino (0 = illimitato)
+```
 
 ### Provider LLM
 
@@ -884,30 +926,44 @@ Non risultano test automatici per `empower_ros2`.
 
 ## Stato del collegamento fra HRI e EMPOWER
 
-Le due componenti sono ora collegate tramite `mission_orchestrator_node`.
+Le due componenti sono collegate tramite `mission_orchestrator_node`.
 
-Flusso integrato:
+Flusso integrato completo:
 
 ```text
 hri_empower_mission.launch.py avvia:
-  models_cacher_node   (carica modelli, ascolta socket TCP)
-  voice_llm_node       (dialogo vocale con l'utente)
-  mission_orchestrator_node (coordina la missione)
+  models_cacher_node        (carica modelli, ascolta socket TCP)
+  voice_llm_node            (dialogo vocale con terapista e bambino)
+  mission_orchestrator_node (macchina a stati che coordina tutto)
 
 mission_orchestrator_node:
-  1. Naviga verso il terapista
-  2. Ascolta /hri/user_utterance (task dettato dall'utente via voce)
-  3. Naviga all'origine
-  4. Lancia capture -> plan (via models_cacher socket) -> execution (Nav2)
-  5. Naviga verso il bambino
-  6. Pubblica "child_ready"
+  GO_TO_THERAPIST  -> naviga dal terapista
+  WAIT_TASK        -> ascolta /hri/user_utterance (task vocale)
+  GO_TO_SPAWN      -> torna all'origine
+  RUN_EMPOWER      -> capture -> plan (GPT-4o) -> execute (Nav2)
+  GO_TO_CHILD      -> naviga dal bambino
+  CHILD_READY      -> pubblica su /mission/child_ready
+  STORYTELLING     -> pubblica start_storytelling su /hri/dialog_command
+                      voice_llm_node switcha in child_storytelling mode:
+                        [robot apre storia autonomamente]
+                        [loop STT bambino -> LLM -> TTS -> ...]
+                      attende /hri/dialog_complete
+  MISSION_COMPLETE -> missione terminata
+```
+
+Canali di comunicazione HRI <-> orchestratore:
+
+```text
+/hri/user_utterance  (HRI -> orchestratore)  task del terapista
+/hri/dialog_command  (orchestratore -> HRI)  comandi di modalita'
+/hri/dialog_complete (HRI -> orchestratore)  fine sessione storytelling
 ```
 
 Cosa rimane disaccoppiato:
 
-- `voice_llm_node` non legge feedback dalla pipeline EMPOWER (non sa se il piano e' riuscito);
-- non esiste un canale di ritorno da EMPOWER verso HRI per comunicare risultati all'utente via voce;
-- il `task_description` passato a EMPOWER e' l'utterance grezza dell'utente, non interpretata/normalizzata.
+- `voice_llm_node` non legge feedback dalla pipeline EMPOWER (non sa se la navigazione e' riuscita);
+- non esiste un canale di ritorno da EMPOWER verso HRI per comunicare il risultato del piano all'utente via voce;
+- il `task_description` passato a EMPOWER e' l'utterance grezza del terapista, non normalizzata.
 
 ## Limiti attuali noti
 
@@ -939,13 +995,21 @@ ros2 launch empower_ros2 hri_empower_mission.launch.py stt_device_index:=8
 
 L'indice cambia da macchina a macchina. Verificarlo con `sounddevice.query_devices()`.
 
-### Feedback vocale dalla missione non implementato
+### Feedback vocale dell'avanzamento missione non implementato
 
-Il `mission_orchestrator_node` pubblica feedback su `/mission/feedback` ma `voice_llm_node` non lo legge. L'utente non riceve conferma vocale dell'avanzamento della missione.
+Il `mission_orchestrator_node` pubblica su `/mission/feedback` e `/mission/state` ma `voice_llm_node` non li legge. Il terapista non riceve conferma vocale dell'avanzamento (es. "sto andando dal bambino", "ho trovato il libro").
 
 ### Task non interpretato
 
-L'utterance dell'utente viene passata direttamente come `task_description` a EMPOWER senza normalizzazione o validazione. Se l'utente dice qualcosa di ambiguo o non pertinente, la pipeline EMPOWER lo gestira' come task.
+L'utterance del terapista viene passata direttamente come `task_description` a EMPOWER senza normalizzazione. Se l'utterance e' ambigua o non corrisponde a un'azione fisica valida, la pipeline EMPOWER la gestira' comunque come task.
+
+### Storytelling: cambio modalita' non interrompe il turno corrente
+
+Se il comando `start_storytelling` arriva mentre `voice_llm_node` e' in attesa di input vocale (push-to-talk bloccante), il cambio di modalita' viene applicato ma non diventa attivo fino al turno successivo. Il robot entra in storytelling mode al prossimo ciclo dell'interaction loop, non immediatamente.
+
+### Storia: prompt e numero di turni fissi per configurazione
+
+Il system prompt storytelling e' un template con solo il `task` come variabile. Non e' personalizzabile per nome del bambino, eta' o altra informazione contestuale senza modificare il codice o aggiungere parametri.
 
 ## Comandi operativi principali
 
@@ -1041,8 +1105,9 @@ La repo ha ora una base funzionante end-to-end:
 
 I prossimi passi tecnici suggeriti dal codice attuale:
 
-1. **Feedback vocale**: far leggere a `voice_llm_node` i topic `/mission/state` o `/mission/feedback` per comunicare all'utente l'avanzamento della missione.
-2. **Normalizzazione del task**: aggiungere un nodo o logica che trasformi l'utterance grezza in un `task_description` controllato prima di passarlo a EMPOWER.
-3. **Manipolazione**: integrare MoveIt per implementare `GRAB`, `DROP`, `PUSH`, `PULL` in `primitive_actions.py`.
-4. **LLM locale per EMPOWER**: sostituire o affiancare OpenAI `gpt-4o` in `agents.py` con Ollama, eliminando la dipendenza da rete e API key.
-5. **Multi-turno missione**: supportare piu' task consecutivi senza riavviare il launch.
+1. **Feedback vocale avanzamento**: far leggere a `voice_llm_node` i topic `/mission/state` o `/mission/feedback` per comunicare vocalmente al terapista l'avanzamento (es. TTS "sto andando dal bambino").
+2. **Normalizzazione del task**: aggiungere logica che trasformi l'utterance grezza del terapista in un `task_description` strutturato prima di passarlo a EMPOWER.
+3. **Contesto storytelling ricco**: aggiungere parametri come `child_name`, `child_age` al comando `start_storytelling` e usarli nel prompt per personalizzare la storia.
+4. **Manipolazione**: integrare MoveIt per implementare `GRAB`, `DROP`, `PUSH`, `PULL` in `primitive_actions.py`.
+5. **LLM locale per EMPOWER**: sostituire o affiancare OpenAI `gpt-4o` in `agents.py` con Ollama, eliminando la dipendenza da rete e API key.
+6. **Multi-turno missione**: supportare piu' task consecutivi senza riavviare il launch (tornare a GO_TO_THERAPIST dopo MISSION_COMPLETE).

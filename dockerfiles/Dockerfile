@@ -105,7 +105,7 @@ RUN python3 -m pip install --no-cache-dir \
     pyttsx3
 
 RUN mkdir -p /app
-COPY entrypoint_tiago.sh /app/entrypoint_tiago.sh
+COPY dockerfiles/entrypoint_tiago.sh /app/entrypoint_tiago.sh
 RUN chmod +x /app/entrypoint_tiago.sh
 
 WORKDIR /root/exchange
