@@ -1,18 +1,23 @@
 # Stato dell'arte tecnico della repo ElectiveAI
 
-Ultimo aggiornamento del documento: 2026-06-16.
+Ultimo aggiornamento del documento: 2026-06-17.
 
-Questo file descrive lo stato attuale del codice nella repo `/home/samuele/ElectiveAI`.
+Questo file descrive lo stato attuale del codice nella repo `/home/lorenzo/Scrivania/ElectiveAI` (montata nel container come `/root/exchange`).
 L'obiettivo e' fornire contesto tecnico preciso a un altro LLM o a un nuovo sviluppatore.
 
 ## Sintesi
 
-La repo e' un workspace ROS 2/colcon orientato a una simulazione TIAGo in Gazebo e contiene due componenti principali, attualmente separate:
+La repo e' un workspace ROS 2/colcon orientato a una simulazione TIAGo in Gazebo e contiene due componenti principali, **ora collegate tra loro** tramite un nodo orchestratore:
 
-1. `empower_ros2`: adattamento ROS 2 della pipeline EMPOWER per percezione, grounding, pianificazione simbolica, visualizzazione e una prima esecuzione low-level su TIAGo.
+1. `empower_ros2`: adattamento ROS 2 della pipeline EMPOWER per percezione, grounding, pianificazione simbolica, visualizzazione e esecuzione low-level su TIAGo.
 2. `empower_hri`: MVP locale di dialogo vocale/testuale basato su STT -> LLM -> TTS, usabile con microfono e speaker dentro il container.
 
-Le due componenti non sono ancora collegate tra loro. Il nodo HRI puo' conversare e pubblica topic ROS con utterance/stato, ma non invia comandi alla pipeline EMPOWER, non modifica `task_description`, non lancia planning e non attiva l'esecuzione robotica.
+Le due componenti sono integrate dal `mission_orchestrator_node` (in `empower_ros2`), che coordina la navigazione Nav2, attende un task dall'HRI via `/hri/user_utterance`, lancia la pipeline EMPOWER e porta TIAGo fino al bambino.
+
+L'avvio completo richiede **tre terminali**:
+1. Gazebo
+2. Nav2 con localizzazione ground truth
+3. `hri_empower_mission.launch.py` (HRI + models cacher + mission orchestrator)
 
 ## Layout rilevante della repo
 
@@ -20,6 +25,8 @@ Le due componenti non sono ancora collegate tra loro. Il nodo HRI puo' conversar
 .
 |-- README.md
 |-- README_QWEN_ENGLISH.md
+|-- STATO_ARTE_CODICE.md
+|-- .gitignore
 |-- start_tiago.sh
 |-- docker/
 |   `-- entrypoint_tiago.sh
@@ -34,7 +41,6 @@ Le due componenti non sono ancora collegate tra loro. Il nodo HRI puo' conversar
 |-- models/
 |   `-- piper/it_IT-paola-medium.onnx
 |-- empower_data/
-|   |-- images/person_table_child_task/
 |   `-- output/person_table_child_task/
 `-- src/
     |-- empower_ros2/
@@ -42,6 +48,8 @@ Le due componenti non sono ancora collegate tra loro. Il nodo HRI puo' conversar
 ```
 
 Sono presenti anche directory generate da colcon (`build/`, `install/`, `log/`). Non vanno considerate sorgente primario.
+
+`empower_data/images/` e `empower_data/output/` sono escluse dal tracking git (output runtime rigenerabili).
 
 ## Ambiente di esecuzione previsto
 
@@ -59,6 +67,7 @@ Lo script:
 - monta la repo host in `/root/exchange`;
 - abilita X11, host network e privilegi;
 - usa GPU NVIDIA se `nvidia-container-toolkit` e' disponibile;
+- monta il socket PulseAudio dell'host (`/run/user/<uid>/pulse/native`) in `/run/pulse/native` e imposta `PULSE_SERVER` di conseguenza, per consentire l'accesso al microfono fisico dall'interno del container;
 - avvia `/root/exchange/docker/entrypoint_tiago.sh`.
 
 L'entrypoint sorgente ROS 2 Humble, il workspace TIAGo e l'eventuale install locale:
@@ -75,6 +84,35 @@ Imposta inoltre:
 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ```
 
+### Immagine Docker `hrai-2025:v1`
+
+Il `Dockerfile` e' in `dockerfiles/Dockerfile`. Contiene:
+
+- ROS 2 Humble + TIAGo public workspace (compilato)
+- Dipendenze EMPOWER: YOLO-World, EfficientViT-SAM, spaCy, word2vec, CLIP
+- Pesi EMPOWER pre-scaricati: `yolow.pth`, `l2_encoder.onnx`, `l2_decoder.onnx`
+- Dipendenze HRI audio/voce: `libportaudio2`, `espeak-ng`, `sounddevice`, `soundfile`, `faster-whisper`, `pyttsx3`
+
+Per ricostruire l'immagine (prima pulire lo spazio Docker con `docker system prune -f`):
+
+```bash
+cd ~/Scrivania/ElectiveAI
+docker build -f dockerfiles/Dockerfile -t hrai-2025:v1 .
+```
+
+### Apertura di terminali aggiuntivi nel container in esecuzione
+
+Per i terminali 2 e 3, con il container gia' avviato:
+
+```bash
+docker exec -it hrai_sim bash
+# Poi dentro il container:
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+```
+
 ## Scena supportata
 
 La scena supportata dalla documentazione attuale e':
@@ -85,12 +123,12 @@ exchange/maps/person_table_child_static.yaml
 src/empower_ros2/config/empower_person_table_child.yaml
 ```
 
-La scena mette TIAGo al centro della stanza. La descrizione operativa nel README indica:
+La scena mette TIAGo al centro della stanza:
 
-- persona sul lato `-Y`;
+- persona (terapista) sul lato `-Y`;
 - bambino sul lato `+Y`;
 - tavolo con libro sul lato `+X`;
-- TIAGo deve partire all'origine guardando verso `+X`, quindi yaw `0`, per catturare correttamente tavolo e libro con la camera frontale.
+- TIAGo deve partire all'origine guardando verso `+X`, yaw `0`, per catturare correttamente tavolo e libro con la camera frontale.
 
 Il task di default e':
 
@@ -113,12 +151,6 @@ Tipo package:
 ament_python
 ```
 
-Descrizione nel `package.xml`:
-
-```text
-ROS 2 Humble adapters for the EMPOWER planning pipeline on TIAGo/Gazebo.
-```
-
 ### Entry point ROS 2
 
 Definiti in `src/empower_ros2/setup.py`:
@@ -132,6 +164,7 @@ color_pcl_node
 marker_centroids_node
 ground_truth_localizer_node
 low_level_execution_node
+mission_orchestrator_node
 ```
 
 Il package include anche moduli Python upstream/adattati:
@@ -274,32 +307,13 @@ Modelli/dipendenze caricate:
 - word2vec (`word2vec-google-news-300` di default);
 - OpenAI API, usata da `agents.py`.
 
-Nota importante: nel sorgente attuale sono presenti la config YOLO-World e la directory `efficientvitsam`, ma non risultano versionati i pesi richiesti:
+I pesi richiesti sono inclusi nell'immagine Docker:
 
 ```text
-src/empower_ros2/config/yolow/yolow.pth
-src/empower_ros2/config/efficientvitsam/l2_encoder.onnx
-src/empower_ros2/config/efficientvitsam/l2_decoder.onnx
+/opt/empower_models/config/yolow/yolow.pth
+/opt/empower_models/config/efficientvitsam/l2_encoder.onnx
+/opt/empower_models/config/efficientvitsam/l2_decoder.onnx
 ```
-
-`EmpowerRos2Loader` fallisce con `FileNotFoundError` se questi file non sono disponibili nel path configurato o passato via parametro.
-
-### `EmpowerRos2Loader`
-
-File:
-
-```text
-src/empower_ros2/python/empower_ros2/loader_adapter.py
-```
-
-Ruolo:
-
-- replica gli attributi attesi dal codice upstream EMPOWER (`CONFIG`, `IMAGES`, `OUTPUT`, `YOLOW_PATH`, `ENCODER_PATH`, `DECODER_PATH`, `SCAN_DIR`, `DUMP_DIR`);
-- crea directory immagini/output per il `use_case`;
-- controlla l'esistenza dei file modello;
-- istanzia YOLO-World, EfficientViT-SAM, spaCy e word2vec.
-
-Serve da ponte tra codice ROS 2 e il codice EMPOWER originale in `detection.py`.
 
 ### `plan_generator_node`
 
@@ -531,16 +545,67 @@ Capacita' attuale:
 - calcola un goal a distanza `standoff_distance` dal centroide, lungo la linea robot-oggetto, orientando TIAGo verso il target;
 - salta esplicitamente `GRAB`, `DROP`, `PUSH`, `PULL`.
 
-Azioni non implementate:
+### `mission_orchestrator_node`
+
+File:
 
 ```text
-GRAB
-DROP
-PUSH
-PULL
+src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py
 ```
 
-Quindi manipolazione, MoveIt, controllo braccio e gripper non sono ancora integrati.
+Config:
+
+```text
+src/empower_ros2/config/hri_empower_mission.yaml
+```
+
+Ruolo: nodo bridge che collega HRI, Nav2 e la pipeline EMPOWER in una missione sequenziale hardcoded.
+
+Stati della missione (`/mission/state`):
+
+```text
+GO_TO_THERAPIST  -> naviga verso il terapista (x=0, y=-1.6)
+WAIT_TASK        -> aspetta utterance su /hri/user_utterance (timeout 120s)
+GO_TO_SPAWN      -> naviga all'origine (x=0, y=0)
+RUN_EMPOWER      -> esegue capture -> planning -> execution
+GO_TO_CHILD      -> naviga verso il bambino (x=0, y=1.6)
+CHILD_READY      -> pubblica "child_ready" e termina
+```
+
+Topic pubblicati:
+
+```text
+/mission/state          std_msgs/String  (QoS transient local)
+/mission/feedback       std_msgs/String
+/mission/task_description std_msgs/String (QoS transient local)
+/mission/child_ready    std_msgs/String  (QoS transient local)
+```
+
+Topic sottoscritti:
+
+```text
+/hri/user_utterance     std_msgs/String
+```
+
+Comportamento in `RUN_EMPOWER`:
+
+- se `capture_before_empower: true`, lancia `scene_capture_node` come subprocess e aspetta i file output;
+- lancia `empower_plan.launch.py` (subprocess bloccante) con il `task_description` ricevuto dall'HRI;
+- se `execute_empower_plan: true`, avvia `color_pcl_node`, `marker_centroids_node`, `low_level_execution_node` (subprocess) in sequenza.
+
+Parametri principali in `hri_empower_mission.yaml`:
+
+```yaml
+therapist_pose: [0.0, -1.6, -1.5708]
+spawn_pose: [0.0, 0.0, 0.0]
+child_pose: [0.0, 1.6, 1.5708]
+wait_for_task_timeout_sec: 120.0
+auto_start: true
+capture_before_empower: true
+execute_empower_plan: true
+use_case: "person_table_child_task"
+output_root: "/root/exchange/empower_data"
+```
 
 ### Launch EMPOWER disponibili
 
@@ -562,41 +627,23 @@ empower_execute.launch.py
 
 tiago_nav2_ground_truth.launch.py
   -> map_server + lifecycle_manager_map + ground_truth_localizer_node + Nav2 navigation_launch.py
+
+hri_empower_mission.launch.py
+  -> models_cacher_node + voice_llm_node + mission_orchestrator_node
 ```
 
-### Dati generati attualmente
-
-La repo contiene gia' output per:
+`hri_empower_mission.launch.py` e' il launch principale per l'avvio integrato. Argomenti disponibili:
 
 ```text
-empower_data/images/person_table_child_task/
-empower_data/output/person_table_child_task/
+mission_params_file    default: hri_empower_mission.yaml
+empower_params_file    default: empower_person_table_child.yaml
+hri_params_file        default: hri_cpu_english.yaml
+start_hri              default: true
+start_models_cacher    default: true
+hri_input_mode         default: voice
+stt_device_index       default: -1  (usa device di default del sistema; specificare l'indice se serve)
+use_sim_time           default: true
 ```
-
-Esempi:
-
-```text
-scan.jpg
-depth.npy
-depth_pointcloud.pcd
-camera_info.json
-detection.pkl
-detections.json
-relations.txt
-relations.json
-scene_description.txt
-planning.txt
-planning.json
-planning.pkl
-symbolic_plan.txt
-empower_report.txt
-colored_image.png
-colored_pcl.pcd
-colors_dict.pkl
-scan_with_bb.jpg
-```
-
-Questi file sono artefatti runtime della pipeline e possono essere rigenerati rilanciando capture/planning/visualization.
 
 ## Package `empower_hri`
 
@@ -612,12 +659,6 @@ Tipo package:
 ament_python
 ```
 
-Descrizione nel `package.xml`:
-
-```text
-CPU-only local voice dialogue MVP for TIAGo and EMPOWER.
-```
-
 Entry point:
 
 ```text
@@ -626,16 +667,8 @@ voice_llm_node = empower_hri.voice_llm_node:main
 
 ### Flusso HRI attuale
 
-Flusso inglese documentato:
-
 ```text
-microfono -> faster-whisper base -> Ollama/Qwen -> espeak-ng -> speaker
-```
-
-Flusso italiano/config locale:
-
-```text
-text oppure microfono -> faster-whisper tiny -> Ollama/Qwen -> pyttsx3/system/mock -> speaker/terminal
+microfono -> faster-whisper -> Ollama/Qwen -> pyttsx3/espeak-ng/mock -> speaker
 ```
 
 Il nodo principale e':
@@ -682,7 +715,9 @@ error
 stopped
 ```
 
-Non ci sono subscriber nel nodo HRI. Non riceve comandi ROS da altri nodi e non controlla robot o EMPOWER.
+Non ci sono subscriber nel nodo HRI. Non riceve comandi ROS da altri nodi.
+
+Il `mission_orchestrator_node` sottoscrive `/hri/user_utterance` per ricevere il task dalla voce.
 
 ### Provider LLM
 
@@ -708,7 +743,7 @@ Per Ollama:
 - endpoint usati: `/api/tags` e `/api/chat`;
 - risposta non-streaming.
 
-Il client verifica se il modello configurato e' disponibile. Se non lo e', prova il fallback. Se nessuno e' disponibile, produce un errore leggibile con suggerimento `ollama pull`.
+Ollama gira sull'**host**, non nel container. Il container lo raggiunge via `--net host`.
 
 ### Speech-to-text
 
@@ -737,10 +772,21 @@ mock
 Il push-to-talk e' gestito da terminale:
 
 ```text
-Premi INVIO per registrare
+Premi INVIO per registrare (oppure digita /quit):
 ```
 
-Se l'utente scrive qualcosa invece di premere solo INVIO, quel testo viene usato direttamente.
+Se l'utente scrive qualcosa invece di premere solo INVIO, quel testo viene usato direttamente senza registrare audio.
+
+Parametro `device_index` (aggiunto di recente):
+
+- `-1` (default): usa il device di input di default del sistema (ALSA/PulseAudio);
+- `>= 0`: usa il device con quell'indice (vedere `sounddevice.query_devices()`).
+
+Per listare i device disponibili dentro il container:
+
+```bash
+python3 -c "import sounddevice; print(sounddevice.query_devices())"
+```
 
 ### Text-to-speech
 
@@ -750,23 +796,13 @@ File:
 src/empower_hri/empower_hri/text_to_speech.py
 ```
 
-Provider supportati:
+Provider supportati con fallback automatico:
 
 ```text
-piper
-pyttsx3
-system
-mock
+piper -> pyttsx3 -> system -> mock
 ```
 
-Fallback:
-
-- `piper` -> `pyttsx3` -> `system` -> `mock`;
-- `pyttsx3` -> `system` -> `mock`;
-- `system` -> `mock`;
-- `mock` stampa su terminale.
-
-Provider `system` prova:
+Provider `system` prova nell'ordine:
 
 ```text
 espeak-ng
@@ -781,11 +817,9 @@ models/piper/it_IT-paola-medium.onnx
 models/piper/it_IT-paola-medium.onnx.json
 ```
 
-ma i config HRI attuali usano `system` per inglese e `pyttsx3` per locale/italiano.
-
 ### Config HRI
 
-File inglese:
+File inglese (usato come default da `hri_empower_mission.launch.py`):
 
 ```text
 src/empower_hri/config/hri_cpu_english.yaml
@@ -802,12 +836,11 @@ stt_provider: "faster_whisper"
 stt_model: "base"
 stt_device: "cpu"
 stt_compute_type: "int8"
+stt_device_index: -1
 language: "en"
 record_seconds: 5.0
 tts_provider: "system"
 ```
-
-Prompt inglese: TIAGo deve dire che per ora puo' solo parlare e non puo' muoversi, afferrare oggetti, riconoscere persone o fare azioni fisiche da questo modulo.
 
 File locale/italiano:
 
@@ -821,15 +854,13 @@ Valori principali:
 input_mode: "text"
 llm_provider: "ollama"
 llm_model: "qwen2.5:1.5b"
-llm_fallback_model: "llama3.2:1b"
 stt_provider: "faster_whisper"
 stt_model: "tiny"
+stt_device_index: -1
 language: "it"
 record_seconds: 4.0
 tts_provider: "pyttsx3"
 ```
-
-Prompt italiano: TIAGo deve dire che per ora puo' solo parlare e non deve inventare capacita' fisiche non implementate.
 
 ### Launch HRI disponibili
 
@@ -838,189 +869,107 @@ src/empower_hri/launch/hri_voice_llm_english.launch.py
 src/empower_hri/launch/hri_voice_llm_cpu.launch.py
 ```
 
-Entrambi lanciano:
-
-```text
-voice_llm_node
-```
-
-Entrambi dichiarano launch arguments per sovrascrivere provider, modello, lingua, tempi, input mode e TTS.
-
-Comando tipico inglese:
-
-```bash
-ros2 launch empower_hri hri_voice_llm_english.launch.py
-```
-
-Comando tipico italiano:
-
-```bash
-ros2 launch empower_hri hri_voice_llm_cpu.launch.py \
-  input_mode:=voice \
-  stt_provider:=faster_whisper \
-  stt_model:=tiny \
-  language:=it \
-  llm_provider:=ollama \
-  llm_model:=qwen2.5:1.5b \
-  tts_provider:=system
-```
+Entrambi lanciano `voice_llm_node` con argomenti override.
 
 ### Test presenti
-
-Sono presenti test solo per `empower_hri`:
 
 ```text
 src/empower_hri/test/test_ollama_client.py
 src/empower_hri/test/test_text_to_speech.py
 ```
 
-Coprono:
-
-- comportamento del mock LLM;
-- selezione fallback modello Ollama;
-- risposta mock in inglese;
-- TTS mock;
-- uso di `espeak-ng` nel provider `system`.
+Coprono: mock LLM, fallback modello Ollama, TTS mock, `espeak-ng` nel provider `system`.
 
 Non risultano test automatici per `empower_ros2`.
 
 ## Stato del collegamento fra HRI e EMPOWER
 
-Attualmente non esiste integrazione funzionale fra i due sottosistemi.
+Le due componenti sono ora collegate tramite `mission_orchestrator_node`.
 
-`empower_hri`:
-
-- conversa con l'utente;
-- pubblica utterance e stato su topic ROS;
-- non interpreta l'intento in formato task robotico;
-- non scrive `task_description`;
-- non invia trigger a `models_cacher_node`;
-- non chiama `plan_generator_node`;
-- non invia goal Nav2;
-- non legge output EMPOWER.
-
-`empower_ros2`:
-
-- usa `task_description` da YAML o parametro launch;
-- esegue planning tramite OpenAI `gpt-4o`, non tramite Qwen/Ollama;
-- non ascolta topic `/hri/*`;
-- non espone un servizio/action ROS per "esegui questo task naturale".
-
-Punto naturale di integrazione futuro:
+Flusso integrato:
 
 ```text
-/hri/user_utterance
-  -> nodo intent/task bridge
-  -> aggiorna o passa task_description a EMPOWER
-  -> trigger planning
-  -> opzionalmente trigger execution
-  -> pubblica feedback verso /hri/robot_utterance o altro canale
+hri_empower_mission.launch.py avvia:
+  models_cacher_node   (carica modelli, ascolta socket TCP)
+  voice_llm_node       (dialogo vocale con l'utente)
+  mission_orchestrator_node (coordina la missione)
+
+mission_orchestrator_node:
+  1. Naviga verso il terapista
+  2. Ascolta /hri/user_utterance (task dettato dall'utente via voce)
+  3. Naviga all'origine
+  4. Lancia capture -> plan (via models_cacher socket) -> execution (Nav2)
+  5. Naviga verso il bambino
+  6. Pubblica "child_ready"
 ```
 
-Un'altra integrazione possibile e' sostituire/parzialmente affiancare OpenAI `gpt-4o` in `agents.py` con un provider locale Ollama, ma al momento cio' non e' implementato.
+Cosa rimane disaccoppiato:
+
+- `voice_llm_node` non legge feedback dalla pipeline EMPOWER (non sa se il piano e' riuscito);
+- non esiste un canale di ritorno da EMPOWER verso HRI per comunicare risultati all'utente via voce;
+- il `task_description` passato a EMPOWER e' l'utterance grezza dell'utente, non interpretata/normalizzata.
 
 ## Limiti attuali noti
 
 ### Manipolazione non implementata
 
-La pipeline puo' produrre azioni simboliche:
-
-```text
-NAVIGATE
-GRAB
-DROP
-PULL
-PUSH
-```
-
-ma l'esecuzione ROS 2 implementa solo:
-
-```text
-NAVIGATE
-```
-
-Le altre azioni sono riconosciute e saltate con log. Non ci sono MoveIt, braccio o gripper.
+La pipeline produce azioni simboliche `NAVIGATE`, `GRAB`, `DROP`, `PULL`, `PUSH` ma l'esecuzione ROS 2 implementa solo `NAVIGATE`. Le altre azioni sono riconosciute e saltate con log. Non ci sono MoveIt, braccio o gripper.
 
 ### EMPOWER dipende da OpenAI
 
-`agents.py` usa:
-
-```python
-from openai import OpenAI
-client = OpenAI()
-```
-
-e chiama `gpt-4o`.
-
-Serve quindi una chiave OpenAI valida in env o in:
+`agents.py` usa `gpt-4o`. Serve una chiave OpenAI valida in env o in:
 
 ```text
 /root/exchange/openai_api_key.txt
 ```
 
-Il file `openai_api_key.txt` e' referenziato dalla config. Non va condiviso.
-
-### Modelli EMPOWER pesanti non versionati
-
-Il loader richiede:
-
-```text
-yolow.pth
-l2_encoder.onnx
-l2_decoder.onnx
-```
-
-ma nella working tree attuale non risultano presenti nei path default sotto `src/empower_ros2/config`.
+Il file e' escluso dal tracking git.
 
 ### HRI e' CPU-only
 
-Il nodo HRI valida che:
+Il nodo HRI valida che `stt_device == cpu`. Non supporta STT GPU.
 
-```text
-stt_device == cpu
+### Microfono: device index fisso per macchina
+
+Il parametro `stt_device_index` e' `-1` (default di sistema) nei YAML. Se il microfono desiderato non e' il device di default, va specificato al launch:
+
+```bash
+ros2 launch empower_ros2 hri_empower_mission.launch.py stt_device_index:=8
 ```
 
-Non supporta STT GPU nella configurazione attuale.
+L'indice cambia da macchina a macchina. Verificarlo con `sounddevice.query_devices()`.
 
-### Conversazione HRI non e' agentica
+### Feedback vocale dalla missione non implementato
 
-Il nodo HRI mantiene history e risponde, ma non ha tool/function calling, non chiama servizi ROS e non ha un planner. Il prompt gli vieta esplicitamente di dichiarare capacita' fisiche.
+Il `mission_orchestrator_node` pubblica feedback su `/mission/feedback` ma `voice_llm_node` non lo legge. L'utente non riceve conferma vocale dell'avanzamento della missione.
 
-### Documentazione/package HRI
+### Task non interpretato
 
-`src/empower_hri/setup.py` include nei `data_files`:
-
-```text
-README.md
-README_QWEN_ENGLISH.md
-```
-
-relativi al package `src/empower_hri`. Nella working tree attuale quei file non risultano presenti sotto `src/empower_hri/`; i README corrispondenti esistono invece in root. Questo puo' causare problemi di build/install del package se `setuptools` cerca quei file.
+L'utterance dell'utente viene passata direttamente come `task_description` a EMPOWER senza normalizzazione o validazione. Se l'utente dice qualcosa di ambiguo o non pertinente, la pipeline EMPOWER lo gestira' come task.
 
 ## Comandi operativi principali
+
+### Build
 
 Build `empower_ros2`:
 
 ```bash
 cd /root/exchange
-source /opt/ros/humble/setup.bash
-source /root/tiago_public_ws/install/setup.bash
-rm -rf build/empower_ros2 install/empower_ros2
 colcon build --symlink-install --packages-select empower_ros2
-source /root/exchange/install/setup.bash
+source install/setup.bash
 ```
 
 Build `empower_hri`:
 
 ```bash
 cd /root/exchange
-source /opt/ros/humble/setup.bash
-source /root/tiago_public_ws/install/setup.bash
 colcon build --symlink-install --packages-select empower_hri
-source /root/exchange/install/setup.bash
+source install/setup.bash
 ```
 
-Gazebo:
+### Avvio con 3 terminali
+
+**Terminale 1 — Gazebo** (avvia anche il container con `bash start_tiago.sh`):
 
 ```bash
 ros2 launch tiago_gazebo tiago_gazebo.launch.py \
@@ -1029,73 +978,71 @@ ros2 launch tiago_gazebo tiago_gazebo.launch.py \
   world_name:=/root/exchange/exchange/person_table_child.world
 ```
 
-Nav2 ground truth:
+**Terminale 2 — Nav2**:
 
 ```bash
 ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
   map:=/root/exchange/exchange/maps/person_table_child_static.yaml
 ```
 
-Capture:
+**Terminale 3 — HRI + EMPOWER** (launch integrato):
 
 ```bash
+ros2 launch empower_ros2 hri_empower_mission.launch.py
+```
+
+Con microfono non-default (es. webcam Logitech C920 al device 8):
+
+```bash
+ros2 launch empower_ros2 hri_empower_mission.launch.py stt_device_index:=8
+```
+
+### Launch EMPOWER singoli (uso standalone)
+
+```bash
+# Cattura
 ros2 launch empower_ros2 empower_capture.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
-```
 
-Model cacher:
-
-```bash
+# Model cacher
 ros2 launch empower_ros2 empower_models_cacher.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
-```
 
-Planning:
-
-```bash
+# Planning
 ros2 launch empower_ros2 empower_plan.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
-```
 
-Visualizzazione:
-
-```bash
+# Visualizzazione
 ros2 launch empower_ros2 empower_visualization.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
-```
 
-Esecuzione low-level:
-
-```bash
+# Esecuzione low-level
 ros2 launch empower_ros2 empower_execute.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
 ```
 
-HRI inglese:
+### HRI standalone
 
 ```bash
+# Inglese (voce)
 ros2 launch empower_hri hri_voice_llm_english.launch.py
-```
 
-HRI italiano/locale:
-
-```bash
+# Italiano (locale, input testo)
 ros2 launch empower_hri hri_voice_llm_cpu.launch.py
 ```
 
 ## Contratto mentale per sviluppo futuro
 
-Se si vuole collegare LLM vocale ed EMPOWER, il codice attuale suggerisce questi passi tecnici:
+La repo ha ora una base funzionante end-to-end:
 
-1. Creare un nodo ponte HRI -> task, che sottoscriva `/hri/user_utterance`.
-2. Trasformare l'utterance in un `task_description` controllato e sicuro.
-3. Esporre EMPOWER come servizio/action ROS invece del solo trigger socket/file-based, oppure creare un wrapper che lanci il trigger socket esistente.
-4. Rendere esplicito lo stato della pipeline: planning started, perception done, plan ready, execution started, navigation succeeded/failed.
-5. Pubblicare feedback verso HRI, ad esempio su un topic che `voice_llm_node` o un futuro nodo dialog manager possa leggere.
-6. Mantenere il vincolo che, finche' manipolazione non esiste, il robot non deve promettere `GRAB`, `DROP`, `PUSH`, `PULL`.
+- pipeline EMPOWER quasi completa fino a navigazione mobile;
+- HRI vocale/testuale funzionante con Ollama/Qwen locale;
+- missione integrata: voce -> task -> EMPOWER -> navigazione.
 
-Questa repo, allo stato attuale, e' quindi una base con:
+I prossimi passi tecnici suggeriti dal codice attuale:
 
-- pipeline EMPOWER quasi end-to-end fino a navigazione mobile;
-- HRI vocale/testuale funzionante come canale conversazionale separato;
-- integrazione fra le due componenti ancora da progettare e implementare.
+1. **Feedback vocale**: far leggere a `voice_llm_node` i topic `/mission/state` o `/mission/feedback` per comunicare all'utente l'avanzamento della missione.
+2. **Normalizzazione del task**: aggiungere un nodo o logica che trasformi l'utterance grezza in un `task_description` controllato prima di passarlo a EMPOWER.
+3. **Manipolazione**: integrare MoveIt per implementare `GRAB`, `DROP`, `PUSH`, `PULL` in `primitive_actions.py`.
+4. **LLM locale per EMPOWER**: sostituire o affiancare OpenAI `gpt-4o` in `agents.py` con Ollama, eliminando la dipendenza da rete e API key.
+5. **Multi-turno missione**: supportare piu' task consecutivi senza riavviare il launch.
