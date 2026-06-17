@@ -76,6 +76,7 @@ class VoiceLlmNode(Node):
         self.declare_parameter("stt_model", "tiny")
         self.declare_parameter("stt_device", "cpu")
         self.declare_parameter("stt_compute_type", "int8")
+        self.declare_parameter("stt_device_index", -1)
         self.declare_parameter("language", "it")
         self.declare_parameter("record_seconds", 4.0)
         self.declare_parameter("sample_rate", 16000)
@@ -132,6 +133,7 @@ class VoiceLlmNode(Node):
                 language=str(self.get_parameter("language").value),
                 record_seconds=float(self.get_parameter("record_seconds").value),
                 sample_rate=int(self.get_parameter("sample_rate").value),
+                device_index=int(self.get_parameter("stt_device_index").value),
                 logger=self.get_logger(),
                 state_callback=self._publish_state,
             )

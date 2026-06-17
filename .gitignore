@@ -12,6 +12,7 @@ log/
 
 # Generated EMPOWER pipeline output (overwritten each run)
 empower_data/output/
+empower_data/images/
 
 # ROS2 runtime logs
 .ros/

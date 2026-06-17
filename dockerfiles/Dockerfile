@@ -92,6 +92,18 @@ RUN apt-get update && \
 RUN . /opt/ros/humble/setup.sh && \
     colcon build --symlink-install --cmake-args -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
+# HRI audio/voice dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libportaudio2 \
+    espeak-ng \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m pip install --no-cache-dir \
+    sounddevice \
+    soundfile \
+    faster-whisper \
+    pyttsx3
+
 RUN mkdir -p /app
 COPY entrypoint_tiago.sh /app/entrypoint_tiago.sh
 RUN chmod +x /app/entrypoint_tiago.sh

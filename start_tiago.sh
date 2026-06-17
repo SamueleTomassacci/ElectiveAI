@@ -8,6 +8,16 @@ DOCKER_GPU_ARGS="--env DISPLAY \
   --env __GLX_VENDOR_LIBRARY_NAME=nvidia \
   --volume=/tmp/.X11-unix:/tmp/.X11-unix:rw"
 
+# PulseAudio: mount host socket so the container can record from the microphone
+PULSE_SOCKET="/run/user/$(id -u)/pulse/native"
+if [ -S "$PULSE_SOCKET" ]; then
+  PULSE_ARGS="--volume=${PULSE_SOCKET}:/run/pulse/native \
+    --env PULSE_SERVER=unix:/run/pulse/native"
+else
+  echo "WARNING: PulseAudio socket not found at ${PULSE_SOCKET}, microphone may not work"
+  PULSE_ARGS=""
+fi
+
 dpkg -l | grep nvidia-container-toolkit &> /dev/null
 
 HAS_NVIDIA_TOOLKIT=$?
@@ -36,6 +46,7 @@ xhost +local:docker
 
 $DOCKER_COMMAND \
   $DOCKER_GPU_ARGS \
+  $PULSE_ARGS \
   $MOUNT_ARGS \
   --net host \
   --privileged \

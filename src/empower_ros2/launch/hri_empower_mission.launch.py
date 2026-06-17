@@ -25,6 +25,10 @@ def generate_launch_description():
         LaunchConfiguration("use_sim_time"),
         value_type=bool,
     )
+    stt_device_index = ParameterValue(
+        LaunchConfiguration("stt_device_index"),
+        value_type=int,
+    )
 
     return LaunchDescription(
         [
@@ -34,6 +38,7 @@ def generate_launch_description():
             DeclareLaunchArgument("start_hri", default_value="true"),
             DeclareLaunchArgument("start_models_cacher", default_value="true"),
             DeclareLaunchArgument("hri_input_mode", default_value="voice"),
+            DeclareLaunchArgument("stt_device_index", default_value="-1"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             Node(
                 package="empower_ros2",
@@ -54,6 +59,7 @@ def generate_launch_description():
                     LaunchConfiguration("hri_params_file"),
                     {
                         "input_mode": LaunchConfiguration("hri_input_mode"),
+                        "stt_device_index": stt_device_index,
                         "use_sim_time": use_sim_time,
                     },
                 ],

@@ -29,6 +29,7 @@ class FasterWhisperSpeechToText:
         language: str,
         record_seconds: float,
         sample_rate: int,
+        device_index: int = -1,
         logger=None,
         state_callback: Optional[Callable[[str], None]] = None,
     ):
@@ -42,6 +43,7 @@ class FasterWhisperSpeechToText:
         self.language = language
         self.record_seconds = record_seconds
         self.sample_rate = sample_rate
+        self.device_index = device_index if device_index >= 0 else None
         self.logger = logger
         self.state_callback = state_callback
         self._model = None
@@ -104,6 +106,7 @@ class FasterWhisperSpeechToText:
                 samplerate=self.sample_rate,
                 channels=1,
                 dtype="float32",
+                device=self.device_index,
             )
             sd.wait()
             sf.write(wav_path, audio, self.sample_rate, subtype="PCM_16")
