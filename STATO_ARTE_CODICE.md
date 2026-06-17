@@ -1,6 +1,6 @@
 # Stato dell'arte tecnico della repo ElectiveAI
 
-Ultimo aggiornamento del documento: 2026-06-17 (rev 2).
+Ultimo aggiornamento del documento: 2026-06-17 (rev 3).
 
 Questo file descrive lo stato attuale del codice nella repo `/home/lorenzo/Scrivania/ElectiveAI` (montata nel container come `/root/exchange`).
 L'obiettivo e' fornire contesto tecnico preciso a un altro LLM o a un nuovo sviluppatore.
@@ -565,7 +565,7 @@ Stati della missione (`/mission/state`):
 
 ```text
 GO_TO_THERAPIST  -> naviga verso il terapista (x=0, y=-1.6)
-WAIT_TASK        -> aspetta utterance su /hri/user_utterance (timeout 120s)
+WAIT_TASK        -> aspetta utterance su /hri/user_utterance (timeout 300s)
 GO_TO_SPAWN      -> naviga all'origine (x=0, y=0)
 RUN_EMPOWER      -> esegue capture -> planning -> execution
 GO_TO_CHILD      -> naviga verso il bambino (x=0, y=1.6)
@@ -610,7 +610,7 @@ Parametri principali in `hri_empower_mission.yaml`:
 therapist_pose: [0.0, -1.6, -1.5708]
 spawn_pose: [0.0, 0.0, 0.0]
 child_pose: [0.0, 1.6, 1.5708]
-wait_for_task_timeout_sec: 120.0
+wait_for_task_timeout_sec: 300.0
 auto_start: true
 capture_before_empower: true
 execute_empower_plan: true
@@ -721,7 +721,8 @@ Stati pubblicati (`/hri/dialog_state`):
 ready
 waiting_for_text
 waiting_for_push_to_talk
-recording
+listening              (solo in auto-VAD storytelling: in attesa di voce)
+recording              (audio in corso)
 transcribing
 thinking
 speaking
@@ -758,8 +759,14 @@ Il template in `STORYTELLING_SYSTEM_PROMPT_TEMPLATE` include il task come contes
 ### Parametri aggiuntivi
 
 ```yaml
-storytelling_max_turns: 10   # numero massimo di turni bambino (0 = illimitato)
+storytelling_max_turns: 10        # numero massimo di turni bambino (0 = illimitato)
+storytelling_auto_listen: true    # usa auto-VAD per il bambino invece del push-to-talk
+stt_vad_energy_threshold: 0.01   # RMS minimo per considerare speech (abbassare in ambienti silenziosi)
+stt_vad_silence_sec: 1.5          # secondi di silenzio prima di fermare la registrazione
+stt_vad_max_duration_sec: 30.0    # timeout massimo di ascolto per turno
 ```
+
+Se `storytelling_auto_listen: true` e `input_mode: voice`, il bambino non deve premere INVIO: il nodo ascolta in continuo, rileva la voce via soglia RMS e trascrive automaticamente. Se il bambino non parla entro `stt_vad_max_duration_sec`, il turno viene riproposto (non interrotto).
 
 ### Provider LLM
 
@@ -811,13 +818,22 @@ mock
 - usa `vad_filter=True`;
 - rimuove il file temporaneo.
 
-Il push-to-talk e' gestito da terminale:
+Espone due modalita' di ascolto:
+
+**`transcribe_push_to_talk()`**: attende INVIO da terminale, poi registra per `record_seconds` fissi.
 
 ```text
 Premi INVIO per registrare (oppure digita /quit):
 ```
 
 Se l'utente scrive qualcosa invece di premere solo INVIO, quel testo viene usato direttamente senza registrare audio.
+
+**`transcribe_auto()`**: ascolto continuo con energy-based VAD.
+- usa `sounddevice.InputStream` con chunk da 50ms;
+- calcola RMS per chunk; se `rms >= energy_threshold` → speech started;
+- dopo `silence_duration_sec` di silenzio post-speech → stop e trascrizione;
+- restituisce `""` se nessun speech entro `max_duration_sec` o troppo corto (< `min_speech_sec`);
+- pubblica stato `listening` → `recording` → `transcribing`.
 
 Parametro `device_index` (aggiunto di recente):
 
