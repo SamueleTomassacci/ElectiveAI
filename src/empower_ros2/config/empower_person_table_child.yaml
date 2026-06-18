@@ -24,3 +24,22 @@
     nav_result_timeout_sec: 300.0
     standoff_distance: 1.0
     continue_on_nav_failure: false
+    object_simulation:
+      enabled: true
+      drop_distance: 0.75
+      world_frame: world
+      robot_base_frame: base_footprint
+      gz_command: gz
+      gz_world_name: person_table_child_room
+      gz_cli_timeout_sec: 10.0
+      world_sdf_path: /root/exchange/exchange/person_table_child.world
+      objects:
+        book:
+          gazebo_entity: clear_red_book_on_right_table
+          drop_z: 0.02
+        computer:
+          gazebo_entity: laptop_computer_on_right_table
+          drop_z: 0.02
+        peluche:
+          gazebo_entity: teddy_bear_on_right_table
+          drop_z: 0.04

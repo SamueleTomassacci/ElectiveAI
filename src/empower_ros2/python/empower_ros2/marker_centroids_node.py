@@ -6,6 +6,7 @@ import numpy as np
 import rclpy
 from matplotlib.colors import to_rgb
 from rclpy.duration import Duration
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.time import Time
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -64,10 +65,16 @@ class MarkerCentroidsNode(Node):
             if not os.path.exists(os.path.join(dump_dir, required_file)):
                 self.get_logger().info(f"Waiting for {required_file} in {dump_dir}")
                 return
-        with open(os.path.join(dump_dir, "detection.pkl"), "rb") as detection_file:
-            detections = pickle.load(detection_file)
-        with open(os.path.join(dump_dir, "colors_dict.pkl"), "rb") as colors_file:
-            colors_dict = pickle.load(colors_file)
+        try:
+            with open(os.path.join(dump_dir, "detection.pkl"), "rb") as detection_file:
+                detections = pickle.load(detection_file)
+            with open(os.path.join(dump_dir, "colors_dict.pkl"), "rb") as colors_file:
+                colors_dict = pickle.load(colors_file)
+        except (EOFError, pickle.UnpicklingError) as exc:
+            self.get_logger().info(
+                f"Waiting for complete EMPOWER pickle files in {dump_dir}: {exc}"
+            )
+            return
 
         fixed_frame = self.get_parameter("fixed_frame").value
         camera_frame = self.get_parameter("camera_frame").value
@@ -170,7 +177,10 @@ class MarkerCentroidsNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = MarkerCentroidsNode()
-    rclpy.spin(node)
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
 
 
 if __name__ == "__main__":

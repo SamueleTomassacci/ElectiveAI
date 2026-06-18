@@ -6,6 +6,7 @@ import numpy as np
 import open3d as o3d
 import rclpy
 from matplotlib.colors import to_rgb
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import PointCloud2
@@ -92,8 +93,11 @@ class ColorPclNode(Node):
 
         cv2.imwrite(os.path.join(dump_dir, "colored_image.png"), image)
         o3d.io.write_point_cloud(os.path.join(dump_dir, "colored_pcl.pcd"), pcd)
-        with open(os.path.join(dump_dir, "colors_dict.pkl"), "wb") as colors_file:
+        colors_path = os.path.join(dump_dir, "colors_dict.pkl")
+        tmp_colors_path = colors_path + ".tmp"
+        with open(tmp_colors_path, "wb") as colors_file:
             pickle.dump(colors_dict, colors_file, protocol=2)
+        os.replace(tmp_colors_path, colors_path)
 
         self.cloud_msg = open3d_to_pointcloud2(
             pcd,
@@ -112,7 +116,10 @@ class ColorPclNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ColorPclNode()
-    rclpy.spin(node)
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
 
 
 if __name__ == "__main__":
