@@ -3,12 +3,15 @@
 Questo documento descrive lo stato attuale del codice presente nella repo, come sono organizzate le varie parti e che cosa il robot puo' fare realmente oggi. La parte piu' importante da tenere a mente e' questa:
 
 ```text
-La missione completa e' ancora un MVP orchestrato.
-Il task vocale cambia la descrizione passata a EMPOWER,
-ma non cambia la struttura globale della missione.
+La missione completa e' un MVP orchestrato con due input della terapeuta.
+Il primo input definisce il task fisico (passato a EMPOWER).
+Il secondo input definisce l'attivita' da fare col bambino.
+L'attivita' viene normalizzata in un tipo (storytelling, emotion recognition, ecc.)
+che determina il system prompt e l'apertura della sessione col bambino.
+La struttura globale della missione rimane sequenziale e hardcoded.
 ```
 
-In particolare, dopo la fase EMPOWER il robot va sempre verso la posa configurata del bambino/ragazzo e avvia sempre una sessione di storytelling, indipendentemente dal fatto che la terapeuta abbia detto o meno "talk to the guy".
+La terapeuta fornisce due comandi vocali separati: prima il task fisico (es. "Take the book"), poi l'attivita' col bambino (es. "Do emotion recognition with the computer"). Il robot esegue EMPOWER sul task fisico, poi va dal bambino e avvia l'attivita' specificata.
 
 ## Mappa generale della repo
 
@@ -49,8 +52,8 @@ docker/ e dockerfiles/
 README.md
   Istruzioni operative principali.
 
-STATO_ARTE_CODICE.md
-  Documento precedente di analisi estesa dello stato del codice.
+STATO_ARTE_CODICE.md (rimosso)
+  Sostituito da questo documento.
 ```
 
 ## Package `empower_ros2`
@@ -77,6 +80,7 @@ I file piu' importanti sono:
 src/empower_ros2/config/empower_person_table_child.yaml
 src/empower_ros2/config/hri_empower_mission.yaml
 src/empower_ros2/config/nav2_tiago_ground_truth.yaml
+src/empower_ros2/config/object_simulation.yaml
 ```
 
 `empower_person_table_child.yaml` configura il use case EMPOWER:
@@ -98,9 +102,14 @@ spawn_pose:     [0.0,  0.0,  0.0]
 child_pose:     [0.0,  1.6,  1.5708]
 
 wait_for_task_timeout_sec: 300.0
+wait_for_activity_timeout_sec: 300.0
+task_ack_text: "Okay, I understood the task."
+activity_ack_text: "Okay, I understood the activity."
+default_activity_type: "generic_child_activity"
 capture_before_empower: true
 execute_empower_plan: true
 storytelling_timeout_sec: 300.0
+child_activity_timeout_sec: 300.0
 ```
 
 Queste pose sono fondamentali: nella missione completa il robot va dalla terapeuta, torna allo spawn, esegue EMPOWER e poi va sempre alla `child_pose`.
@@ -328,17 +337,19 @@ PULL
 Azioni implementate realmente:
 
 ```text
-NAVIGATE
+NAVIGATE  (navigazione Nav2)
+GRAB      (simulata in Gazebo)
+DROP      (simulata in Gazebo)
 ```
 
 Azioni non implementate:
 
 ```text
-GRAB
-DROP
 PUSH
 PULL
 ```
+
+#### NAVIGATE
 
 Quando il piano contiene `NAVIGATE`, il nodo:
 
@@ -348,13 +359,66 @@ Quando il piano contiene `NAVIGATE`, il nodo:
 4. orienta TIAGo verso il target;
 5. manda un goal Nav2 a `navigate_to_pose`.
 
-Quando il piano contiene `GRAB`, `DROP`, `PUSH` o `PULL`, il nodo scrive un log e salta lo step:
+Se il piano non contiene alcun step NAVIGATE, il nodo salta l'attesa dei centroidi EMPOWER.
+
+#### GRAB (simulazione Gazebo)
+
+Quando il piano contiene `GRAB` e `object_simulation.enabled` e' `true`:
+
+1. normalizza il nome del target (es. "the book" -> "book");
+2. verifica che il target sia nella lista degli oggetti simulati;
+3. verifica che il robot non stia gia' tenendo un oggetto;
+4. elimina l'entita' Gazebo corrispondente tramite `gz model -d`;
+5. salva l'oggetto come `held_object` (con la SDF XML cachata all'avvio).
+
+Oggetti simulati configurati:
 
 ```text
-Skipping GRAB book: action not implemented in ROS2 port
+book     -> clear_red_book_on_right_table
+computer -> laptop_computer_on_right_table
+peluche  -> teddy_bear_on_right_table
 ```
 
-Quindi oggi il robot non prende davvero il libro, non lo lascia, non spinge e non tira oggetti.
+Se `object_simulation.enabled` e' `false`, GRAB viene saltato con un log.
+
+#### DROP (simulazione Gazebo)
+
+Quando il piano contiene `DROP` e `object_simulation.enabled` e' `true`:
+
+1. normalizza il nome del target;
+2. verifica che il robot stia tenendo quell'oggetto;
+3. calcola la posa di drop davanti al robot (usando TF);
+4. ri-spawna l'entita' Gazebo nella nuova posizione tramite `gz model -f`;
+5. resetta `held_object` a `None`.
+
+La distanza di drop e' configurabile tramite `object_simulation.drop_distance` (default 0.75m).
+
+#### Configurazione object simulation
+
+File:
+
+```text
+src/empower_ros2/config/object_simulation.yaml
+src/empower_ros2/config/empower_person_table_child.yaml (sezione object_simulation)
+```
+
+Parametri principali:
+
+```text
+object_simulation.enabled: true/false
+object_simulation.drop_distance: 0.75
+object_simulation.world_frame: world
+object_simulation.robot_base_frame: base_footprint
+object_simulation.gz_command: gz
+object_simulation.gz_world_name: person_table_child_room
+object_simulation.world_sdf_path: percorso al file .world
+object_simulation.objects.<nome>.gazebo_entity: nome entita' Gazebo
+object_simulation.objects.<nome>.drop_z: altezza di drop
+```
+
+All'avvio, il nodo parsa il file world SDF e cacha la XML di ogni modello configurato, in modo da poterlo ri-spawnare dopo un DROP.
+
+Quando il piano contiene `PUSH` o `PULL`, il nodo scrive un warning e salta lo step.
 
 ## Missione completa HRI + EMPOWER
 
@@ -385,11 +449,14 @@ La missione e' una sequenza hardcoded:
 ```text
 GO_TO_THERAPIST
 WAIT_TASK
+ACK_TASK
+WAIT_ACTIVITY
+ACK_ACTIVITY
 GO_TO_SPAWN
 RUN_EMPOWER
 GO_TO_CHILD
 CHILD_READY
-STORYTELLING
+CHILD_ACTIVITY
 MISSION_COMPLETE
 ```
 
@@ -400,8 +467,21 @@ GO_TO_THERAPIST
   Il robot naviga alla posa della terapeuta.
 
 WAIT_TASK
-  Il robot aspetta un testo su /hri/user_utterance.
-  Il primo testo utile diventa il task della missione.
+  Il robot aspetta il primo testo su /hri/user_utterance.
+  Questo diventa il task fisico (es. "Take the book").
+
+ACK_TASK
+  Il robot pronuncia task_ack_text ("Okay, I understood the task.")
+  tramite il comando "say" inviato al nodo HRI.
+
+WAIT_ACTIVITY
+  Il robot aspetta il secondo testo su /hri/user_utterance.
+  Questo diventa la descrizione dell'attivita' col bambino
+  (es. "Do emotion recognition with the computer").
+  Il testo viene normalizzato in un activity_type.
+
+ACK_ACTIVITY
+  Il robot pronuncia activity_ack_text ("Okay, I understood the activity.")
 
 GO_TO_SPAWN
   Il robot torna allo spawn.
@@ -417,12 +497,33 @@ GO_TO_CHILD
 CHILD_READY
   Pubblica child_ready su /mission/child_ready.
 
-STORYTELLING
-  Invia start_storytelling al nodo HRI.
+CHILD_ACTIVITY
+  Invia start_child_activity al nodo HRI con il contesto completo
+  (task, activity_description, activity_type).
 
 MISSION_COMPLETE
   La missione termina.
 ```
+
+### Normalizzazione dell'attivita'
+
+L'orchestratore normalizza il testo della terapeuta in un `activity_type` usando regole keyword-based:
+
+```text
+"computer emotion recognition", "emotion recognition", "emotion pictures", ...
+  -> computer_emotion_recognition
+
+"how they feel", "feelings", "mood", "teddy", "teddy bear", "plush", ...
+  -> mood_check_teddy
+
+"story", "storytelling", "read the story", "tell a story"
+  -> storytelling
+
+(nessun match)
+  -> generic_child_activity (default)
+```
+
+L'`activity_type` determina quale system prompt e quale frase di apertura il nodo HRI usera' col bambino.
 
 ### Topic della missione
 
@@ -449,42 +550,35 @@ Topic HRI usati dall'orchestratore:
   Segnala che la sessione di storytelling e' finita.
 ```
 
-### Punto cruciale: missione hardcoded
+### Punto cruciale: missione ancora sequenziale
 
-Il task della terapeuta viene usato come stringa, ma non modifica la struttura della missione.
+La struttura della missione rimane hardcoded e sequenziale: la terapeuta fornisce sempre due input (task fisico + attivita' col bambino), poi il robot esegue sempre EMPOWER, poi va sempre dal bambino e avvia sempre un'attivita'.
+
+Il miglioramento rispetto alla versione precedente e' che ora la terapeuta puo' scegliere quale tipo di attivita' fare col bambino, e il robot adatta il system prompt e l'apertura della sessione.
 
 Esempi:
 
 ```text
-"Take the book from the table"
-"Take the book and talk to the guy"
-"Move near the table"
-"Find the red object"
+Input 1: "Take the book"
+Input 2: "Tell a story"
+-> EMPOWER su "Take the book", poi storytelling col bambino
+
+Input 1: "Take the computer"
+Input 2: "Do emotion recognition with the computer"
+-> EMPOWER su "Take the computer", poi emotion recognition col bambino
+
+Input 1: "Take the teddy bear"
+Input 2: "Ask the child how they feel"
+-> EMPOWER su "Take the teddy bear", poi mood check col bambino
 ```
 
-In tutti questi casi, il flusso globale rimane:
+Ma il flusso globale rimane sempre:
 
 ```text
-terapeuta -> task -> spawn -> EMPOWER -> child_pose -> storytelling
+terapeuta -> task + activity -> spawn -> EMPOWER -> child_pose -> child_activity
 ```
 
-Quindi:
-
-```text
-Il robot va sempre dal bambino/ragazzo dopo EMPOWER.
-Il robot avvia sempre lo storytelling dopo essere arrivato dal bambino/ragazzo.
-```
-
-La frase "talk to the guy" non viene interpretata come comando speciale. Non esiste oggi una logica del tipo:
-
-```text
-se il task contiene "talk to the guy":
-  vai dal ragazzo e parla
-altrimenti:
-  non fare storytelling
-```
-
-Lo storytelling parte perche' e' scritto nella sequenza della missione.
+Non esiste una logica che decide autonomamente se andare o meno dal bambino, o se saltare l'attivita'.
 
 ## Package `empower_hri`
 
@@ -517,7 +611,7 @@ Il nodo ha due modalita':
 
 ```text
 therapist_command
-child_storytelling
+child_activity
 ```
 
 All'avvio parte in:
@@ -530,11 +624,29 @@ In questa modalita':
 
 1. legge testo o voce dalla terapeuta;
 2. pubblica il testo su `/hri/user_utterance`;
-3. manda il testo al LLM locale;
-4. pubblica la risposta su `/hri/robot_utterance`;
-5. pronuncia la risposta via TTS.
+3. se `therapist_llm_replies` e' `true`, manda il testo al LLM locale e pubblica/pronuncia la risposta;
+4. se `therapist_llm_replies` e' `false`, pubblica solo il testo senza risposta LLM.
 
-Il punto importante e' che l'orchestratore cattura il task appena vede il testo su `/hri/user_utterance`. Non aspetta che il LLM HRI "approvi" o normalizzi il task.
+Nel launch della missione completa, `therapist_llm_replies` e' `false` e `follow_mission_state_for_therapist_input` e' `true`. Questo significa che:
+
+- il nodo HRI accetta input dalla terapeuta solo quando lo stato missione e' `WAIT_TASK` o `WAIT_ACTIVITY`;
+- ogni stato accetta un solo input (il nodo traccia `_last_therapist_input_state`);
+- il robot non risponde con il LLM alla terapeuta, ma pronuncia solo gli `ack_text` configurati tramite il comando `say`.
+
+Il nodo HRI ascolta anche `/mission/state` per sapere in che fase si trova la missione.
+
+#### Comando `say`
+
+L'orchestratore puo' inviare un comando `say` tramite `/hri/dialog_command`:
+
+```json
+{
+  "command": "say",
+  "text": "Okay, I understood the task."
+}
+```
+
+Il nodo HRI pronuncia il testo via TTS senza coinvolgere il LLM.
 
 ### STT
 
@@ -624,7 +736,7 @@ Dopo EMPOWER:
 mission_orchestrator_node:
   GO_TO_CHILD
   CHILD_READY
-  STORYTELLING
+  CHILD_ACTIVITY
 ```
 
 In `GO_TO_CHILD` il robot naviga alla posa fissa `child_pose`.
@@ -639,9 +751,11 @@ Poi manda su `/hri/dialog_command`:
 
 ```json
 {
-  "command": "start_storytelling",
+  "command": "start_child_activity",
   "context": {
-    "task": "<task detto dalla terapeuta>"
+    "task": "<task fisico>",
+    "activity_description": "<descrizione attivita'>",
+    "activity_type": "<tipo normalizzato>"
   }
 }
 ```
@@ -650,70 +764,91 @@ Esempio:
 
 ```json
 {
-  "command": "start_storytelling",
+  "command": "start_child_activity",
   "context": {
-    "task": "Take the book and talk to the guy"
+    "task": "Take the computer",
+    "activity_description": "Do emotion recognition with the computer",
+    "activity_type": "computer_emotion_recognition"
   }
 }
 ```
 
-### Cosa fa `voice_llm_node` quando riceve `start_storytelling`
+### Cosa fa `voice_llm_node` quando riceve `start_child_activity`
 
 Quando arriva il comando:
 
 ```text
-command == "start_storytelling"
+command == "start_child_activity"
 ```
 
 il nodo HRI:
 
-1. salva il contesto, incluso il task;
-2. svuota la history del dialogo precedente;
-3. resetta lo stop event dello storytelling;
-4. cambia modalita' in `child_storytelling`.
+1. legge `activity_type` dal contesto (se non valido, usa `generic_child_activity`);
+2. salva il contesto completo (task, activity_description, activity_type);
+3. svuota la history del dialogo precedente;
+4. resetta lo stop event;
+5. cambia modalita' in `child_activity`.
 
-Da quel momento il system prompt cambia.
+Da quel momento il system prompt cambia in base all'`activity_type`.
 
-Il prompt storytelling dice al modello:
+Il comando `start_storytelling` e' ancora supportato per retrocompatibilita', e viene convertito internamente in `start_child_activity` con `activity_type=storytelling`.
 
-```text
-You are TIAGo, a friendly social robot in a therapy session with a young child.
-You have just completed the following task: '<task>'.
-Your role is to tell an engaging, age-appropriate, imaginative story
-and actively involve the child through warm encouragement and simple questions.
-```
+### System prompt per tipo di attivita'
 
-Quindi il task della terapeuta viene usato come contesto narrativo:
+Tipi supportati:
 
 ```text
-Il robot "sa" linguisticamente di aver appena completato quel task.
+computer_emotion_recognition
+  Il robot guida il bambino nel riconoscimento di emozioni da foto
+  mostrate su un computer. Usa linguaggio semplice, offre scelte
+  (happy, sad, angry, scared, surprised), da' incoraggiamento.
+
+mood_check_teddy
+  Il robot usa un peluche come intermediario per parlare col bambino
+  dei suoi sentimenti. Domande semplici e non pressanti.
+
+storytelling
+  Il robot legge una breve storia da un libro immaginario.
+  Racconta la storia in piccole parti, coinvolgendo il bambino
+  con domande occasionali.
+
+generic_child_activity
+  Prompt generico che segue la descrizione dell'attivita'
+  fornita dalla terapeuta.
 ```
 
-Ma non viene usato per decidere se fare o non fare storytelling.
+Ogni tipo ha un system prompt specifico e dettagliato definito in `build_child_activity_system_prompt()`.
 
-### Apertura automatica della storia
+### Apertura automatica dell'attivita'
 
 Quando inizia la sessione, il robot non aspetta subito il bambino.
 
-Il nodo HRI manda al LLM:
+Il nodo HRI usa una frase di apertura hardcoded (non generata dal LLM) specifica per ogni `activity_type`:
 
 ```text
-user: [START_STORY]
-```
+computer_emotion_recognition:
+  "Let's look at the pictures on the computer together.
+   What emotion do you see in this picture: happy, sad, angry, or scared?"
 
-Il prompt istruisce il modello a:
+mood_check_teddy:
+  "This teddy bear would like to know how you feel today.
+   Are you happy, sad, tired, calm, or something else?"
 
-```text
-presentarsi;
-iniziare una scena di storia;
-finire con una domanda semplice per il bambino.
+storytelling:
+  "I found a book with many little stories inside.
+   I will choose one and read it with you. Are you ready to begin?"
+
+generic_child_activity:
+  "Let's do this activity together: <activity_description>.
+   Would you like to start?"
 ```
 
 Poi:
 
-1. pubblica la frase su `/hri/robot_utterance`;
-2. la pronuncia via TTS;
-3. entra nel loop interattivo.
+1. aggiunge `[START_ACTIVITY]` e la frase di apertura alla history;
+2. pubblica la frase su `/hri/robot_utterance`;
+3. la pronuncia via TTS;
+4. entra nel loop interattivo.
 
 ### Loop interattivo col bambino
 
@@ -762,7 +897,8 @@ con un payload tipo:
 ```json
 {
   "reason": "max_turns",
-  "turns": 10
+  "turns": 10,
+  "activity_type": "computer_emotion_recognition"
 }
 ```
 
@@ -772,31 +908,13 @@ L'orchestratore aspetta questo messaggio. Quando lo riceve, passa a:
 MISSION_COMPLETE
 ```
 
-### Cosa significa quindi "talk to the guy"
+### Come viene scelta l'attivita' col bambino
 
-Nello stato attuale:
+Nello stato attuale, l'attivita' col bambino non e' derivata autonomamente dal task fisico. E' la terapeuta a specificarla esplicitamente come secondo input vocale.
 
-```text
-"talk to the guy" non e' una primitiva robotica.
-```
+Il testo della terapeuta viene normalizzato in un `activity_type` tramite regole keyword-based nell'orchestratore. Non c'e' un LLM che interpreta il comando; se nessuna keyword matcha, il tipo default e' `generic_child_activity`.
 
-Non viene interpretato da EMPOWER come:
-
-```text
-trova il ragazzo;
-vai dal ragazzo;
-inizia una conversazione generica.
-```
-
-La conversazione con il ragazzo/bambino avviene perche' la missione e' hardcoded per farlo sempre dopo EMPOWER.
-
-Il testo "talk to the guy" puo' influenzare solo il contenuto linguistico generato dal LLM, perche' viene passato dentro:
-
-```text
-context.task
-```
-
-Quindi il robot potrebbe raccontare una storia che richiama il libro, il ragazzo o il task, ma non e' una pianificazione autonoma della conversazione.
+L'attivita' avviene sempre dopo EMPOWER. La missione non decide autonomamente se andare o meno dal bambino.
 
 ## Azioni che il robot puo' fare oggi
 
@@ -813,47 +931,53 @@ Quindi il robot potrebbe raccontare una storia che richiama il libro, il ragazzo
    - solo se il target viene associato a un marker/centroide
    - tramite Nav2 navigate_to_pose
 
-3. Parlare
+3. GRAB (simulato in Gazebo)
+   - elimina l'entita' Gazebo dell'oggetto dalla scena
+   - supporta book, computer, peluche
+   - richiede object_simulation.enabled=true
+
+4. DROP (simulato in Gazebo)
+   - ri-spawna l'entita' Gazebo davanti al robot
+   - usa la posa TF corrente del robot per calcolare dove spawnare
+   - richiede object_simulation.enabled=true
+
+5. Parlare
    - TTS via piper/pyttsx3/system/mock
    - pubblicazione su /hri/robot_utterance
+   - pronuncia di testi hardcoded tramite comando "say"
 
-4. Ascoltare
+6. Ascoltare
    - input testuale
    - push-to-talk
-   - ascolto automatico VAD nello storytelling
+   - ascolto automatico VAD nelle attivita' col bambino
+
+7. Condurre attivita' interattive col bambino
+   - computer_emotion_recognition
+   - mood_check_teddy
+   - storytelling
+   - generic_child_activity
 ```
 
 ### Azioni simboliche ma non fisiche
 
 ```text
-GRAB
-DROP
 PUSH
 PULL
 ```
 
-Sono azioni che possono apparire nel piano EMPOWER, ma il robot non le esegue realmente.
+Sono azioni che possono apparire nel piano EMPOWER, ma il robot non le esegue. GRAB e DROP sono ora simulati in Gazebo (vedi sopra).
 
 ### Azioni non presenti come primitive autonome
 
 ```text
-talk_to_person
 find_person
-give_object_to_person
-ask_question
+give_object_to_person (DROP e' in simulazione, non consegna reale)
 wait_for_confirmation
 bring_object_to_therapist
 choose_next_goal_from_task
 ```
 
-Alcune di queste cose avvengono in forma hardcoded o linguistica, ma non come azioni pianificate.
-
-Per esempio:
-
-```text
-Il robot "parla col bambino" perche' parte lo storytelling.
-Non perche' esista una primitiva talk_to_person nel piano.
-```
+Il robot va dal bambino e avvia un'attivita' perche' la missione e' hardcoded per farlo. Non esiste una primitiva `talk_to_person` o `start_activity` nel piano EMPOWER.
 
 ## Package `gaze_estimation`
 
@@ -898,7 +1022,7 @@ LOOKING_AT_OBJECT: <class_name>
 LOOKING_ELSEWHERE
 ```
 
-Oggi non risulta collegato alla missione completa. Non viene usato per decidere se il bambino guarda il libro o se e' coinvolto nello storytelling.
+Oggi non risulta collegato alla missione completa. Non viene usato per decidere se il bambino guarda un oggetto o se e' coinvolto nell'attivita'.
 
 ## Launch principali
 
@@ -912,7 +1036,7 @@ Avvia:
 
 ```text
 models_cacher_node
-voice_llm_node
+voice_llm_node (con therapist_llm_replies=false, follow_mission_state_for_therapist_input=true)
 mission_orchestrator_node
 ```
 
@@ -985,134 +1109,93 @@ OpenCV
 
 ## Limiti attuali principali
 
-### 1. Missione globale non adattiva
+### 1. Missione globale ancora sequenziale
 
-La missione non viene ricostruita dal task.
+La missione ha ora due input della terapeuta (task + attivita'), ma la struttura rimane hardcoded. Dopo EMPOWER il robot va sempre dal bambino e avvia sempre un'attivita'. Non esiste la possibilita' di saltare fasi o riordinarle in base al contesto.
 
-Qualunque task venga detto, dopo EMPOWER il robot va comunque dal bambino e avvia storytelling.
+### 2. Normalizzazione attivita' a keyword
 
-### 2. Task non normalizzato
+La normalizzazione dell'attivita' in `activity_type` e' basata su keyword hardcoded. Se la terapeuta usa frasi non previste, il tipo sara' `generic_child_activity`. Non c'e' un LLM che interpreta il comando.
 
-Il testo della terapeuta viene passato cosi' com'e':
+### 3. Manipolazione solo simulata
 
-```text
-/hri/user_utterance -> task_description
-```
+GRAB e DROP sono implementati solo come simulazione Gazebo (elimina/ri-spawna entita'). Il robot non usa braccio o gripper fisici. La manipolazione e' visiva nella simulazione ma non corrisponde a un'azione fisica reale.
 
-Non c'e' una fase che trasforma:
+### 4. Oggetti simulati limitati
 
-```text
-"take the book and talk to the guy"
-```
-
-in qualcosa di strutturato tipo:
-
-```json
-{
-  "physical_goal": "take_book",
-  "social_goal": "talk_to_child",
-  "target_person": "child"
-}
-```
-
-### 3. Manipolazione non implementata
-
-Il robot non usa braccio o gripper.
-
-Quindi un task come:
+Solo tre oggetti sono configurati per la simulazione:
 
 ```text
-Take the book from the table
+book, computer, peluche
 ```
 
-oggi puo' portare il robot a navigare vicino al libro/tavolo, ma non a prenderlo davvero.
-
-### 4. Conversazione col bambino hardcoded come storytelling
-
-Il robot non sceglie tra:
-
-```text
-fare domande;
-spiegare il task;
-fare small talk;
-raccontare una storia;
-aspettare una risposta specifica;
-verificare attenzione;
-```
-
-Fa sempre storytelling.
+Aggiungere nuovi oggetti richiede: modificare la config YAML, avere il modello nel file world SDF, e aggiungere il nome alla tupla `SIMULATED_OBJECTS` nel codice.
 
 ### 5. Gaze estimation non integrata
 
 La repo contiene un package per stimare lo sguardo, ma non e' collegato al nodo HRI o alla missione.
 
-### 6. Feedback vocale della missione incompleto
+### 6. Feedback vocale della missione parziale
 
-`mission_orchestrator_node` pubblica `/mission/state` e `/mission/feedback`, ma `voice_llm_node` non li usa per dire vocalmente alla terapeuta cosa sta succedendo.
+L'orchestratore ora puo' inviare testi hardcoded via il comando `say` (usato per gli ACK), ma non c'e' un meccanismo generico per aggiornare vocalmente la terapeuta sullo stato della missione in tempo reale.
 
 ### 7. Dipendenza da modelli esterni
 
 EMPOWER usa GPT-4o via OpenAI. HRI usa Ollama locale. Queste parti richiedono setup corretto e modelli disponibili.
 
-## Cosa sarebbe necessario per supportare comandi diversi
+## Cosa sarebbe necessario per migliorare
 
-Per rendere il robot davvero predisposto a comandi diversi, servirebbe uno strato di interpretazione mission-level prima dell'orchestratore.
+### Missione adattiva
 
-Esempio desiderabile:
-
-```text
-Input terapeuta:
-  "Take the book and talk to the guy"
-
-Parser/LLM mission-level:
-  physical_task: "take the book"
-  social_task: "talk to the guy"
-  target_person: "child"
-  after_physical_task: "start_dialogue"
-
-Orchestratore:
-  esegue physical_task con EMPOWER
-  se social_task presente, va dal target_person
-  sceglie modalita' dialogo coerente
-```
-
-Oppure:
+Per rendere la missione non sequenziale, servirebbe un orchestratore che decida dinamicamente le fasi in base agli input. Per esempio:
 
 ```text
-Input terapeuta:
-  "Take the book from the table"
+Se la terapeuta chiede solo un task fisico senza attivita' col bambino:
+  esegui EMPOWER
+  torna dalla terapeuta
+  non andare dal bambino
 
-Parser:
-  physical_task: "take the book from the table"
-  social_task: null
-
-Orchestratore:
-  esegue EMPOWER
-  non avvia storytelling automaticamente
+Se la terapeuta chiede solo un'attivita' col bambino senza task fisico:
+  vai direttamente dal bambino
+  salta EMPOWER
 ```
 
-Oggi questa distinzione non esiste.
+### Normalizzazione attivita' con LLM
+
+Sostituire le keyword hardcoded con un LLM che interpreti il comando della terapeuta e determini l'`activity_type`, gestendo anche frasi ambigue o non previste.
+
+### Manipolazione fisica
+
+Implementare GRAB e DROP reali tramite MoveIt e il gripper di TIAGo, mantenendo la simulazione Gazebo come fallback per testing.
 
 ## Riassunto operativo
 
 Stato attuale:
 
 ```text
-Il robot puo' navigare.
-Il robot puo' parlare.
-Il robot puo' ascoltare.
-Il robot puo' generare uno storytelling interattivo.
-Il robot puo' generare piani simbolici EMPOWER.
+Il robot puo' navigare (Nav2).
+Il robot puo' afferrare e rilasciare oggetti (simulazione Gazebo: book, computer, peluche).
+Il robot puo' parlare (TTS + testi hardcoded).
+Il robot puo' ascoltare (STT + input testuale).
+Il robot puo' condurre attivita' interattive col bambino:
+  - computer emotion recognition
+  - mood check con peluche
+  - storytelling
+  - attivita' generica
+Il robot puo' generare piani simbolici EMPOWER (via GPT-4o).
+La terapeuta fornisce due input separati: task fisico e attivita' col bambino.
 ```
 
 Ma:
 
 ```text
-Il robot non manipola oggetti.
-Il robot non interpreta davvero task multi-step a livello missione.
-Il robot non decide autonomamente quando parlare col bambino.
-Il robot non usa "talk to the guy" come azione.
-Il robot va sempre dal bambino/ragazzo e racconta sempre una storia dopo EMPOWER.
+La manipolazione e' solo simulata (no braccio/gripper reale).
+La missione e' ancora sequenziale e hardcoded.
+La normalizzazione dell'attivita' e' a keyword, non interpretata da LLM.
+Il robot va sempre dal bambino e avvia sempre un'attivita' dopo EMPOWER.
+Il robot non decide autonomamente se saltare fasi della missione.
+Solo tre oggetti sono configurati per la simulazione.
+PUSH e PULL non sono implementati.
 ```
 
-La repo e' quindi una buona base integrata HRI + EMPOWER + Nav2, ma la parte di autonomia semantica della missione e la manipolazione fisica sono ancora da implementare.
+La repo e' una base integrata HRI + EMPOWER + Nav2 + simulazione manipolazione, con supporto per attivita' diverse col bambino. L'autonomia semantica della missione e la manipolazione fisica reale sono ancora da implementare.
