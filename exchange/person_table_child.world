@@ -338,7 +338,7 @@
 
     <!-- Libro rosso sul tavolo laterale -->
     <model name="clear_red_book_on_right_table">
-      <static>true</static>
+      <static>false</static>
       <pose>2.38 -0.23 0.760 0 0 -0.10</pose>
 
       <link name="link">
@@ -474,7 +474,7 @@
 
     <!-- Computer portatile sul tavolo laterale -->
     <model name="laptop_computer_on_right_table">
-      <static>true</static>
+      <static>false</static>
       <pose>2.48 0.25 0.765 0 0 0.04</pose>
 
       <link name="link">
@@ -652,7 +652,7 @@
 
     <!-- Peluche a forma di orsetto sul tavolo laterale -->
     <model name="teddy_bear_on_right_table">
-      <static>true</static>
+      <static>false</static>
       <pose>2.47 0.75 0.760 0 0 3.14159</pose>
 
       <link name="link">

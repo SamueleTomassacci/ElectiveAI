@@ -51,6 +51,9 @@ class LowLevelExecutionNode(Node):
         self.declare_parameter("continue_on_nav_failure", False)
         self.declare_parameter("object_simulation.enabled", False)
         self.declare_parameter("object_simulation.drop_distance", 0.75)
+        self.declare_parameter("object_simulation.hidden_x", -3.8)
+        self.declare_parameter("object_simulation.hidden_y", 2.4)
+        self.declare_parameter("object_simulation.hidden_z", 0.02)
         self.declare_parameter("object_simulation.world_frame", "world")
         self.declare_parameter("object_simulation.robot_base_frame", "base_footprint")
         self.declare_parameter("object_simulation.gz_command", "gz")
@@ -264,18 +267,12 @@ class LowLevelExecutionNode(Node):
 
         object_info = self.object_mapping[normalized]
         gazebo_entity = object_info["gazebo_entity"]
-        sdf_xml = self.object_sdf_xml.get(gazebo_entity)
         self.get_logger().info(f"GRAB {normalized}: resolved Gazebo entity '{gazebo_entity}'")
-        if not sdf_xml:
-            self.get_logger().error(
-                f"Cannot GRAB {normalized}: no cached SDF XML for '{gazebo_entity}'"
-            )
-            return False
-        if not self._delete_with_gz_cli(gazebo_entity):
+        if not self._hide_with_gz_cli(gazebo_entity):
             return False
 
-        self.held_object = {**object_info, "sdf_xml": sdf_xml}
-        self.get_logger().info(f"GRAB {normalized} -> deleted Gazebo entity {gazebo_entity}")
+        self.held_object = {**object_info}
+        self.get_logger().info(f"GRAB {normalized} -> hid Gazebo entity {gazebo_entity}")
         self.get_logger().info(
             f"Current held object: {self.held_object['symbolic_name']} "
             f"({self.held_object['gazebo_entity']})"
@@ -310,13 +307,13 @@ class LowLevelExecutionNode(Node):
         if drop_pose is None:
             return False
 
-        if not self._spawn_with_gz_cli(self.held_object, drop_pose):
+        if not self._set_entity_pose(self.held_object["gazebo_entity"], drop_pose):
             return False
 
         dropped = self.held_object
         self.held_object = None
         self.get_logger().info(
-            f"DROP {normalized} -> spawned {dropped['gazebo_entity']} in front of robot"
+            f"DROP {normalized} -> moved {dropped['gazebo_entity']} in front of robot"
         )
         self.get_logger().info("Current held object: none")
         return True
@@ -383,15 +380,62 @@ class LowLevelExecutionNode(Node):
         self.get_logger().info(f"Deleting Gazebo model '{gazebo_entity}'")
         return self._run_gz_command(command, "DeleteEntity")
 
+    def _hide_with_gz_cli(self, gazebo_entity):
+        pose = Pose()
+        pose.position.x = float(self.get_parameter("object_simulation.hidden_x").value)
+        pose.position.y = float(self.get_parameter("object_simulation.hidden_y").value)
+        pose.position.z = float(self.get_parameter("object_simulation.hidden_z").value)
+        pose.orientation = self._quaternion_from_yaw(0.0)
+        self.get_logger().info(
+            f"Hiding Gazebo model '{gazebo_entity}' at "
+            f"x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}"
+        )
+        return self._move_with_gz_cli(gazebo_entity, pose, label="HideEntity")
+
+    def _set_entity_pose(self, gazebo_entity, pose, label="MoveEntity"):
+        return self._move_with_gz_cli(gazebo_entity, pose, label=label)
+
+    def _move_with_gz_cli(self, gazebo_entity, pose, label="MoveEntity"):
+        yaw = self._yaw_from_quaternion(pose.orientation)
+        command = self._gz_model_base_command()
+        command.extend(
+            [
+                "-m",
+                gazebo_entity,
+                "-x",
+                f"{pose.position.x:.6f}",
+                "-y",
+                f"{pose.position.y:.6f}",
+                "-z",
+                f"{pose.position.z:.6f}",
+                "-R",
+                "0.000000",
+                "-P",
+                "0.000000",
+                "-Y",
+                f"{yaw:.6f}",
+            ]
+        )
+        self.get_logger().info(
+            f"Moving Gazebo model '{gazebo_entity}' to "
+            f"x={pose.position.x:.3f}, y={pose.position.y:.3f}, "
+            f"z={pose.position.z:.3f}, yaw={yaw:.3f}"
+        )
+        return self._run_gz_command(command, label)
+
     def _spawn_with_gz_cli(self, held_object, drop_pose):
         yaw = self._yaw_from_quaternion(drop_pose.orientation)
         spawn_sdf_xml = self._sdf_xml_with_model_pose(
             held_object["sdf_xml"],
-            drop_pose.position.x,
-            drop_pose.position.y,
-            drop_pose.position.z,
-            yaw,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
         )
+        # Fallback for setups without gazebo_ros factory services. Gazebo
+        # classic's `gz model -f` accepts the spawn pose as CLI arguments, but
+        # some worlds/plugins can ignore that factory pose for SDF snippets
+        # copied from the world file.
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(
@@ -411,9 +455,21 @@ class LowLevelExecutionNode(Node):
                     held_object["gazebo_entity"],
                     "-f",
                     temp_path,
+                    "-x",
+                    f"{drop_pose.position.x:.6f}",
+                    "-y",
+                    f"{drop_pose.position.y:.6f}",
+                    "-z",
+                    f"{drop_pose.position.z:.6f}",
+                    "-Y",
+                    f"{yaw:.6f}",
                 ]
             )
-            self.get_logger().info(f"Spawning Gazebo model '{held_object['gazebo_entity']}'")
+            self.get_logger().info(
+                f"Spawning Gazebo model '{held_object['gazebo_entity']}' at "
+                f"x={drop_pose.position.x:.3f}, y={drop_pose.position.y:.3f}, "
+                f"z={drop_pose.position.z:.3f}, yaw={yaw:.3f}"
+            )
             return self._run_gz_command(command, "SpawnEntity")
         finally:
             if temp_path and os.path.exists(temp_path):

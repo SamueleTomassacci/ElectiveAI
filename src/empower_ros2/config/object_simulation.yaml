@@ -3,6 +3,9 @@
     object_simulation:
       enabled: true
       drop_distance: 0.75
+      hidden_x: 0.0
+      hidden_y: 0.0
+      hidden_z: -10.0
       world_frame: world
       robot_base_frame: base_footprint
       gz_command: gz
