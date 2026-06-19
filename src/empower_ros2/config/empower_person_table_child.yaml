@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     use_case: person_table_child_task
-    task_description: "Take the book from the table"
+    task_description: "Take the book, go to the child and drop the book"
     output_root: /root/exchange/empower_data
     rgb_topic: /head_front_camera/rgb/image_raw
     depth_topic: /head_front_camera/depth/image_raw
@@ -24,9 +24,36 @@
     nav_result_timeout_sec: 300.0
     standoff_distance: 1.0
     continue_on_nav_failure: false
+    child_context:
+      enabled: true
+      planner_description: >
+        The child is present in the room but is not visible in the RGB image.
+        The child is a known non-visual target.
+        The child is a valid navigation target and a valid drop destination.
+        If the task asks to bring an object to the child, the plan must include
+        NAVIGATE to the child before dropping the object.
+      aliases: ["child", "the child", "kid"]
+    child_navigation:
+      enabled: true
+      frame_id: map
+      x: 0.0
+      y: 0.95
+      yaw: 1.5708
+      aliases: ["child", "the child", "kid"]
+    person_navigation:
+      enabled: true
+      frame_id: map
+      x: 0.0
+      y: 0.0
+      yaw: -1.5708
+      aliases: ["person", "the person", "adult", "the adult", "standing person", "adult person"]
     object_simulation:
       enabled: true
       drop_distance: 0.75
+      child_delivery_table_drop_x: 0.0
+      child_delivery_table_drop_y: 1.65
+      child_delivery_table_drop_z: 1.30
+      child_delivery_table_drop_yaw: 1.5708
       hidden_x: 0.0
       hidden_y: 0.0
       hidden_z: -10.0
@@ -38,11 +65,14 @@
       world_sdf_path: /root/exchange/exchange/person_table_child.world
       objects:
         book:
+          aliases: ["book"]
           gazebo_entity: clear_red_book_on_right_table
           drop_z: 0.02
         computer:
+          aliases: ["computer", "laptop", "laptop computer"]
           gazebo_entity: laptop_computer_on_right_table
-          drop_z: 0.02
+          drop_z: 0.12
         peluche:
+          aliases: ["peluche", "teddy bear", "plush toy", "stuffed animal"]
           gazebo_entity: teddy_bear_on_right_table
           drop_z: 0.04

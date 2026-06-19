@@ -21,6 +21,8 @@ class EmpowerRos2Loader:
         decoder_path=None,
         spacy_model="en_core_web_sm",
         word2vec_model="word2vec-google-news-300",
+        child_planner_context="",
+        child_aliases=None,
     ):
         self._use_case = use_case
         self._CONFIG = os.path.abspath(config_dir) + "/"
@@ -35,6 +37,8 @@ class EmpowerRos2Loader:
         )
         self._SCAN_DIR = os.path.join(self._IMAGES, use_case) + "/"
         self._DUMP_DIR = os.path.join(self._OUTPUT, use_case) + "/"
+        self._child_planner_context = child_planner_context or ""
+        self._child_aliases = list(child_aliases or ["child", "the child", "kid"])
 
         os.makedirs(self._SCAN_DIR, exist_ok=True)
         os.makedirs(self._DUMP_DIR, exist_ok=True)
@@ -104,3 +108,11 @@ class EmpowerRos2Loader:
     @property
     def use_case(self):
         return self._use_case
+
+    @property
+    def child_planner_context(self):
+        return self._child_planner_context
+
+    @property
+    def child_aliases(self):
+        return self._child_aliases

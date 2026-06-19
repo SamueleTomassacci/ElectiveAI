@@ -11,8 +11,21 @@ RELATIONS = [
     "beside to",
     "into",
     "near",
+    "at",
     "on",
 ]
+
+
+CHILD_ALIASES = {"child", "the child", "kid"}
+
+
+def normalize_child_alias(value):
+    normalized = str(value).lower().strip()
+    normalized = re.sub(r"[^a-z0-9 ]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if normalized in CHILD_ALIASES:
+        return "child"
+    return value.strip() if isinstance(value, str) else value
 
 
 def parse_symbolic_plan(plan_text):
@@ -31,7 +44,8 @@ def parse_symbolic_plan(plan_text):
         payload = " ".join(tokens[1:]).strip()
         item = {"step": len(steps) + 1, "action": action, "description": line}
         if action == "NAVIGATE":
-            item["target"] = re.sub(r"^to\s+", "", payload, flags=re.IGNORECASE).strip()
+            target = re.sub(r"^to\s+", "", payload, flags=re.IGNORECASE).strip()
+            item["target"] = normalize_child_alias(target)
         elif action in {"GRAB", "PULL", "PUSH"}:
             item["target"] = payload
         elif action == "DROP":
@@ -42,7 +56,7 @@ def parse_symbolic_plan(plan_text):
                     before, after = payload.split(relation, 1)
                     target = before.strip()
                     item["spatial_relation"] = relation
-                    item["reference"] = after.strip()
+                    item["reference"] = normalize_child_alias(after.strip())
                     break
             item["target"] = target
         steps.append(item)

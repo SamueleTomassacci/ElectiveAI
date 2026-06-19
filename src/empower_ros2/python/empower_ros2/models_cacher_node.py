@@ -29,6 +29,9 @@ class ModelsCacherNode(Node):
         self.declare_parameter("server_host", "127.0.0.1")
         self.declare_parameter("server_port", 10000)
         self.declare_parameter("openai_api_key_file", "/root/exchange/openai_api_key.txt")
+        self.declare_parameter("child_context.enabled", False)
+        self.declare_parameter("child_context.planner_description", "")
+        self.declare_parameter("child_context.aliases", ["child", "the child", "kid"])
 
         package_share = get_package_share_directory("empower_ros2")
         config_dir = (
@@ -51,10 +54,28 @@ class ModelsCacherNode(Node):
             decoder_path=self.get_parameter("decoder_path").value or None,
             spacy_model=self.get_parameter("spacy_model").value,
             word2vec_model=self.get_parameter("word2vec_model").value,
+            child_planner_context=self._child_planner_context(),
+            child_aliases=list(self.get_parameter("child_context.aliases").value),
         )
+        if self.loader.child_planner_context:
+            self.get_logger().info("Child planner context is enabled for EMPOWER planning")
         self.server_thread = threading.Thread(target=self._serve, daemon=True)
         self.server_thread.start()
         self.get_logger().info("Model cacher ready")
+
+    def _child_planner_context(self):
+        if not bool(self.get_parameter("child_context.enabled").value):
+            return ""
+        description = str(self.get_parameter("child_context.planner_description").value).strip()
+        aliases = [
+            str(alias).strip()
+            for alias in self.get_parameter("child_context.aliases").value
+            if str(alias).strip()
+        ]
+        alias_text = ", ".join(aliases)
+        if alias_text:
+            description = f"{description}\nChild aliases: {alias_text}".strip()
+        return description
 
     def _load_openai_api_key(self):
         if os.environ.get("OPENAI_API_KEY"):

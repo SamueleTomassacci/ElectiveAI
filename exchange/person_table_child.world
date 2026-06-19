@@ -1,67 +1,34 @@
 <?xml version="1.0" ?>
 <sdf version="1.6">
   <world name="person_table_child_room">
-
     <physics name="default_physics" type="ode">
       <max_step_size>0.001</max_step_size>
       <real_time_factor>1.0</real_time_factor>
       <real_time_update_rate>1000</real_time_update_rate>
     </physics>
-
     <scene>
       <ambient>0.72 0.72 0.70 1</ambient>
       <background>0.78 0.82 0.86 1</background>
       <shadows>true</shadows>
     </scene>
-
     <include>
       <uri>model://sun</uri>
     </include>
-
-    <!--
-      CONFIGURAZIONE FINALE:
-
-      Adulto  davanti a TIAGo:       x = 0.00, y = -2.15
-      TIAGo   al centro:             x = 0.00, y =  0.00
-      Bambino dietro TIAGo:          x = 0.00, y = +2.15
-      Tavolo con oggetti sul lato +X: x = 2.40, y =  0.25
-
-      Le persone sono allineate lungo l'asse Y, non lungo X.
-      Il tavolo non e' vicino al bambino: occupa uno dei lati liberi
-      della stanza, di fianco a TIAGo.
-
-      IMPORTANTE:
-      Questo world NON spawna TIAGo.
-      Per catturare tavolo e libro con la camera frontale, usa TIAGo con:
-
-      x = 0
-      y = 0
-      z = 0
-      yaw = 0
-
-      Esempio:
-      rosrun gazebo_ros spawn_model ... -x 0 -y 0 -z 0 -Y 0
-
-      Con yaw = 0 TIAGo guarda verso +X, quindi verso il tavolo laterale.
-      Le persone rimangono ai lati -Y e +Y del robot.
-    -->
-
     <model name="person_table_child_room_shell">
       <static>true</static>
-
       <link name="floor">
-        <pose>0 0 -0.025 0 0 0</pose>
+        <pose>0 -0.3 -0.025 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>8.4 5.6 0.05</size>
+              <size>9.2 7.0 0.05</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>8.4 5.6 0.05</size>
+              <size>9.2 7.0 0.05</size>
             </box>
           </geometry>
           <material>
@@ -70,20 +37,19 @@
           </material>
         </visual>
       </link>
-
       <link name="north_wall">
-        <pose>0 2.8 0.45 0 0 0</pose>
+        <pose>0 3.2 0.45 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>8.4 0.12 0.9</size>
+              <size>9.2 0.12 0.9</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>8.4 0.12 0.9</size>
+              <size>9.2 0.12 0.9</size>
             </box>
           </geometry>
           <material>
@@ -92,20 +58,19 @@
           </material>
         </visual>
       </link>
-
       <link name="south_wall">
-        <pose>0 -2.8 0.45 0 0 0</pose>
+        <pose>0 -3.8 0.45 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>8.4 0.12 0.9</size>
+              <size>9.2 0.12 0.9</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>8.4 0.12 0.9</size>
+              <size>9.2 0.12 0.9</size>
             </box>
           </geometry>
           <material>
@@ -114,20 +79,19 @@
           </material>
         </visual>
       </link>
-
       <link name="east_wall">
-        <pose>4.2 0 0.45 0 0 0</pose>
+        <pose>4.6 -0.3 0.45 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 5.6 0.9</size>
+              <size>0.12 7.0 0.9</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 5.6 0.9</size>
+              <size>0.12 7.0 0.9</size>
             </box>
           </geometry>
           <material>
@@ -136,20 +100,19 @@
           </material>
         </visual>
       </link>
-
       <link name="west_wall">
-        <pose>-4.2 0 0.45 0 0 0</pose>
+        <pose>-4.6 -0.3 0.45 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 5.6 0.9</size>
+              <size>0.12 7.0 0.9</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 5.6 0.9</size>
+              <size>0.12 7.0 0.9</size>
             </box>
           </geometry>
           <material>
@@ -159,18 +122,9 @@
         </visual>
       </link>
     </model>
-
-    <!--
-      ADULTO
-
-      L'adulto è davanti a TIAGo, sul lato -Y.
-      Mantiene l'orientamento della mesh con yaw = 3.14159.
-      In questa posizione guarda verso il centro, quindi verso TIAGo.
-    -->
     <model name="adult_person_in_front_of_tiago">
       <static>true</static>
-      <pose>0.00 -2.15 0 0 0 3.14159</pose>
-
+      <pose>0.00 -2.75 0 0 0 3.14159</pose>
       <link name="link">
         <visual name="visual">
           <pose>0 0 0.02 0.04 0 0</pose>
@@ -180,7 +134,6 @@
             </mesh>
           </geometry>
         </visual>
-
         <collision name="bottom">
           <pose>0 -0.1 0.01 0 0 0</pose>
           <geometry>
@@ -189,7 +142,6 @@
             </box>
           </geometry>
         </collision>
-
         <collision name="body">
           <pose>0 -0.05 0.85 0 0 0</pose>
           <geometry>
@@ -201,146 +153,303 @@
         </collision>
       </link>
     </model>
-
-    <!--
-      BAMBINO
-
-      Il bambino è dietro TIAGo, sul lato +Y.
-      Mantiene l'orientamento della mesh con yaw = 0.
-      In questa posizione guarda verso il centro, quindi verso TIAGo.
-    -->
-    <model name="child_straight_ahead_after_turn">
+    <model name="adult_desk_in_front_of_person">
       <static>true</static>
-      <pose>0.00 2.15 0 0 0 0</pose>
-
-      <link name="link">
-        <visual name="scaled_person_visual">
-          <pose>0 0 0.02 0.04 0 0</pose>
+      <pose>0.00 -2.01 0 0 0 -1.5708</pose>
+      <link name="body">
+        <visual name="visual">
           <geometry>
             <mesh>
-              <uri>file:///root/exchange/exchange/models/person_standing/meshes/standing.dae</uri>
-              <scale>0.64 0.64 0.64</scale>
+              <uri>file:///root/exchange/exchange/models/Desk/meshes/desk.obj</uri>
+              <scale>1.35 1.35 1.35</scale>
             </mesh>
           </geometry>
         </visual>
-
-        <collision name="bottom">
-          <pose>0 -0.06 0.01 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>file:///root/exchange/exchange/models/Desk/meshes/desk.obj</uri>
+              <scale>1.35 1.35 1.35</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="child_straight_ahead_after_turn">
+      <static>true</static>
+      <pose>0.00 2.55 0 0 0 0</pose>
+      <link name="link">
+        <visual name="scaled_person_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>file:///root/exchange/exchange/models/VisitorKidSit/meshes/VisitorKidSit.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <collision name="seat_contact">
+          <pose>0 0 0.35 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.34 0.25 0.02</size>
+              <size>0.55 0.45 0.10</size>
             </box>
           </geometry>
         </collision>
-
         <collision name="body">
-          <pose>0 -0.03 0.55 0 0 0</pose>
+          <pose>0 0 0.72 0 0 0</pose>
           <geometry>
             <cylinder>
-              <radius>0.20</radius>
-              <length>1.10</length>
+              <radius>0.25</radius>
+              <length>0.70</length>
             </cylinder>
           </geometry>
         </collision>
       </link>
     </model>
-
-    <!--
-      TAVOLO LATERALE
-
-      Il tavolo con il libro e' sul lato +X rispetto a TIAGo, che parte
-      al centro della stanza. Rimane lontano dal bambino sul lato +Y.
-    -->
-    <model name="right_table_after_turn">
+    <model name="child_chair_behind_delivery_table">
       <static>true</static>
-      <pose>2.40 0.25 0 0 0 0</pose>
-
-      <link name="top">
-        <pose>0 0 0.72 0 0 0</pose>
-
+      <pose>0.00 2.58 0 0 0 0</pose>
+      <link name="body">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>file:///root/exchange/exchange/models/Chair/meshes/Chair.obj</uri>
+              <scale>0.00817 0.00817 0.00817</scale>
+            </mesh>
+          </geometry>
+        </visual>
         <collision name="collision">
           <geometry>
+            <mesh>
+              <uri>file:///root/exchange/exchange/models/Chair/meshes/Chair.obj</uri>
+              <scale>0.00817 0.00817 0.00817</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="adult_chair_behind_person">
+      <static>true</static>
+      <pose>0.00 -3.00 0 0 0 3.14159</pose>
+      <link name="body">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>file:///root/exchange/exchange/models/Chair/meshes/Chair.obj</uri>
+              <scale>0.00817 0.00817 0.00817</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>file:///root/exchange/exchange/models/Chair/meshes/Chair.obj</uri>
+              <scale>0.00817 0.00817 0.00817</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="child_delivery_table">
+      <static>true</static>
+      <pose>0.00 1.65 0 0 0 0</pose>
+      <link name="body">
+        <visual name="coffee_table_visual">
+          <geometry>
+            <mesh>
+              <uri>file:///root/exchange/exchange/models/CoffeeTable/meshes/CoffeeTable.obj</uri>
+              <scale>0.00817 0.00817 0.01269147</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <collision name="tabletop_collision">
+          <pose>0 0 0.55 0 0 0</pose>
+          <geometry>
             <box>
-              <size>0.95 1.50 0.08</size>
+              <size>0.70 0.45 0.06</size>
             </box>
           </geometry>
         </collision>
-
-        <visual name="visual">
+        <collision name="front_left_leg_collision">
+          <pose>0.28 0.16 0.265 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.95 1.50 0.08</size>
+              <size>0.055 0.055 0.53</size>
             </box>
           </geometry>
-          <material>
-            <ambient>0.43 0.27 0.13 1</ambient>
-            <diffuse>0.53 0.33 0.16 1</diffuse>
-          </material>
-        </visual>
+        </collision>
+        <collision name="front_right_leg_collision">
+          <pose>0.28 -0.16 0.265 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.055 0.055 0.53</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name="back_left_leg_collision">
+          <pose>-0.28 0.16 0.265 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.055 0.055 0.53</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name="back_right_leg_collision">
+          <pose>-0.28 -0.16 0.265 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.055 0.055 0.53</size>
+            </box>
+          </geometry>
+        </collision>
       </link>
-
-      <link name="legs">
-        <pose>0 0 0.35 0 0 0</pose>
-
-        <visual name="front_left">
-          <pose>0.40 0.64 0 0 0 0</pose>
+    </model>
+    <model name="right_table_after_turn">
+      <static>true</static>
+      <pose>2.40 0.25 0 0 0 0</pose>
+      <link name="link">
+        <collision name="surface">
+          <pose>0 0 0.745 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.07 0.07 0.70</size>
+              <size>0.8 1.5 0.03</size>
+            </box>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>0.6</mu>
+                <mu2>0.6</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+        <visual name="surface">
+          <pose>0 0 0.745 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.8 1.5 0.03</size>
             </box>
           </geometry>
           <material>
-            <ambient>0.35 0.20 0.10 1</ambient>
-            <diffuse>0.42 0.25 0.12 1</diffuse>
+            <diffuse>1.0 1.0 1.0 1</diffuse>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Wood</name>
+            </script>
+            <pbr>
+              <metal>
+                <albedo_map>model://Table/Table_Diffuse.jpg</albedo_map>
+              </metal>
+            </pbr>
           </material>
         </visual>
-
-        <visual name="front_right">
-          <pose>0.40 -0.64 0 0 0 0</pose>
+        <collision name="front_left_leg">
+          <pose>0.36 0.68 0.365 0 0 0</pose>
           <geometry>
-            <box>
-              <size>0.07 0.07 0.70</size>
-            </box>
+            <cylinder>
+              <radius>0.02</radius>
+              <length>0.73</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="front_left_leg">
+          <pose>0.36 0.68 0.365 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.02</radius>
+              <length>0.73</length>
+            </cylinder>
           </geometry>
           <material>
-            <ambient>0.35 0.20 0.10 1</ambient>
-            <diffuse>0.42 0.25 0.12 1</diffuse>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Grey</name>
+            </script>
           </material>
         </visual>
-
-        <visual name="back_left">
-          <pose>-0.40 0.64 0 0 0 0</pose>
+        <collision name="front_right_leg">
+          <pose>0.36 -0.68 0.365 0 0 0</pose>
           <geometry>
-            <box>
-              <size>0.07 0.07 0.70</size>
-            </box>
+            <cylinder>
+              <radius>0.02</radius>
+              <length>0.73</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="front_right_leg">
+          <pose>0.36 -0.68 0.365 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.02</radius>
+              <length>0.73</length>
+            </cylinder>
           </geometry>
           <material>
-            <ambient>0.35 0.20 0.10 1</ambient>
-            <diffuse>0.42 0.25 0.12 1</diffuse>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Grey</name>
+            </script>
           </material>
         </visual>
-
-        <visual name="back_right">
-          <pose>-0.40 -0.64 0 0 0 0</pose>
+        <collision name="back_right_leg">
+          <pose>-0.36 -0.68 0.365 0 0 0</pose>
           <geometry>
-            <box>
-              <size>0.07 0.07 0.70</size>
-            </box>
+            <cylinder>
+              <radius>0.02</radius>
+              <length>0.73</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="back_right_leg">
+          <pose>-0.36 -0.68 0.365 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.02</radius>
+              <length>0.73</length>
+            </cylinder>
           </geometry>
           <material>
-            <ambient>0.35 0.20 0.10 1</ambient>
-            <diffuse>0.42 0.25 0.12 1</diffuse>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Grey</name>
+            </script>
+          </material>
+        </visual>
+        <collision name="back_left_leg">
+          <pose>-0.36 0.68 0.365 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.02</radius>
+              <length>0.73</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="back_left_leg">
+          <pose>-0.36 0.68 0.365 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.02</radius>
+              <length>0.73</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Grey</name>
+            </script>
           </material>
         </visual>
       </link>
     </model>
-
-    <!-- Libro rosso sul tavolo laterale -->
     <model name="clear_red_book_on_right_table">
       <static>false</static>
       <pose>2.38 -0.23 0.760 0 0 -0.10</pose>
-
       <link name="link">
         <collision name="collision">
           <pose>0 0 0.040 0 0 0</pose>
@@ -350,7 +459,6 @@
             </box>
           </geometry>
         </collision>
-
         <visual name="page_block">
           <pose>0.018 0.008 0.040 0 0 0</pose>
           <geometry>
@@ -363,7 +471,6 @@
             <diffuse>0.98 0.94 0.80 1</diffuse>
           </material>
         </visual>
-
         <visual name="hard_cover_bottom">
           <pose>0 0 0.009 0 0 0</pose>
           <geometry>
@@ -376,7 +483,6 @@
             <diffuse>0.58 0.03 0.04 1</diffuse>
           </material>
         </visual>
-
         <visual name="hard_cover_top">
           <pose>0 0 0.081 0 0 0</pose>
           <geometry>
@@ -389,7 +495,6 @@
             <diffuse>0.86 0.04 0.05 1</diffuse>
           </material>
         </visual>
-
         <visual name="rounded_spine">
           <pose>-0.195 0 0.045 1.5708 0 0</pose>
           <geometry>
@@ -403,7 +508,6 @@
             <diffuse>0.42 0.02 0.03 1</diffuse>
           </material>
         </visual>
-
         <visual name="front_page_edges">
           <pose>0.020 -0.123 0.047 0 0 0</pose>
           <geometry>
@@ -416,7 +520,6 @@
             <diffuse>0.94 0.90 0.74 1</diffuse>
           </material>
         </visual>
-
         <visual name="side_page_edges">
           <pose>0.197 0.008 0.047 0 0 0</pose>
           <geometry>
@@ -429,54 +532,11 @@
             <diffuse>0.94 0.90 0.74 1</diffuse>
           </material>
         </visual>
-
-        <visual name="gold_title_plate">
-          <pose>0.040 0.026 0.093 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.16 0.060 0.008</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.95 0.70 0.12 1</ambient>
-            <diffuse>1.00 0.78 0.16 1</diffuse>
-          </material>
-        </visual>
-
-        <visual name="gold_spine_line_upper">
-          <pose>-0.173 0.080 0.094 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.014 0.085 0.009</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.95 0.70 0.12 1</ambient>
-            <diffuse>1.00 0.78 0.16 1</diffuse>
-          </material>
-        </visual>
-
-        <visual name="gold_spine_line_lower">
-          <pose>-0.173 -0.080 0.094 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.014 0.085 0.009</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.95 0.70 0.12 1</ambient>
-            <diffuse>1.00 0.78 0.16 1</diffuse>
-          </material>
-        </visual>
-
       </link>
     </model>
-
-    <!-- Computer portatile sul tavolo laterale -->
     <model name="laptop_computer_on_right_table">
       <static>false</static>
       <pose>2.48 0.25 0.765 0 0 0.04</pose>
-
       <link name="link">
         <collision name="collision">
           <pose>0 0 0.030 0 0 0</pose>
@@ -486,7 +546,6 @@
             </box>
           </geometry>
         </collision>
-
         <visual name="base">
           <pose>0 0 0.018 0 0 0</pose>
           <geometry>
@@ -499,7 +558,6 @@
             <diffuse>0.30 0.31 0.33 1</diffuse>
           </material>
         </visual>
-
         <visual name="keyboard_deck">
           <pose>-0.040 0 0.041 0 0 0</pose>
           <geometry>
@@ -512,46 +570,6 @@
             <diffuse>0.06 0.065 0.070 1</diffuse>
           </material>
         </visual>
-
-        <visual name="keyboard_row_upper">
-          <pose>-0.035 0.070 0.048 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.210 0.020 0.006</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.16 0.17 0.18 1</ambient>
-            <diffuse>0.22 0.23 0.24 1</diffuse>
-          </material>
-        </visual>
-
-        <visual name="keyboard_row_middle">
-          <pose>-0.035 0.025 0.048 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.230 0.020 0.006</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.16 0.17 0.18 1</ambient>
-            <diffuse>0.22 0.23 0.24 1</diffuse>
-          </material>
-        </visual>
-
-        <visual name="keyboard_row_lower">
-          <pose>-0.035 -0.020 0.048 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.200 0.020 0.006</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.16 0.17 0.18 1</ambient>
-            <diffuse>0.22 0.23 0.24 1</diffuse>
-          </material>
-        </visual>
-
         <visual name="trackpad">
           <pose>-0.150 0 0.047 0 0 0</pose>
           <geometry>
@@ -564,7 +582,6 @@
             <diffuse>0.52 0.53 0.56 1</diffuse>
           </material>
         </visual>
-
         <visual name="screen_back">
           <pose>0.185 0 0.190 0 0 0</pose>
           <geometry>
@@ -577,7 +594,6 @@
             <diffuse>0.13 0.14 0.16 1</diffuse>
           </material>
         </visual>
-
         <visual name="screen_display">
           <pose>0.168 0 0.190 0 0 0</pose>
           <geometry>
@@ -591,7 +607,6 @@
             <emissive>0.02 0.08 0.16 1</emissive>
           </material>
         </visual>
-
         <visual name="emotion_photo_panel">
           <pose>0.164 0 0.192 0 0 0</pose>
           <geometry>
@@ -605,7 +620,6 @@
             <emissive>0.04 0.03 0.02 1</emissive>
           </material>
         </visual>
-
         <visual name="webcam">
           <pose>0.162 0 0.320 0 1.5708 0</pose>
           <geometry>
@@ -619,7 +633,6 @@
             <diffuse>0.00 0.00 0.00 1</diffuse>
           </material>
         </visual>
-
         <visual name="left_hinge">
           <pose>0.155 0.145 0.065 0 1.5708 0</pose>
           <geometry>
@@ -633,7 +646,6 @@
             <diffuse>0.18 0.18 0.19 1</diffuse>
           </material>
         </visual>
-
         <visual name="right_hinge">
           <pose>0.155 -0.145 0.065 0 1.5708 0</pose>
           <geometry>
@@ -649,12 +661,9 @@
         </visual>
       </link>
     </model>
-
-    <!-- Peluche a forma di orsetto sul tavolo laterale -->
     <model name="teddy_bear_on_right_table">
       <static>false</static>
       <pose>2.47 0.75 0.760 0 0 3.14159</pose>
-
       <link name="link">
         <collision name="collision">
           <pose>0 0 0.175 0 0 0</pose>
@@ -664,7 +673,6 @@
             </sphere>
           </geometry>
         </collision>
-
         <visual name="body">
           <pose>0 0 0.140 0 0 0</pose>
           <geometry>
@@ -677,7 +685,6 @@
             <diffuse>0.72 0.45 0.24 1</diffuse>
           </material>
         </visual>
-
         <visual name="belly">
           <pose>-0.012 -0.020 0.125 0 0 0</pose>
           <geometry>
@@ -690,7 +697,6 @@
             <diffuse>0.96 0.76 0.48 1</diffuse>
           </material>
         </visual>
-
         <visual name="head">
           <pose>0 0 0.315 0 0 0</pose>
           <geometry>
@@ -703,7 +709,6 @@
             <diffuse>0.72 0.45 0.24 1</diffuse>
           </material>
         </visual>
-
         <visual name="left_ear">
           <pose>0 0.070 0.395 0 0 0</pose>
           <geometry>
@@ -716,7 +721,6 @@
             <diffuse>0.66 0.39 0.20 1</diffuse>
           </material>
         </visual>
-
         <visual name="right_ear">
           <pose>0 -0.070 0.395 0 0 0</pose>
           <geometry>
@@ -729,7 +733,6 @@
             <diffuse>0.66 0.39 0.20 1</diffuse>
           </material>
         </visual>
-
         <visual name="muzzle">
           <pose>0.070 0 0.292 0 0 0</pose>
           <geometry>
@@ -742,7 +745,6 @@
             <diffuse>1.00 0.80 0.52 1</diffuse>
           </material>
         </visual>
-
         <visual name="nose">
           <pose>0.105 0 0.305 0 1.5708 0</pose>
           <geometry>
@@ -756,7 +758,6 @@
             <diffuse>0.02 0.02 0.018 1</diffuse>
           </material>
         </visual>
-
         <visual name="left_arm">
           <pose>0.015 0.115 0.155 0.35 0 0</pose>
           <geometry>
@@ -769,7 +770,6 @@
             <diffuse>0.72 0.45 0.24 1</diffuse>
           </material>
         </visual>
-
         <visual name="right_arm">
           <pose>0.015 -0.115 0.155 -0.35 0 0</pose>
           <geometry>
@@ -782,7 +782,6 @@
             <diffuse>0.72 0.45 0.24 1</diffuse>
           </material>
         </visual>
-
         <visual name="left_foot">
           <pose>0.070 0.075 0.035 0 0 0</pose>
           <geometry>
@@ -795,7 +794,6 @@
             <diffuse>0.66 0.39 0.20 1</diffuse>
           </material>
         </visual>
-
         <visual name="right_foot">
           <pose>0.070 -0.075 0.035 0 0 0</pose>
           <geometry>
@@ -810,6 +808,5 @@
         </visual>
       </link>
     </model>
-
   </world>
 </sdf>

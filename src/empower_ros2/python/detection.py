@@ -6,6 +6,7 @@ import numpy as np
 import base64
 import math
 import os
+import re
 from agents import Agents
 
 class Detection:
@@ -33,7 +34,14 @@ class Detection:
         with open(image_path, "rb") as im_file:
             encoded_image = base64.b64encode(im_file.read()).decode("utf-8")
 
-        agents = Agents(encoded_image, self.task_dict[use_case])
+        child_context = getattr(self.loader_instance, "child_planner_context", "")
+        if child_context:
+            print("Passing non-visual child context to the EMPOWER planning agent")
+        agents = Agents(
+            encoded_image,
+            self.task_dict[use_case],
+            child_context=child_context,
+        )
         # self.single_agent_info = agents.single_agent() 
 
         environment_agent_info, description_agent_info, planning_agent_info = agents.multi_agent_vision_planning()
@@ -118,14 +126,63 @@ class Detection:
                 list_objects += ","
         return list_objects[:-1]
 
+    def _child_aliases(self):
+        return getattr(self.loader_instance, "child_aliases", ["child", "the child", "kid"])
+
+    def _normalize_child_label(self, label):
+        label = str(label).lower().strip()
+        label = re.sub(r"[^a-z0-9 ]+", " ", label)
+        label = re.sub(r"\s+", " ", label).strip()
+        return re.sub(r"^the\s+", "", label)
+
+    def _is_child_label(self, label):
+        normalized = self._normalize_child_label(label)
+        return normalized in {
+            self._normalize_child_label(alias)
+            for alias in self._child_aliases()
+        }
+
+    def _relation_parts(self, relation):
+        relation = re.sub(r"^\s*\d+[\).:-]\s*", "", relation.strip())
+        match = re.match(r"^\((.*?),\s*(.*?),\s*(.*?)\)\s*$", relation)
+        if not match:
+            return None
+        return [part.strip() for part in match.groups()]
+
+    def _filter_child_relations(self, object_relations):
+        filtered = []
+        for relation in object_relations:
+            parts = self._relation_parts(relation)
+            if parts and (self._is_child_label(parts[0]) or self._is_child_label(parts[2])):
+                print(f"Skipping non-visual child relation during visual grounding: {relation}")
+                continue
+            filtered.append(relation)
+        return filtered
+
+    def _filter_child_detection_labels(self, labels):
+        kept = []
+        for label in labels.split(","):
+            label = label.strip()
+            if not label:
+                continue
+            if self._is_child_label(label):
+                print(f"Skipping non-visual child label for YOLO-World: {label}")
+                continue
+            kept.append(label)
+        return ",".join(kept)
+
     def get_classes(self,object_relations):
         relation_list = []
 
         for relation in object_relations:
 
-            relation = relation.replace("(", "")
-            relation_object_first = relation.split(")")[1].split(",")[0]
-            relation_object_second = relation.split(")")[1].split(",")[2]
+            parts = self._relation_parts(relation)
+            if not parts:
+                continue
+            relation_object_first = parts[0]
+            relation_object_second = parts[2]
+            if self._is_child_label(relation_object_first) or self._is_child_label(relation_object_second):
+                continue
             word_1 = self.split_word(relation_object_first)
             word_2 = self.split_word(relation_object_second)
             if not self.is_in_list(word_1,relation_list):
@@ -231,10 +288,12 @@ class Detection:
         index_detection = 0
         print("Running detection")
         object_relations = self.results_multi['environment_agent_info'].split('\n')
+        object_relations = self._filter_child_relations(object_relations)
 
         # print("Time")
         # start = time.time()
         labels = self.get_classes(object_relations)
+        labels = self._filter_child_detection_labels(labels)
 
         # print("end vocabulary : " + str(time.time() -start))
 
@@ -284,14 +343,12 @@ class Detection:
         self.data_reordered = self.dict_detections.copy()
         # start = time.time()
         for relation in object_relations:
-                relation = relation.replace("(", "")
-
-                relation_object_first = relation.split(")")[1].split(",")[0]
-                relation_object_first = relation_object_first[1:]
-                relation_type = relation.split(")")[1].split(",")[1]
-                relation_type = relation_type[1:]
-                relation_object_second = relation.split(")")[1].split(",")[2]
-                relation_object_second = relation_object_second[1:]
+                parts = self._relation_parts(relation)
+                if not parts:
+                    continue
+                relation_object_first = parts[0]
+                relation_type = parts[1]
+                relation_object_second = parts[2]
                 index_bounding_box_first = self.find_bb_relation(relation_object_first)
                 index_bounding_box_second = self.find_bb_relation(relation_object_second)
                 if index_bounding_box_first != [] or index_bounding_box_second != []:

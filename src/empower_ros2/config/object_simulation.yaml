@@ -3,6 +3,10 @@
     object_simulation:
       enabled: true
       drop_distance: 0.75
+      child_delivery_table_drop_x: 0.0
+      child_delivery_table_drop_y: 1.65
+      child_delivery_table_drop_z: 0.95
+      child_delivery_table_drop_yaw: 1.5708
       hidden_x: 0.0
       hidden_y: 0.0
       hidden_z: -10.0
@@ -18,7 +22,7 @@
           drop_z: 0.02
         computer:
           gazebo_entity: laptop_computer_on_right_table
-          drop_z: 0.02
+          drop_z: 0.12
         peluche:
           gazebo_entity: teddy_bear_on_right_table
           drop_z: 0.04

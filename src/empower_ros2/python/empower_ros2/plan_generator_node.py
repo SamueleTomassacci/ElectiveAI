@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import socket
 import time
 
@@ -21,6 +22,8 @@ class PlanGeneratorNode(Node):
         self.declare_parameter("server_host", "127.0.0.1")
         self.declare_parameter("server_port", 10000)
         self.declare_parameter("timeout_sec", 900.0)
+        self.declare_parameter("child_context.enabled", False)
+        self.declare_parameter("child_context.aliases", ["child", "the child", "kid"])
         self._run()
 
     def _run(self):
@@ -45,6 +48,7 @@ class PlanGeneratorNode(Node):
                 with open(planning_txt, "r", encoding="utf-8") as plan_file:
                     plan_text = plan_file.read()
                 plan = write_plan_json(plan_text, planning_json)
+                self._validate_child_navigation(plan)
                 report = write_readable_reports(dump_dir)
                 self.get_logger().info(f"Saved symbolic plan text to {planning_txt}")
                 self.get_logger().info(f"Saved parsed symbolic plan JSON to {planning_json}")
@@ -78,6 +82,46 @@ class PlanGeneratorNode(Node):
                 )
                 time.sleep(1.0)
         raise TimeoutError(f"Timed out connecting to model cacher at {host}:{port}")
+
+    def _validate_child_navigation(self, plan):
+        task_description = str(self.get_parameter("task_description").value)
+        if not bool(self.get_parameter("child_context.enabled").value):
+            return
+        if not self._text_mentions_child(task_description):
+            return
+        has_child_navigation = any(
+            str(step.get("action", "")).upper() == "NAVIGATE"
+            and self._text_is_child_alias(str(step.get("target", "")))
+            for step in plan
+        )
+        if has_child_navigation:
+            self.get_logger().info("Validated generated plan contains NAVIGATE to child")
+            return
+        self.get_logger().warn(
+            "Generated plan does not contain NAVIGATE to child even though the task mentions "
+            "the child; the plan was not modified"
+        )
+
+    def _text_mentions_child(self, text):
+        normalized_text = self._normalize_child_text(text)
+        for alias in self.get_parameter("child_context.aliases").value:
+            normalized_alias = self._normalize_child_text(alias)
+            if re.search(rf"\b{re.escape(normalized_alias)}\b", normalized_text):
+                return True
+        return False
+
+    def _text_is_child_alias(self, text):
+        normalized = self._normalize_child_text(text)
+        return normalized in {
+            self._normalize_child_text(alias)
+            for alias in self.get_parameter("child_context.aliases").value
+        }
+
+    def _normalize_child_text(self, text):
+        text = str(text).lower().strip()
+        text = re.sub(r"[^a-z0-9 ]+", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return re.sub(r"^the\s+", "", text)
 
 
 def main(args=None):

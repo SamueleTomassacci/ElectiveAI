@@ -106,6 +106,7 @@ class MissionOrchestratorNode(Node):
         self.declare_parameter("capture_timeout_sec", 60.0)
         self.declare_parameter("capture_before_empower", True)
         self.declare_parameter("execute_empower_plan", True)
+        self.declare_parameter("child_delivery_handled_by_empower", False)
         self.declare_parameter("use_case", "person_table_child_task")
         self.declare_parameter("output_root", "/root/exchange/empower_data")
         self.declare_parameter("storytelling_timeout_sec", 300.0)
@@ -187,9 +188,14 @@ class MissionOrchestratorNode(Node):
             if not self._run_empower(self._interaction_spec.task_description):
                 return
 
-            self._transition(MissionState.GO_TO_CHILD)
-            if not self._navigate_to_pose("child", self._pose_parameter("child_pose")):
-                return
+            if bool(self.get_parameter("child_delivery_handled_by_empower").value):
+                self._publish_feedback(
+                    "Skipping hardcoded GO_TO_CHILD because EMPOWER handles child delivery"
+                )
+            else:
+                self._transition(MissionState.GO_TO_CHILD)
+                if not self._navigate_to_pose("child", self._pose_parameter("child_pose")):
+                    return
 
             self._transition(MissionState.CHILD_READY)
             self._publish(self.child_ready_pub, "child_ready")

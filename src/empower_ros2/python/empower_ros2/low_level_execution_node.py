@@ -49,13 +49,37 @@ class LowLevelExecutionNode(Node):
         self.declare_parameter("nav_result_timeout_sec", 300.0)
         self.declare_parameter("standoff_distance", 0.7)
         self.declare_parameter("continue_on_nav_failure", False)
+        self.declare_parameter("child_navigation.enabled", False)
+        self.declare_parameter("child_navigation.frame_id", "map")
+        self.declare_parameter("child_navigation.x", 0.0)
+        self.declare_parameter("child_navigation.y", 0.0)
+        self.declare_parameter("child_navigation.yaw", 0.0)
+        self.declare_parameter("child_navigation.aliases", ["child", "the child", "kid"])
+        self.declare_parameter("person_navigation.enabled", False)
+        self.declare_parameter("person_navigation.frame_id", "map")
+        self.declare_parameter("person_navigation.x", 0.0)
+        self.declare_parameter("person_navigation.y", 0.0)
+        self.declare_parameter("person_navigation.yaw", 0.0)
+        self.declare_parameter(
+            "person_navigation.aliases",
+            ["person", "the person", "adult", "the adult", "standing person", "adult person"],
+        )
         self.declare_parameter("object_simulation.enabled", False)
         self.declare_parameter("object_simulation.drop_distance", 0.75)
+        self.declare_parameter("object_simulation.child_delivery_table_drop_x", 0.0)
+        self.declare_parameter("object_simulation.child_delivery_table_drop_y", 1.65)
+        self.declare_parameter("object_simulation.child_delivery_table_drop_z", 0.95)
+        self.declare_parameter("object_simulation.child_delivery_table_drop_yaw", 1.5708)
         self.declare_parameter("object_simulation.hidden_x", -3.8)
         self.declare_parameter("object_simulation.hidden_y", 2.4)
         self.declare_parameter("object_simulation.hidden_z", 0.02)
         self.declare_parameter("object_simulation.world_frame", "world")
         self.declare_parameter("object_simulation.robot_base_frame", "base_footprint")
+        self.declare_parameter("object_simulation.fixed_drop.enabled", False)
+        self.declare_parameter("object_simulation.fixed_drop.x", 0.0)
+        self.declare_parameter("object_simulation.fixed_drop.y", 1.8)
+        self.declare_parameter("object_simulation.fixed_drop.z", -1.0)
+        self.declare_parameter("object_simulation.fixed_drop.yaw", 1.5708)
         self.declare_parameter("object_simulation.gz_command", "gz")
         self.declare_parameter("object_simulation.gz_world_name", "person_table_child_room")
         self.declare_parameter("object_simulation.gz_cli_timeout_sec", 10.0)
@@ -64,25 +88,36 @@ class LowLevelExecutionNode(Node):
             "object_simulation.objects.book.gazebo_entity",
             "clear_red_book_on_right_table",
         )
+        self.declare_parameter("object_simulation.objects.book.aliases", ["book"])
         self.declare_parameter("object_simulation.objects.book.drop_z", 0.02)
         self.declare_parameter(
             "object_simulation.objects.computer.gazebo_entity",
             "laptop_computer_on_right_table",
         )
-        self.declare_parameter("object_simulation.objects.computer.drop_z", 0.02)
+        self.declare_parameter(
+            "object_simulation.objects.computer.aliases",
+            ["computer", "laptop", "laptop computer"],
+        )
+        self.declare_parameter("object_simulation.objects.computer.drop_z", 0.12)
         self.declare_parameter(
             "object_simulation.objects.peluche.gazebo_entity",
             "teddy_bear_on_right_table",
+        )
+        self.declare_parameter(
+            "object_simulation.objects.peluche.aliases",
+            ["peluche", "teddy bear", "plush toy", "stuffed animal"],
         )
         self.declare_parameter("object_simulation.objects.peluche.drop_z", 0.04)
 
         self._centroids = None
         self._names = None
         self.held_object = None
+        self.last_navigation_target_is_child = False
         self.object_simulation_enabled = bool(
             self.get_parameter("object_simulation.enabled").value
         )
         self.object_mapping = self._load_object_simulation_mapping()
+        self.object_aliases = self._load_object_aliases()
         self.object_sdf_xml = {}
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -122,7 +157,12 @@ class LowLevelExecutionNode(Node):
             self.get_logger().warn("No symbolic plan steps found; nothing to execute")
             return
 
-        if any(str(step.get("action", "")).upper() == NAVIGATE for step in plan):
+        nav_steps = [
+            step
+            for step in plan
+            if str(step.get("action", "")).upper() == NAVIGATE
+        ]
+        if any(not self._is_configured_navigation_step(step) for step in nav_steps):
             objects = self._wait_for_objects()
             if not objects:
                 self.get_logger().error("No EMPOWER object centroids available")
@@ -133,7 +173,7 @@ class LowLevelExecutionNode(Node):
             )
         else:
             self.get_logger().info(
-                "Plan has no NAVIGATE steps; skipping EMPOWER centroid wait"
+                "Plan has no visual NAVIGATE steps; skipping EMPOWER centroid wait"
             )
         for step in plan:
             action = str(step.get("action", "")).upper()
@@ -171,6 +211,20 @@ class LowLevelExecutionNode(Node):
                 "drop_z": drop_z,
             }
         return mapping
+
+    def _load_object_aliases(self):
+        aliases = {}
+        for symbolic_name in SIMULATED_OBJECTS:
+            configured_aliases = list(
+                self.get_parameter(
+                    f"object_simulation.objects.{symbolic_name}.aliases"
+                ).value
+            )
+            for alias in [symbolic_name, *configured_aliases]:
+                normalized = self._clean_manipulation_label(alias)
+                if normalized:
+                    aliases[normalized] = symbolic_name
+        return aliases
 
     def _cache_object_sdf_xml(self):
         world_sdf_path = self._resolve_world_sdf_path(
@@ -325,6 +379,10 @@ class LowLevelExecutionNode(Node):
         return re.sub(r"^\s*\w+\s+", "", description).strip()
 
     def _normalize_manipulation_target(self, target):
+        normalized = self._clean_manipulation_label(target)
+        return self.object_aliases.get(normalized, normalized)
+
+    def _clean_manipulation_label(self, target):
         normalized = str(target).lower().strip()
         normalized = re.sub(r"[^a-z0-9 ]+", " ", normalized)
         normalized = re.sub(r"\s+", " ", normalized).strip()
@@ -500,6 +558,13 @@ class LowLevelExecutionNode(Node):
         return ET.tostring(root, encoding="unicode")
 
     def _compute_drop_pose(self, held_object):
+        fixed_pose = self._fixed_drop_pose(held_object)
+        if fixed_pose is not None:
+            return fixed_pose
+        child_table_pose = self._child_delivery_table_drop_pose(held_object)
+        if child_table_pose is not None:
+            return child_table_pose
+
         world_frame = str(self.get_parameter("object_simulation.world_frame").value)
         robot_base_frame = str(self.get_parameter("object_simulation.robot_base_frame").value)
         robot_pose = self._current_robot_pose_for_drop(world_frame, robot_base_frame)
@@ -514,13 +579,54 @@ class LowLevelExecutionNode(Node):
         drop_pose = Pose()
         drop_pose.position.x = robot_pose.pose.position.x + drop_distance * math.cos(yaw)
         drop_pose.position.y = robot_pose.pose.position.y + drop_distance * math.sin(yaw)
-        drop_pose.position.z = float(held_object["drop_z"])
+        drop_pose.position.z = self._drop_z_for_current_destination(held_object)
         drop_pose.orientation = self._quaternion_from_yaw(yaw)
         self.get_logger().info(
             f"Computed DROP pose for {held_object['symbolic_name']}: "
             f"robot=({robot_pose.pose.position.x:.3f}, {robot_pose.pose.position.y:.3f}, "
             f"yaw={yaw:.3f}), drop=({drop_pose.position.x:.3f}, "
             f"{drop_pose.position.y:.3f}, {drop_pose.position.z:.3f})"
+        )
+        return drop_pose
+
+    def _drop_z_for_current_destination(self, held_object):
+        if self.last_navigation_target_is_child:
+            return float(self.get_parameter("object_simulation.child_delivery_table_drop_z").value)
+        return float(held_object["drop_z"])
+
+    def _child_delivery_table_drop_pose(self, held_object):
+        if not self.last_navigation_target_is_child:
+            return None
+
+        yaw = float(self.get_parameter("object_simulation.child_delivery_table_drop_yaw").value)
+        drop_pose = Pose()
+        drop_pose.position.x = float(self.get_parameter("object_simulation.child_delivery_table_drop_x").value)
+        drop_pose.position.y = float(self.get_parameter("object_simulation.child_delivery_table_drop_y").value)
+        drop_pose.position.z = float(self.get_parameter("object_simulation.child_delivery_table_drop_z").value)
+        drop_pose.orientation = self._quaternion_from_yaw(yaw)
+        self.get_logger().info(
+            f"Using child delivery table DROP pose for {held_object['symbolic_name']}: "
+            f"x={drop_pose.position.x:.3f}, y={drop_pose.position.y:.3f}, "
+            f"z={drop_pose.position.z:.3f}, yaw={yaw:.3f}; TF lookup skipped"
+        )
+        return drop_pose
+
+    def _fixed_drop_pose(self, held_object):
+        if not bool(self.get_parameter("object_simulation.fixed_drop.enabled").value):
+            return None
+
+        configured_z = float(self.get_parameter("object_simulation.fixed_drop.z").value)
+        z = configured_z if configured_z >= 0.0 else self._drop_z_for_current_destination(held_object)
+        yaw = float(self.get_parameter("object_simulation.fixed_drop.yaw").value)
+        drop_pose = Pose()
+        drop_pose.position.x = float(self.get_parameter("object_simulation.fixed_drop.x").value)
+        drop_pose.position.y = float(self.get_parameter("object_simulation.fixed_drop.y").value)
+        drop_pose.position.z = z
+        drop_pose.orientation = self._quaternion_from_yaw(yaw)
+        self.get_logger().info(
+            f"Using fixed DROP pose for {held_object['symbolic_name']}: "
+            f"x={drop_pose.position.x:.3f}, y={drop_pose.position.y:.3f}, "
+            f"z={drop_pose.position.z:.3f}, yaw={yaw:.3f}; TF lookup skipped"
         )
         return drop_pose
 
@@ -624,6 +730,46 @@ class LowLevelExecutionNode(Node):
         return objects
 
     def _execute_navigate(self, step):
+        if self._is_child_navigation_step(step):
+            nav_goal = self._child_navigation_pose()
+            if nav_goal is None:
+                return False
+            nav_goal.header.stamp = self.get_clock().now().to_msg()
+            self.get_logger().info(
+                "Resolving NAVIGATE to child via configured non-visual child pose "
+                f"({nav_goal.pose.position.x:.3f}, {nav_goal.pose.position.y:.3f})"
+            )
+            ok = navigate(
+                self,
+                self.nav_client,
+                nav_goal,
+                float(self.get_parameter("action_server_timeout_sec").value),
+                float(self.get_parameter("nav_result_timeout_sec").value),
+            )
+            if ok:
+                self.last_navigation_target_is_child = True
+            return ok
+
+        if self._is_person_navigation_step(step):
+            nav_goal = self._person_navigation_pose()
+            if nav_goal is None:
+                return False
+            nav_goal.header.stamp = self.get_clock().now().to_msg()
+            self.get_logger().info(
+                "Resolving NAVIGATE to person via configured desk-side pose "
+                f"({nav_goal.pose.position.x:.3f}, {nav_goal.pose.position.y:.3f})"
+            )
+            ok = navigate(
+                self,
+                self.nav_client,
+                nav_goal,
+                float(self.get_parameter("action_server_timeout_sec").value),
+                float(self.get_parameter("nav_result_timeout_sec").value),
+            )
+            if ok:
+                self.last_navigation_target_is_child = False
+            return ok
+
         target_label, marker = self._resolve_target_marker(step)
         if marker is None:
             self.get_logger().error(
@@ -647,13 +793,16 @@ class LowLevelExecutionNode(Node):
             f"Executing NAVIGATE to '{target_label}' from EMPOWER centroid "
             f"({target_pose.pose.position.x:.3f}, {target_pose.pose.position.y:.3f})"
         )
-        return navigate(
+        ok = navigate(
             self,
             self.nav_client,
             nav_goal,
             float(self.get_parameter("action_server_timeout_sec").value),
             float(self.get_parameter("nav_result_timeout_sec").value),
         )
+        if ok:
+            self.last_navigation_target_is_child = False
+        return ok
 
     def _resolve_target_marker(self, step):
         normalized_objects = {
@@ -665,6 +814,69 @@ class LowLevelExecutionNode(Node):
             if normalized in normalized_objects:
                 return normalized_objects[normalized]
         return None, None
+
+    def _is_child_navigation_step(self, step):
+        return any(self._is_child_alias(candidate) for candidate in self._target_candidates(step))
+
+    def _is_person_navigation_step(self, step):
+        return any(self._is_person_alias(candidate) for candidate in self._target_candidates(step))
+
+    def _is_configured_navigation_step(self, step):
+        return self._is_child_navigation_step(step) or self._is_person_navigation_step(step)
+
+    def _is_child_alias(self, label):
+        normalized = self._normalize_label(label)
+        aliases = {
+            self._normalize_label(alias)
+            for alias in self.get_parameter("child_navigation.aliases").value
+        }
+        return normalized in aliases
+
+    def _is_person_alias(self, label):
+        normalized = self._normalize_label(label)
+        aliases = {
+            self._normalize_label(alias)
+            for alias in self.get_parameter("person_navigation.aliases").value
+        }
+        return normalized in aliases
+
+    def _child_navigation_pose(self):
+        if not bool(self.get_parameter("child_navigation.enabled").value):
+            self.get_logger().error(
+                "Cannot execute NAVIGATE to child: child_navigation.enabled is false"
+            )
+            return None
+        frame_id = str(self.get_parameter("child_navigation.frame_id").value).strip()
+        if not frame_id:
+            frame_id = str(self.get_parameter("map_frame").value)
+        yaw = float(self.get_parameter("child_navigation.yaw").value)
+        pose = PoseStamped()
+        pose.header.frame_id = frame_id
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.pose.position.x = float(self.get_parameter("child_navigation.x").value)
+        pose.pose.position.y = float(self.get_parameter("child_navigation.y").value)
+        pose.pose.position.z = 0.0
+        pose.pose.orientation = self._quaternion_from_yaw(yaw)
+        return pose
+
+    def _person_navigation_pose(self):
+        if not bool(self.get_parameter("person_navigation.enabled").value):
+            self.get_logger().error(
+                "Cannot execute NAVIGATE to person: person_navigation.enabled is false"
+            )
+            return None
+        frame_id = str(self.get_parameter("person_navigation.frame_id").value).strip()
+        if not frame_id:
+            frame_id = str(self.get_parameter("map_frame").value)
+        yaw = float(self.get_parameter("person_navigation.yaw").value)
+        pose = PoseStamped()
+        pose.header.frame_id = frame_id
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.pose.position.x = float(self.get_parameter("person_navigation.x").value)
+        pose.pose.position.y = float(self.get_parameter("person_navigation.y").value)
+        pose.pose.position.z = 0.0
+        pose.pose.orientation = self._quaternion_from_yaw(yaw)
+        return pose
 
     def _target_candidates(self, step):
         fields = []

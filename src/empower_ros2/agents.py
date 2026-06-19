@@ -1,11 +1,66 @@
 from openai import OpenAI
+import re
 client = OpenAI()
 
 
 class Agents:
-    def __init__(self,image,task_description):
+    def __init__(self, image, task_description, child_context: str = ""):
         self.encoded_image = image
         self.task_description = task_description
+        self.child_context = child_context or ""
+        self.visual_task_description = self._visual_only_task_description()
+
+    def _non_visual_context_prompt(self):
+        if not self.child_context.strip():
+            return ""
+        return (
+            "\nAdditional non-visual world knowledge:\n"
+            + self.child_context.strip()
+            + "\n\nThe child may be used in the plan even if it is not visible in the image.\n"
+            "If the task asks to bring an object to the child, include NAVIGATE to the child "
+            "before DROP.\n"
+            "After navigating to a destination while carrying an object, DROP <object> means "
+            "dropping it at the current destination.\n"
+        )
+
+    def _visual_only_task_description(self):
+        if not self._mentions_child(self.task_description):
+            return self.task_description
+
+        child_pattern = r"(?:the\s+)?(?:child|kid)"
+        parts = re.split(r"\s*,\s*|\s+\band\b\s+", self.task_description, flags=re.IGNORECASE)
+        kept_parts = []
+        for part in parts:
+            cleaned = part.strip()
+            if not cleaned:
+                continue
+            if self._mentions_child(cleaned):
+                cleaned = re.sub(
+                    rf"\s+(?:to|towards|near|at|for)\s+{child_pattern}\b",
+                    "",
+                    cleaned,
+                    flags=re.IGNORECASE,
+                ).strip()
+                if re.fullmatch(r"(?:go|navigate|move|walk|give\s+it|bring\s+it)", cleaned, flags=re.IGNORECASE):
+                    continue
+            if cleaned and not self._mentions_child(cleaned):
+                kept_parts.append(cleaned)
+
+        visual_task = ", ".join(kept_parts).strip()
+        if visual_task:
+            return visual_task
+
+        visual_task = re.sub(
+            rf"\s+(?:to|towards|near|at|for)\s+{child_pattern}\b",
+            "",
+            self.task_description,
+            flags=re.IGNORECASE,
+        ).strip()
+        return visual_task or "identify the visible objects needed for the task"
+
+    def _mentions_child(self, text):
+        normalized = str(text).lower()
+        return re.search(r"\b(?:the\s+)?(?:child|kid)\b", normalized) is not None
     
     def single_agent(self):
             agent = client.chat.completions.create(
@@ -36,9 +91,10 @@ class Agents:
                             You must use only the following actions for the plan and nothing else: \n\
                             NAVIGATE : for the movement in the scene towards a point far from you, for example 'NAVIGATE to the table'\n\
                             GRAB : for the action of picking up an object and specifying which object to grab, for example 'GRAB bottle'\n\
-                            DROP : for the action of placing an object ,specifying where with respect to another object, for example 'DROP bottle left to mug' or 'DROP mug right to bottle' or 'DROP pen into bag'\n\
+                            DROP : for the action of placing an object, either at the current destination after navigation, for example 'DROP book', or specifying where with respect to another object, for example 'DROP bottle left to mug' or 'DROP mug right to bottle' or 'DROP pen into bag'\n\
                             PULL : for the action of pulling an object with the gripper,\n\
                             PUSH: for the action of pushing an object on the ground with the base to free its trajectory if necessary.\n\
+                            " + self._non_visual_context_prompt() + "\
                             Write only the actions for the plan and nothing else\n\
                             The output should be in this format:\n\
                             '***RELATIONS***\n\
@@ -76,7 +132,7 @@ class Agents:
                         in the image and to provide all the relations that exist between them. \n\
                         These relations are described in the form of a triple (subject, relation, object) \
                         and when you answer you are only expected to answer with triples and nothing else. \n\
-                        Write just the triples that are essential to solve the following task: " + self.task_description + "\n\
+                        Write just the triples that are essential to solve the following visible part of the task: " + self.visual_task_description + "\n\
                         Use specific relation to describe the position of the objects in the scene. Do not use 'next to' but you must \
                         use 'right to', 'left to', 'behind to', 'beside to', 'on'\n\
                         For example, if in a scene there is a door, a table in front of the door and a book on the table \
@@ -116,7 +172,7 @@ class Agents:
                             all the details of the image without seeing it. \n\
                             Use the name in the following relations : " + enviroment_info +" and nothing else without adding adjectives for the objects.\n\
                             You should describe how the scene is made with high level description and precise instruction to solve \
-                            the following task : " + self.task_description+". Try to minimize the steps required and find the best plan to solve\n\
+                            the following visible part of the task : " + self.visual_task_description+". Try to minimize the steps required and find the best plan to solve\n\
                             If the task contains ambiguity in the solution of the task, for example many objects of the same type,\
                             specify the position of the object in the image or in relation to other objects.\n"},
                     {
@@ -152,13 +208,14 @@ class Agents:
             Use univocal name given in the relations of the environment to specify the object.\n\
             Work as a Markovian agent, so you can only see the last action and the current state of the environment.\n\
             After each step, update the state of the environment to elaborate the next step execuable in the updated enviroment."
+            + self._non_visual_context_prompt()
             },
         {"role": "user", "content": 
             "The task is " + self.task_description+"\n\
                 You must use only the following actions for the plan and nothing else: \n\
                             NAVIGATE : for the movement in the scene towards a point far from you, for example 'NAVIGATE to the table'\n\
                             GRAB : for the action of picking up an object and specifying which object to grab, for example 'GRAB bottle'\n\
-                            DROP : for the action of placing an object ,specifying where with respect to another object, for example 'DROP bottle left to mug' or 'DROP mug right to bottle' or 'DROP pen into bag'\n\
+                            DROP : for the action of placing an object, either at the current destination after navigation, for example 'DROP book', or specifying where with respect to another object, for example 'DROP bottle left to mug' or 'DROP mug right to bottle' or 'DROP pen into bag'\n\
                             PULL : for the action of pulling an object with the gripper,\n\
                             PUSH: for the action of pushing an object on the ground with the base to free its trajectory if necessary.\n\
                             Write only the actions for the plan and nothing else"},
