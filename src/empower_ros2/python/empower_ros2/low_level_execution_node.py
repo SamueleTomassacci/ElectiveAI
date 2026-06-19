@@ -54,6 +54,10 @@ class LowLevelExecutionNode(Node):
         self.declare_parameter("child_navigation.x", 0.0)
         self.declare_parameter("child_navigation.y", 0.0)
         self.declare_parameter("child_navigation.yaw", 0.0)
+        self.declare_parameter("child_navigation.via_waypoint.enabled", False)
+        self.declare_parameter("child_navigation.via_waypoint.x", 0.0)
+        self.declare_parameter("child_navigation.via_waypoint.y", 0.0)
+        self.declare_parameter("child_navigation.via_waypoint.yaw", 0.0)
         self.declare_parameter("child_navigation.aliases", ["child", "the child", "kid"])
         self.declare_parameter("person_navigation.enabled", False)
         self.declare_parameter("person_navigation.frame_id", "map")
@@ -734,6 +738,22 @@ class LowLevelExecutionNode(Node):
             nav_goal = self._child_navigation_pose()
             if nav_goal is None:
                 return False
+            waypoint_goal = self._child_via_waypoint_pose()
+            if waypoint_goal is not None:
+                waypoint_goal.header.stamp = self.get_clock().now().to_msg()
+                self.get_logger().info(
+                    "Navigating to child via configured waypoint "
+                    f"({waypoint_goal.pose.position.x:.3f}, "
+                    f"{waypoint_goal.pose.position.y:.3f})"
+                )
+                if not navigate(
+                    self,
+                    self.nav_client,
+                    waypoint_goal,
+                    float(self.get_parameter("action_server_timeout_sec").value),
+                    float(self.get_parameter("nav_result_timeout_sec").value),
+                ):
+                    return False
             nav_goal.header.stamp = self.get_clock().now().to_msg()
             self.get_logger().info(
                 "Resolving NAVIGATE to child via configured non-visual child pose "
@@ -855,6 +875,22 @@ class LowLevelExecutionNode(Node):
         pose.header.stamp = self.get_clock().now().to_msg()
         pose.pose.position.x = float(self.get_parameter("child_navigation.x").value)
         pose.pose.position.y = float(self.get_parameter("child_navigation.y").value)
+        pose.pose.position.z = 0.0
+        pose.pose.orientation = self._quaternion_from_yaw(yaw)
+        return pose
+
+    def _child_via_waypoint_pose(self):
+        if not bool(self.get_parameter("child_navigation.via_waypoint.enabled").value):
+            return None
+        frame_id = str(self.get_parameter("child_navigation.frame_id").value).strip()
+        if not frame_id:
+            frame_id = str(self.get_parameter("map_frame").value)
+        yaw = float(self.get_parameter("child_navigation.via_waypoint.yaw").value)
+        pose = PoseStamped()
+        pose.header.frame_id = frame_id
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.pose.position.x = float(self.get_parameter("child_navigation.via_waypoint.x").value)
+        pose.pose.position.y = float(self.get_parameter("child_navigation.via_waypoint.y").value)
         pose.pose.position.z = 0.0
         pose.pose.orientation = self._quaternion_from_yaw(yaw)
         return pose

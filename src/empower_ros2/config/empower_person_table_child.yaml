@@ -39,6 +39,11 @@
       x: 0.0
       y: 0.95
       yaw: 1.5708
+      via_waypoint:
+        enabled: true
+        x: 3.0
+        y: 0.0
+        yaw: 3.14159
       aliases: ["child", "the child", "kid"]
     person_navigation:
       enabled: true
@@ -67,7 +72,7 @@
         book:
           aliases: ["book"]
           gazebo_entity: clear_red_book_on_right_table
-          drop_z: 0.02
+          drop_z: 0.01
         computer:
           aliases: ["computer", "laptop", "laptop computer"]
           gazebo_entity: laptop_computer_on_right_table
@@ -75,4 +80,4 @@
         peluche:
           aliases: ["peluche", "teddy bear", "plush toy", "stuffed animal"]
           gazebo_entity: teddy_bear_on_right_table
-          drop_z: 0.04
+          drop_z: 0.01
