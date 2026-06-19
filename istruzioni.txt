@@ -1,0 +1,75 @@
+Per buildare:
+
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+
+colcon build --symlink-install --packages-select empower_ros2 empower_hri
+
+source /root/exchange/install/setup.bash
+
+Terminale 1: Gazebo
+
+
+docker exec -it hrai_sim bash
+
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
+WORLD=/root/exchange/exchange/person_table_child.world
+
+ros2 launch tiago_gazebo tiago_gazebo.launch.py \
+  is_public_sim:=True \
+  gazebo_version:=classic \
+  world_name:=$WORLD
+  
+  
+
+
+
+Terminale 2: Nav2
+
+
+docker exec -it hrai_sim bash
+
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+MAP=/root/exchange/exchange/maps/person_table_child_static.yaml
+
+ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
+  map:=$MAP
+  
+
+Terminale 3: Missione, Modalità Testuale
+
+
+docker exec -it hrai_sim bash
+
+cd /root/exchange
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+rm -rf /root/exchange/empower_data/images/person_table_child_task
+rm -rf /root/exchange/empower_data/output/person_table_child_task
+
+ros2 launch empower_ros2 hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+  hri_input_mode:=text
+  
+  
+  
+
+  
+  
+
