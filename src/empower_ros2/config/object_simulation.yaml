@@ -19,10 +19,10 @@
       objects:
         book:
           gazebo_entity: clear_red_book_on_right_table
-          drop_z: 0.02
+          drop_z: 0.01
         computer:
           gazebo_entity: laptop_computer_on_right_table
           drop_z: 0.12
         peluche:
           gazebo_entity: teddy_bear_on_right_table
-          drop_z: 0.04
+          drop_z: 0.01

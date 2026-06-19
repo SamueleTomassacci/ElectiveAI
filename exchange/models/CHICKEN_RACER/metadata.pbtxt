@@ -1,0 +1,35 @@
+model {
+  file: "model.sdf"
+}
+name: "CHICKEN_RACER"
+description: "CHICKEN RACER\nHave great fun with Chicken 3cars. They have gently curve design which is easy for children to hold and push"
+version: 1
+authors {
+  name: "Google"
+  email: "scanned-objects@google.com"
+}
+legal {
+  copyright: "Copyright 2020 Google LLC."
+  license: "Creative Commons Attribution 4.0 International"
+}
+annotations {
+  key: "brand"
+  value: "PlanToys"
+}
+annotations {
+  key: "mpn"
+  value: "5679"
+}
+annotations {
+  key: "sku"
+  value: "05679P00"
+}
+compatibilities {
+  name: "Gazebo"
+  version {
+    major: 11
+  }
+}
+categories {
+  first: "Toys"
+}

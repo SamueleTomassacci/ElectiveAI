@@ -14,21 +14,33 @@
     <include>
       <uri>model://sun</uri>
     </include>
+    <light name="west_toy_fill_light" type="point">
+      <pose>-3.35 0.15 1.85 0 0 0</pose>
+      <diffuse>0.55 0.52 0.46 1</diffuse>
+      <specular>0.08 0.08 0.08 1</specular>
+      <attenuation>
+        <range>5.0</range>
+        <constant>0.55</constant>
+        <linear>0.18</linear>
+        <quadratic>0.03</quadratic>
+      </attenuation>
+      <cast_shadows>false</cast_shadows>
+    </light>
     <model name="person_table_child_room_shell">
       <static>true</static>
       <link name="floor">
-        <pose>0 -0.3 -0.025 0 0 0</pose>
+        <pose>-0.6 -0.3 -0.025 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>9.2 7.0 0.05</size>
+              <size>8.0 7.0 0.05</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>9.2 7.0 0.05</size>
+              <size>8.0 7.0 0.05</size>
             </box>
           </geometry>
           <material>
@@ -37,19 +49,40 @@
           </material>
         </visual>
       </link>
-      <link name="north_wall">
-        <pose>0 3.2 0.45 0 0 0</pose>
+      <link name="side_room_floor">
+        <pose>5.5 0 -0.025 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>9.2 0.12 0.9</size>
+              <size>4.2 4.4 0.05</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>9.2 0.12 0.9</size>
+              <size>4.2 4.4 0.05</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.68 0.69 0.64 1</ambient>
+            <diffuse>0.68 0.69 0.64 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="north_wall">
+        <pose>-0.6 3.2 0.45 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>8.0 0.12 0.9</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>8.0 0.12 0.9</size>
             </box>
           </geometry>
           <material>
@@ -59,18 +92,18 @@
         </visual>
       </link>
       <link name="south_wall">
-        <pose>0 -3.8 0.45 0 0 0</pose>
+        <pose>-0.6 -3.8 0.45 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>9.2 0.12 0.9</size>
+              <size>8.0 0.12 0.9</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>9.2 0.12 0.9</size>
+              <size>8.0 0.12 0.9</size>
             </box>
           </geometry>
           <material>
@@ -79,24 +112,108 @@
           </material>
         </visual>
       </link>
-      <link name="east_wall">
-        <pose>4.6 -0.3 0.45 0 0 0</pose>
+      <link name="east_wall_south">
+        <pose>3.4 -2.275 0.45 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 7.0 0.9</size>
+              <size>0.12 3.05 0.9</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 7.0 0.9</size>
+              <size>0.12 3.05 0.9</size>
             </box>
           </geometry>
           <material>
             <ambient>0.86 0.86 0.82 1</ambient>
             <diffuse>0.86 0.86 0.82 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="east_wall_north">
+        <pose>3.4 1.975 0.45 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.12 2.45 0.9</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.12 2.45 0.9</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.86 0.86 0.82 1</ambient>
+            <diffuse>0.86 0.86 0.82 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="side_room_north_wall">
+        <pose>5.5 2.2 0.45 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>4.2 0.12 0.9</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>4.2 0.12 0.9</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.83 0.85 0.80 1</ambient>
+            <diffuse>0.83 0.85 0.80 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="side_room_south_wall">
+        <pose>5.5 -2.2 0.45 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>4.2 0.12 0.9</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>4.2 0.12 0.9</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.83 0.85 0.80 1</ambient>
+            <diffuse>0.83 0.85 0.80 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="side_room_east_wall">
+        <pose>7.6 0 0.45 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.12 4.4 0.9</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.12 4.4 0.9</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.83 0.85 0.80 1</ambient>
+            <diffuse>0.83 0.85 0.80 1</diffuse>
           </material>
         </visual>
       </link>
@@ -305,9 +422,80 @@
         </collision>
       </link>
     </model>
+    <include>
+      <uri>model://Bookshelf</uri>
+      <name>bookshelf_in_side_room</name>
+      <pose>5.05 2.07 0 0 0 0</pose>
+    </include>
+    <model name="baby_car_near_west_wall">
+      <static>true</static>
+      <pose>-4.02 -1.55 0 0 0 1.5708</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://BABY_CAR/meshes/model.obj</uri>
+              <scale>7.0 7.0 7.0</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://BABY_CAR/meshes/model.obj</uri>
+              <scale>7.0 7.0 7.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="dining_room_furniture_near_west_wall">
+      <static>true</static>
+      <pose>-3.82 0.05 0 0 0 -1.5708</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://DINNING_ROOM_FURNITURE_SET_1/meshes/model.obj</uri>
+              <scale>7.0 7.0 7.0</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://DINNING_ROOM_FURNITURE_SET_1/meshes/model.obj</uri>
+              <scale>7.0 7.0 7.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="chicken_racer_near_west_wall">
+      <static>true</static>
+      <pose>-4.03 1.55 0 0 0 1.5708</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://CHICKEN_RACER/meshes/model.obj</uri>
+              <scale>5.5 5.5 5.5</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://CHICKEN_RACER/meshes/model.obj</uri>
+              <scale>5.5 5.5 5.5</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
     <model name="right_table_after_turn">
       <static>true</static>
-      <pose>2.40 0.25 0 0 0 0</pose>
+      <pose>7.00 -0.65 0 0 0 0</pose>
       <link name="link">
         <collision name="surface">
           <pose>0 0 0.745 0 0 0</pose>
@@ -449,21 +637,21 @@
     </model>
     <model name="clear_red_book_on_right_table">
       <static>false</static>
-      <pose>2.38 -0.23 0.760 0 0 -0.10</pose>
+      <pose>4.80 1.88 0.815 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <pose>0 0 0.040 0 0 0</pose>
+          <pose>0 0 0.026 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.38 0.27 0.08</size>
+              <size>0.26 0.18 0.052</size>
             </box>
           </geometry>
         </collision>
         <visual name="page_block">
-          <pose>0.018 0.008 0.040 0 0 0</pose>
+          <pose>0.012 0.005 0.026 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.33 0.21 0.062</size>
+              <size>0.215 0.137 0.040</size>
             </box>
           </geometry>
           <material>
@@ -472,10 +660,10 @@
           </material>
         </visual>
         <visual name="hard_cover_bottom">
-          <pose>0 0 0.009 0 0 0</pose>
+          <pose>0 0 0.006 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.40 0.29 0.018</size>
+              <size>0.26 0.189 0.012</size>
             </box>
           </geometry>
           <material>
@@ -484,10 +672,10 @@
           </material>
         </visual>
         <visual name="hard_cover_top">
-          <pose>0 0 0.081 0 0 0</pose>
+          <pose>0 0 0.053 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.40 0.29 0.018</size>
+              <size>0.26 0.189 0.012</size>
             </box>
           </geometry>
           <material>
@@ -496,11 +684,11 @@
           </material>
         </visual>
         <visual name="rounded_spine">
-          <pose>-0.195 0 0.045 1.5708 0 0</pose>
+          <pose>-0.127 0 0.029 1.5708 0 0</pose>
           <geometry>
             <cylinder>
-              <radius>0.038</radius>
-              <length>0.29</length>
+              <radius>0.025</radius>
+              <length>0.189</length>
             </cylinder>
           </geometry>
           <material>
@@ -509,10 +697,10 @@
           </material>
         </visual>
         <visual name="front_page_edges">
-          <pose>0.020 -0.123 0.047 0 0 0</pose>
+          <pose>0.013 -0.080 0.031 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.32 0.014 0.046</size>
+              <size>0.208 0.009 0.030</size>
             </box>
           </geometry>
           <material>
@@ -521,10 +709,10 @@
           </material>
         </visual>
         <visual name="side_page_edges">
-          <pose>0.197 0.008 0.047 0 0 0</pose>
+          <pose>0.128 0.005 0.031 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.014 0.21 0.046</size>
+              <size>0.009 0.137 0.030</size>
             </box>
           </geometry>
           <material>
@@ -536,7 +724,7 @@
     </model>
     <model name="laptop_computer_on_right_table">
       <static>false</static>
-      <pose>2.48 0.25 0.765 0 0 0.04</pose>
+      <pose>6.85 -0.65 0.765 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <pose>0 0 0.030 0 0 0</pose>
@@ -663,21 +851,21 @@
     </model>
     <model name="teddy_bear_on_right_table">
       <static>false</static>
-      <pose>2.47 0.75 0.760 0 0 3.14159</pose>
+      <pose>5.22 1.88 0.815 0 0 -1.423</pose>
       <link name="link">
         <collision name="collision">
-          <pose>0 0 0.175 0 0 0</pose>
+          <pose>0 0 0.114 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.18</radius>
+              <radius>0.117</radius>
             </sphere>
           </geometry>
         </collision>
         <visual name="body">
-          <pose>0 0 0.140 0 0 0</pose>
+          <pose>0 0 0.091 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.130</radius>
+              <radius>0.085</radius>
             </sphere>
           </geometry>
           <material>
@@ -686,10 +874,10 @@
           </material>
         </visual>
         <visual name="belly">
-          <pose>-0.012 -0.020 0.125 0 0 0</pose>
+          <pose>-0.008 -0.013 0.081 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.075</radius>
+              <radius>0.049</radius>
             </sphere>
           </geometry>
           <material>
@@ -698,10 +886,10 @@
           </material>
         </visual>
         <visual name="head">
-          <pose>0 0 0.315 0 0 0</pose>
+          <pose>0 0 0.205 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.095</radius>
+              <radius>0.062</radius>
             </sphere>
           </geometry>
           <material>
@@ -710,10 +898,10 @@
           </material>
         </visual>
         <visual name="left_ear">
-          <pose>0 0.070 0.395 0 0 0</pose>
+          <pose>0 0.046 0.257 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.040</radius>
+              <radius>0.026</radius>
             </sphere>
           </geometry>
           <material>
@@ -722,10 +910,10 @@
           </material>
         </visual>
         <visual name="right_ear">
-          <pose>0 -0.070 0.395 0 0 0</pose>
+          <pose>0 -0.046 0.257 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.040</radius>
+              <radius>0.026</radius>
             </sphere>
           </geometry>
           <material>
@@ -734,10 +922,10 @@
           </material>
         </visual>
         <visual name="muzzle">
-          <pose>0.070 0 0.292 0 0 0</pose>
+          <pose>0.046 0 0.190 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.042</radius>
+              <radius>0.027</radius>
             </sphere>
           </geometry>
           <material>
@@ -746,11 +934,11 @@
           </material>
         </visual>
         <visual name="nose">
-          <pose>0.105 0 0.305 0 1.5708 0</pose>
+          <pose>0.068 0 0.198 0 1.5708 0</pose>
           <geometry>
             <cylinder>
-              <radius>0.018</radius>
-              <length>0.010</length>
+              <radius>0.012</radius>
+              <length>0.007</length>
             </cylinder>
           </geometry>
           <material>
@@ -759,10 +947,10 @@
           </material>
         </visual>
         <visual name="left_arm">
-          <pose>0.015 0.115 0.155 0.35 0 0</pose>
+          <pose>0.010 0.075 0.101 0.35 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.052</radius>
+              <radius>0.034</radius>
             </sphere>
           </geometry>
           <material>
@@ -771,10 +959,10 @@
           </material>
         </visual>
         <visual name="right_arm">
-          <pose>0.015 -0.115 0.155 -0.35 0 0</pose>
+          <pose>0.010 -0.075 0.101 -0.35 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.052</radius>
+              <radius>0.034</radius>
             </sphere>
           </geometry>
           <material>
@@ -783,10 +971,10 @@
           </material>
         </visual>
         <visual name="left_foot">
-          <pose>0.070 0.075 0.035 0 0 0</pose>
+          <pose>0.046 0.049 0.023 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.055</radius>
+              <radius>0.036</radius>
             </sphere>
           </geometry>
           <material>
@@ -795,10 +983,10 @@
           </material>
         </visual>
         <visual name="right_foot">
-          <pose>0.070 -0.075 0.035 0 0 0</pose>
+          <pose>0.046 -0.049 0.023 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.055</radius>
+              <radius>0.036</radius>
             </sphere>
           </geometry>
           <material>
