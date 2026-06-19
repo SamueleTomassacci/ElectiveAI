@@ -427,6 +427,100 @@
       <name>bookshelf_in_side_room</name>
       <pose>5.05 2.07 0 0 0 0</pose>
     </include>
+    <model name="south_wall_shelf_in_side_room">
+      <static>true</static>
+      <pose>5.05 -2.02 0 0 0 0</pose>
+      <link name="link">
+        <collision name="shelf_board_collision">
+          <pose>0 0 0.800 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.90 0.36 0.030</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="shelf_board">
+          <pose>0 0 0.800 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.90 0.36 0.030</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.56 0.34 0.16 1</ambient>
+            <diffuse>0.72 0.46 0.24 1</diffuse>
+          </material>
+        </visual>
+        <collision name="back_lip_collision">
+          <pose>0 -0.170 0.845 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.90 0.025 0.080</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="back_lip">
+          <pose>0 -0.170 0.845 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.90 0.025 0.080</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.48 0.28 0.12 1</ambient>
+            <diffuse>0.64 0.38 0.18 1</diffuse>
+          </material>
+        </visual>
+        <visual name="left_bracket">
+          <pose>-0.30 -0.120 0.680 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.035 0.035 0.240</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.18 0.18 0.17 1</ambient>
+            <diffuse>0.30 0.30 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="right_bracket">
+          <pose>0.30 -0.120 0.680 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.035 0.035 0.240</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.18 0.18 0.17 1</ambient>
+            <diffuse>0.30 0.30 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="left_diagonal_bracket">
+          <pose>-0.30 -0.060 0.720 0.70 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.030 0.030 0.260</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.18 0.18 0.17 1</ambient>
+            <diffuse>0.30 0.30 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="right_diagonal_bracket">
+          <pose>0.30 -0.060 0.720 0.70 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.030 0.030 0.260</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.18 0.18 0.17 1</ambient>
+            <diffuse>0.30 0.30 0.28 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
     <model name="baby_car_near_west_wall">
       <static>true</static>
       <pose>-4.02 -1.55 0 0 0 1.5708</pose>
@@ -722,6 +816,118 @@
         </visual>
       </link>
     </model>
+    <model name="red_toy_cube_on_bookshelf_low_shelf">
+      <static>true</static>
+      <pose>4.78 1.88 0.445 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <pose>0 0 0.06 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.12 0.12 0.12</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="cube">
+          <pose>0 0 0.06 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.12 0.12 0.12</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.70 0.04 0.04 1</ambient>
+            <diffuse>0.95 0.08 0.07 1</diffuse>
+          </material>
+        </visual>
+        <visual name="front_letter_vertical">
+          <pose>0.061 -0.026 0.073 0 1.5708 0</pose>
+          <geometry>
+            <box>
+              <size>0.005 0.010 0.060</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.95 0.95 0.88 1</ambient>
+            <diffuse>1.00 1.00 0.92 1</diffuse>
+          </material>
+        </visual>
+        <visual name="front_letter_bar">
+          <pose>0.062 0.004 0.100 0 1.5708 0</pose>
+          <geometry>
+            <box>
+              <size>0.005 0.070 0.010</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.95 0.95 0.88 1</ambient>
+            <diffuse>1.00 1.00 0.92 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="blue_toy_cube_on_bookshelf_low_shelf">
+      <static>true</static>
+      <pose>5.03 1.88 0.445 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <pose>0 0 0.06 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.12 0.12 0.12</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="cube">
+          <pose>0 0 0.06 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.12 0.12 0.12</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.04 0.22 0.70 1</ambient>
+            <diffuse>0.08 0.35 0.95 1</diffuse>
+          </material>
+        </visual>
+        <visual name="front_letter_vertical">
+          <pose>0.061 0.000 0.073 0 1.5708 0</pose>
+          <geometry>
+            <box>
+              <size>0.005 0.010 0.060</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.95 0.95 0.88 1</ambient>
+            <diffuse>1.00 1.00 0.92 1</diffuse>
+          </material>
+        </visual>
+        <visual name="front_letter_top">
+          <pose>0.062 0.020 0.099 0 1.5708 0</pose>
+          <geometry>
+            <box>
+              <size>0.005 0.050 0.010</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.95 0.95 0.88 1</ambient>
+            <diffuse>1.00 1.00 0.92 1</diffuse>
+          </material>
+        </visual>
+        <visual name="front_letter_bottom">
+          <pose>0.062 0.020 0.047 0 1.5708 0</pose>
+          <geometry>
+            <box>
+              <size>0.005 0.050 0.010</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.95 0.95 0.88 1</ambient>
+            <diffuse>1.00 1.00 0.92 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
     <model name="laptop_computer_on_right_table">
       <static>false</static>
       <pose>6.85 -0.65 0.765 0 0 0</pose>
@@ -849,9 +1055,166 @@
         </visual>
       </link>
     </model>
+    <model name="pen_holder_on_computer_table">
+      <static>true</static>
+      <pose>7.22 -0.14 0.760 0 0 0</pose>
+      <link name="link">
+        <collision name="cup_collision">
+          <pose>0 0 0.055 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.055</radius>
+              <length>0.110</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="cup">
+          <pose>0 0 0.055 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.055</radius>
+              <length>0.110</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.08 0.42 0.36 1</ambient>
+            <diffuse>0.10 0.62 0.54 1</diffuse>
+          </material>
+        </visual>
+        <visual name="dark_opening">
+          <pose>0 0 0.112 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.046</radius>
+              <length>0.004</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.02 0.025 0.025 1</ambient>
+            <diffuse>0.03 0.035 0.035 1</diffuse>
+          </material>
+        </visual>
+        <visual name="yellow_pencil">
+          <pose>-0.020 -0.010 0.180 0.25 0.18 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.007</radius>
+              <length>0.180</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.86 0.62 0.05 1</ambient>
+            <diffuse>1.00 0.78 0.08 1</diffuse>
+          </material>
+        </visual>
+        <visual name="red_pencil">
+          <pose>0.016 0.012 0.175 -0.20 0.12 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.007</radius>
+              <length>0.170</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.65 0.04 0.05 1</ambient>
+            <diffuse>0.90 0.05 0.06 1</diffuse>
+          </material>
+        </visual>
+        <visual name="blue_pencil">
+          <pose>0.004 -0.024 0.172 0.10 -0.20 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.007</radius>
+              <length>0.165</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.05 0.16 0.58 1</ambient>
+            <diffuse>0.08 0.25 0.88 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="white_mug_on_computer_table">
+      <static>true</static>
+      <pose>7.22 -1.08 0.760 0 0 0</pose>
+      <link name="link">
+        <collision name="cup_collision">
+          <pose>0 0 0.050 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.052</radius>
+              <length>0.100</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="cup">
+          <pose>0 0 0.050 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.052</radius>
+              <length>0.100</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.88 0.87 0.82 1</ambient>
+            <diffuse>0.98 0.97 0.92 1</diffuse>
+          </material>
+        </visual>
+        <visual name="coffee_top">
+          <pose>0 0 0.103 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.044</radius>
+              <length>0.004</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.16 0.08 0.03 1</ambient>
+            <diffuse>0.26 0.13 0.05 1</diffuse>
+          </material>
+        </visual>
+        <visual name="handle_outer">
+          <pose>0 0.060 0.055 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.016 0.012 0.076</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.88 0.87 0.82 1</ambient>
+            <diffuse>0.98 0.97 0.92 1</diffuse>
+          </material>
+        </visual>
+        <visual name="handle_top">
+          <pose>0 0.054 0.091 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.016 0.028 0.012</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.88 0.87 0.82 1</ambient>
+            <diffuse>0.98 0.97 0.92 1</diffuse>
+          </material>
+        </visual>
+        <visual name="handle_bottom">
+          <pose>0 0.054 0.019 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.016 0.028 0.012</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.88 0.87 0.82 1</ambient>
+            <diffuse>0.98 0.97 0.92 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
     <model name="teddy_bear_on_right_table">
       <static>false</static>
-      <pose>5.22 1.88 0.815 0 0 -1.423</pose>
+      <pose>5.05 -1.88 0.815 0 0 1.5708</pose>
       <link name="link">
         <collision name="collision">
           <pose>0 0 0.114 0 0 0</pose>
