@@ -104,6 +104,22 @@ RUN python3 -m pip install --no-cache-dir \
     faster-whisper \
     pyttsx3
 
+# Gaze estimation dependencies (torch+cu117 from PyTorch index)
+RUN python3 -m pip install --no-cache-dir \
+    torch==2.0.1 torchvision==0.15.2 \
+    --index-url https://download.pytorch.org/whl/cu117
+
+RUN python3 -m pip install --no-cache-dir \
+    timm==0.6.13 \
+    ultralytics==8.4.71 \
+    ftfy
+
+# Pre-download DINOv2 ViT-L/14 backbone so first gaze run doesn't stall
+RUN python3 -c "\
+import torch; \
+torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', pretrained=True); \
+print('DINOv2 ViT-L/14 cached')"
+
 RUN mkdir -p /app
 COPY dockerfiles/entrypoint_tiago.sh /app/entrypoint_tiago.sh
 RUN chmod +x /app/entrypoint_tiago.sh

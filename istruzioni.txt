@@ -9,6 +9,30 @@ colcon build --symlink-install --packages-select empower_ros2 empower_hri
 
 source /root/exchange/install/setup.bash
 
+
+
+
+
+DENTRO AL CONTAINER
+
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+colcon build --symlink-install --packages-select empower_ros2 empower_hri gaze_estimation
+
+
+
+DENTRO A TUTTI I TERMINALI 
+
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+
+
+
+
+
+
 Terminale 1: Gazebo
 
 

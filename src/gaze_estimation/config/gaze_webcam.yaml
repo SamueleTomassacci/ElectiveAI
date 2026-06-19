@@ -23,7 +23,7 @@ gaze_estimation:
     use_heatmap_ratio_check: true
     heatmap_inside_bbox_threshold: 0.15
 
-    weights_dir: "/home/lorenzo/Scrivania/ElectiveAI/models/gaze_estimation"
+    weights_dir: "/root/exchange/models/gaze_estimation"
     gazelle_checkpoint: "gazelle_dinov2_vitl14_inout.pt"
     yolo_world_checkpoint: "yolov8x-worldv2.pt"
     face_detector_checkpoint: "yolov8n-face.pt"

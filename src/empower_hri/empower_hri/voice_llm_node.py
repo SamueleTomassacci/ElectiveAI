@@ -23,6 +23,22 @@ from empower_hri.text_to_speech import TextToSpeech, TextToSpeechError
 _MODE_THERAPIST = "therapist_command"
 _MODE_CHILD_ACTIVITY = "child_activity"
 
+_ATTENTION_RECALL_SYSTEM_PROMPT = (
+    "You are TIAGo, a friendly social robot interacting with a young child. "
+    "The child is not paying attention to the activity. "
+    "Generate ONE short, warm, non-judgmental sentence (maximum 12 words) "
+    "to gently redirect the child's attention back to {target}. "
+    "Do not scold. Do not mention that you are monitoring gaze or attention. "
+    "Just be kind and playful."
+)
+
+_ATTENTION_RECALL_FALLBACKS = {
+    "storytelling": "Hey! Can you look at the book with me?",
+    "mood_check_teddy": "The teddy bear wants to see your eyes!",
+    "computer_emotion_recognition": "Let's look at the screen together!",
+    "generic_child_activity": "Hey, look at me! Let's continue together!",
+}
+
 DEFAULT_SYSTEM_PROMPT = (
     "You are TIAGo, a social robot in a Gazebo simulation. At this stage, you can "
     "only speak with the user. You cannot move, grasp objects, recognize people, or "
@@ -140,6 +156,7 @@ class VoiceLlmNode(Node):
         self.dialog_complete_pub = self.create_publisher(String, "/hri/dialog_complete", 10)
 
         self.create_subscription(String, "/hri/dialog_command", self._dialog_command_callback, 10)
+        self.create_subscription(String, "/hri/attention_alert", self._attention_alert_callback, 10)
         mission_state_qos = QoSProfile(depth=1)
         mission_state_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.create_subscription(
@@ -169,6 +186,9 @@ class VoiceLlmNode(Node):
         self._child_activity_stop_event = threading.Event()
         self._mission_state = ""
         self._last_therapist_input_state = ""
+        self._pending_attention_alert: Dict[str, Any] | None = None
+        self._attention_alert_lock = threading.Lock()
+        self._attention_llm = self._create_attention_llm()
 
         self._stop_event = threading.Event()
         self._worker = threading.Thread(
@@ -208,6 +228,8 @@ class VoiceLlmNode(Node):
         self.declare_parameter("stt_vad_energy_threshold", 0.01)
         self.declare_parameter("stt_vad_silence_sec", 1.5)
         self.declare_parameter("stt_vad_max_duration_sec", 30.0)
+        self.declare_parameter("attention_recall_llm_timeout", 4.0)
+        self.declare_parameter("attention_recall_max_tokens", 30)
 
     def _validate_parameters(self) -> None:
         input_mode = str(self.get_parameter("input_mode").value)
@@ -318,6 +340,8 @@ class VoiceLlmNode(Node):
             self._child_activity_stop_event.clear()
             self.history.clear()
             self._mode = _MODE_CHILD_ACTIVITY
+        with self._attention_alert_lock:
+            self._pending_attention_alert = None
         self.get_logger().info(
             f"Switched to child activity mode. Context: {self._child_activity_context}"
         )
@@ -431,6 +455,75 @@ class VoiceLlmNode(Node):
             return False
         return self._mission_state != self._last_therapist_input_state
 
+    def _create_attention_llm(self):
+        provider = str(self.get_parameter("llm_provider").value)
+        if provider == "mock":
+            return MockLlmClient()
+        if provider == "ollama":
+            return OllamaClient(
+                base_url=str(self.get_parameter("llm_base_url").value),
+                model=str(self.get_parameter("llm_model").value),
+                fallback_model=str(self.get_parameter("llm_fallback_model").value),
+                timeout=float(self.get_parameter("attention_recall_llm_timeout").value),
+                logger=self.get_logger(),
+            )
+        return None
+
+    def _attention_alert_callback(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        with self._attention_alert_lock:
+            self._pending_attention_alert = payload
+
+    def _handle_attention_recall(self) -> None:
+        with self._attention_alert_lock:
+            alert = self._pending_attention_alert
+            self._pending_attention_alert = None
+        if alert is None:
+            return
+
+        activity_type = alert.get("activity_type", "generic_child_activity")
+        expected_target = alert.get("expected_target", "robot")
+        self.get_logger().info(
+            f"[ATTENTION_RECALL] Alert received: {alert}"
+        )
+
+        recall_text = None
+        if self._attention_llm is not None:
+            system_prompt = _ATTENTION_RECALL_SYSTEM_PROMPT.format(target=expected_target)
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"The child is not looking at {expected_target} during {activity_type}."},
+            ]
+            try:
+                recall_text = self._attention_llm.chat(
+                    messages=messages,
+                    temperature=0.7,
+                    max_response_tokens=int(
+                        self.get_parameter("attention_recall_max_tokens").value
+                    ),
+                )
+            except LlmError as exc:
+                self.get_logger().warning(
+                    f"[ATTENTION_RECALL] LLM failed, using fallback: {exc}"
+                )
+
+        if not recall_text:
+            recall_text = _ATTENTION_RECALL_FALLBACKS.get(
+                activity_type,
+                _ATTENTION_RECALL_FALLBACKS["generic_child_activity"],
+            )
+
+        self.get_logger().info(f"[ATTENTION_RECALL] TIAGo: {recall_text}")
+        self._publish(self.robot_publisher, recall_text)
+        try:
+            self._publish_state("speaking")
+            self.tts.speak(recall_text)
+        except TextToSpeechError as exc:
+            self.get_logger().error(f"[ATTENTION_RECALL] TTS failed: {exc}")
+
     def _run_child_activity_session(self) -> None:
         """Multi-turn interactive activity loop with the child."""
         with self._mode_lock:
@@ -471,6 +564,7 @@ class VoiceLlmNode(Node):
                     # VAD: no speech detected within max_duration; keep listening.
                     continue
                 self._handle_utterance(child_text)
+                self._handle_attention_recall()
                 turns += 1
                 self._publish_state("ready")
             except EOFError:

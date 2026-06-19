@@ -30,6 +30,7 @@ class MissionState(str, Enum):
     CHILD_READY = "CHILD_READY"
     CHILD_ACTIVITY = "CHILD_ACTIVITY"
     MISSION_COMPLETE = "MISSION_COMPLETE"
+    MISSION_FAILED = "MISSION_FAILED"
 
 
 @dataclass
@@ -56,6 +57,8 @@ class MissionOrchestratorNode(Node):
 
         self.create_subscription(String, "/hri/user_utterance", self._task_callback, 10)
         self.create_subscription(String, "/hri/dialog_complete", self._dialog_complete_callback, 10)
+        self.create_subscription(String, "/mission/gaze_command", self._gaze_command_callback, 10)
+        self.create_subscription(String, "/gaze/node_status", self._gaze_node_status_callback, 10)
 
         self.nav_client = ActionClient(
             self,
@@ -73,6 +76,10 @@ class MissionOrchestratorNode(Node):
         self._dialog_complete_event = threading.Event()
         self._dialog_complete_payload = ""
         self._mission_thread = None
+        self._gaze_process = None
+        self._gaze_process_label = "gaze estimation"
+        self._gaze_ready_event = threading.Event()
+        self._gaze_error_message = ""
 
         if bool(self.get_parameter("auto_start").value):
             self._mission_thread = threading.Thread(
@@ -111,6 +118,11 @@ class MissionOrchestratorNode(Node):
         self.declare_parameter("output_root", "/root/exchange/empower_data")
         self.declare_parameter("storytelling_timeout_sec", 300.0)
         self.declare_parameter("child_activity_timeout_sec", 300.0)
+        self.declare_parameter("gaze_estimation.enabled", True)
+        self.declare_parameter("gaze_estimation.camera_index", 0)
+        self.declare_parameter("gaze_estimation.device", "auto")
+        self.declare_parameter("gaze_estimation.show_window", True)
+        self.declare_parameter("gaze_estimation.startup_timeout_sec", 30.0)
 
     def _task_callback(self, msg):
         text = msg.data.strip()
@@ -201,13 +213,24 @@ class MissionOrchestratorNode(Node):
             self._publish(self.child_ready_pub, "child_ready")
             self._publish_feedback("Child interaction can start")
 
+            if not self._start_gaze_process():
+                self._publish_feedback(
+                    "Gaze estimation failed to start; aborting mission",
+                    log_level="error",
+                )
+                self._transition(MissionState.MISSION_FAILED)
+                return
+
             self._transition(MissionState.CHILD_ACTIVITY)
             self._run_child_activity()
+
+            self._stop_gaze_process()
 
             self._transition(MissionState.MISSION_COMPLETE)
             self._publish_feedback("Mission complete")
 
         except Exception as exc:
+            self._stop_gaze_process()
             self._publish_feedback(
                 f"Mission failed with {type(exc).__name__}: {exc}",
                 log_level="error",
@@ -271,6 +294,88 @@ class MissionOrchestratorNode(Node):
         else:
             self._publish_feedback("Child activity timed out; stopping HRI", log_level="warn")
             self._publish(self.dialog_command_pub, json.dumps({"command": "stop"}))
+
+    def _gaze_command_callback(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if payload.get("command") == "stop_gaze":
+            self._publish_feedback("Gaze stop requested via /mission/gaze_command")
+            self._stop_gaze_process()
+
+    def _gaze_node_status_callback(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        state = payload.get("state", "")
+        if state == "READY":
+            self._gaze_ready_event.set()
+        elif state == "ERROR":
+            self._gaze_error_message = payload.get("message", "unknown error")
+            self._gaze_ready_event.set()
+
+    def _start_gaze_process(self):
+        if not bool(self.get_parameter("gaze_estimation.enabled").value):
+            self._publish_feedback("Gaze estimation disabled by parameter")
+            return True
+
+        camera_index = str(self.get_parameter("gaze_estimation.camera_index").value)
+        device = str(self.get_parameter("gaze_estimation.device").value)
+        show_window = str(self.get_parameter("gaze_estimation.show_window").value).lower()
+
+        command = [
+            "ros2", "launch", "gaze_estimation", "gaze_with_attention.launch.py",
+            f"camera_index:={camera_index}",
+            f"device:={device}",
+            f"show_window:={show_window}",
+        ]
+
+        self._gaze_ready_event.clear()
+        self._gaze_error_message = ""
+        self._gaze_process, _ = self._start_process(command, self._gaze_process_label)
+
+        timeout_sec = float(self.get_parameter("gaze_estimation.startup_timeout_sec").value)
+        self._publish_feedback(
+            f"Waiting up to {timeout_sec:.1f}s for gaze estimation to become ready"
+        )
+
+        deadline = time.monotonic() + timeout_sec
+        while rclpy.ok() and not self._stop_event.is_set():
+            if self._gaze_ready_event.is_set():
+                break
+            if self._gaze_process.poll() is not None:
+                self._publish_feedback(
+                    f"Gaze estimation process exited early with code "
+                    f"{self._gaze_process.returncode}",
+                    log_level="error",
+                )
+                self._gaze_process = None
+                return False
+            if time.monotonic() >= deadline:
+                self._publish_feedback(
+                    "Gaze estimation startup timed out", log_level="error"
+                )
+                self._stop_gaze_process()
+                return False
+            rclpy.spin_once(self, timeout_sec=0.1)
+
+        if self._gaze_error_message:
+            self._publish_feedback(
+                f"Gaze estimation failed to start: {self._gaze_error_message}",
+                log_level="error",
+            )
+            self._stop_gaze_process()
+            return False
+
+        self._publish_feedback("Gaze estimation is ready")
+        return True
+
+    def _stop_gaze_process(self):
+        if self._gaze_process is not None:
+            self._stop_process(self._gaze_process, self._gaze_process_label)
+            self._gaze_process = None
 
     def _normalize_activity_type(self, activity_description):
         text = activity_description.lower()
@@ -666,6 +771,7 @@ class MissionOrchestratorNode(Node):
 
     def destroy_node(self):
         self._stop_event.set()
+        self._stop_gaze_process()
         return super().destroy_node()
 
 

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
+import time
+
 import cv2
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import String
 
 from gaze_estimation.config_loader import parse_target_classes, resolve_checkpoint
 from gaze_estimation.device import select_device
@@ -19,6 +23,10 @@ class GazeWebcamNode(Node):
         self.params = self._read_parameters()
         self.device = select_device(self.params["device"], warn=self.get_logger().warning)
         self.last_status = None
+        self._last_heartbeat = 0.0
+
+        self.gaze_status_pub = self.create_publisher(String, "/gaze/status", 10)
+        self.node_status_pub = self.create_publisher(String, "/gaze/node_status", 10)
 
         if self.params["print_debug"]:
             self.get_logger().info(f"Selected device: {self.device}")
@@ -70,6 +78,27 @@ class GazeWebcamNode(Node):
             "print_debug": bool(self.get_parameter("print_debug").value),
         }
 
+    def _publish_node_status(self, state: str, message: str = "") -> None:
+        payload: dict = {"state": state}
+        if message:
+            payload["message"] = message
+        msg = String()
+        msg.data = json.dumps(payload)
+        self.node_status_pub.publish(msg)
+
+    def _publish_gaze_status(self, status: str, target_class: str | None = None) -> None:
+        msg = String()
+        msg.data = json.dumps({
+            "status": status,
+            "target_class": target_class,
+            "timestamp": time.time(),
+        })
+        self.gaze_status_pub.publish(msg)
+        now = time.monotonic()
+        if now - self._last_heartbeat >= 2.0:
+            self._publish_node_status("READY")
+            self._last_heartbeat = now
+
     def initialize(self) -> bool:
         try:
             gazelle_checkpoint = resolve_checkpoint(
@@ -83,6 +112,7 @@ class GazeWebcamNode(Node):
             )
         except FileNotFoundError as exc:
             self.get_logger().error(str(exc))
+            self._publish_node_status("ERROR", str(exc))
             return False
 
         try:
@@ -100,12 +130,17 @@ class GazeWebcamNode(Node):
             )
         except Exception as exc:
             self.get_logger().error(f"Failed to initialize models: {exc}")
+            self._publish_node_status("ERROR", f"Model init failed: {exc}")
             return False
 
         self.capture = cv2.VideoCapture(self.params["camera_index"])
         if not self.capture.isOpened():
-            self.get_logger().error(f"Could not open webcam camera_index={self.params['camera_index']}")
+            error_msg = f"Could not open webcam camera_index={self.params['camera_index']}"
+            self.get_logger().error(error_msg)
+            self._publish_node_status("ERROR", error_msg)
             return False
+        self._publish_node_status("READY")
+        self._last_heartbeat = time.monotonic()
         return True
 
     def run(self):
@@ -195,9 +230,10 @@ class GazeWebcamNode(Node):
 
         if matched_object is not None:
             status = f"LOOKING_AT_OBJECT: {matched_object['class_name']}"
+            self._set_status("LOOKING_AT_OBJECT", matched_object["class_name"])
         else:
             status = "LOOKING_ELSEWHERE"
-        self._set_status(status)
+            self._set_status("LOOKING_ELSEWHERE")
         return draw_debug_overlay(
             frame_bgr,
             gaze_result=gaze_result,
@@ -206,10 +242,11 @@ class GazeWebcamNode(Node):
             matched_object=matched_object,
         )
 
-    def _set_status(self, status: str):
+    def _set_status(self, status: str, target_class: str | None = None):
         if self.params["print_debug"] and status != self.last_status:
             self.get_logger().info(status)
         self.last_status = status
+        self._publish_gaze_status(status, target_class)
 
     def shutdown(self):
         if self.capture is not None:

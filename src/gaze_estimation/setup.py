@@ -30,6 +30,7 @@ setup(
     entry_points={
         "console_scripts": [
             "gaze_webcam = gaze_estimation.gaze_webcam_node:main",
+            "attention_monitor = gaze_estimation.attention_monitor_node:main",
         ],
     },
 )

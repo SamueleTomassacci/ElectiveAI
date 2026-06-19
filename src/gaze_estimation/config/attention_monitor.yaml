@@ -1,0 +1,9 @@
+attention_monitor:
+  ros__parameters:
+    attention_loss_threshold_sec: 2.5
+    attention_cooldown_sec: 20.0
+    activity_target_map:
+      storytelling: ["book", "robot"]
+      mood_check_teddy: ["teddy bear", "robot"]
+      computer_emotion_recognition: ["laptop", "computer"]
+      generic_child_activity: ["robot"]
