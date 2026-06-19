@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     use_case: person_table_child_task
-    task_description: "Take the book, go to the child and drop the book"
+    task_description: "Take the peluche, go to the child and drop the peluche"
     output_root: /root/exchange/empower_data
     rgb_topic: /head_front_camera/rgb/image_raw
     depth_topic: /head_front_camera/depth/image_raw
