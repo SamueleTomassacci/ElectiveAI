@@ -96,6 +96,7 @@ RUN . /opt/ros/humble/setup.sh && \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libportaudio2 \
     espeak-ng \
+    pulseaudio-utils \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir \

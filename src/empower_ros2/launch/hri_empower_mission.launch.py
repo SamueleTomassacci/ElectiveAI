@@ -38,7 +38,7 @@ def generate_launch_description():
             DeclareLaunchArgument("start_hri", default_value="true"),
             DeclareLaunchArgument("start_models_cacher", default_value="true"),
             DeclareLaunchArgument("hri_input_mode", default_value="voice"),
-            DeclareLaunchArgument("stt_device_index", default_value="-1"),
+            DeclareLaunchArgument("stt_device_index", default_value="8"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             Node(
                 package="empower_ros2",

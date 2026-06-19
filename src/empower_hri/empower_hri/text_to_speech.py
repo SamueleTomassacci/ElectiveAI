@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from typing import Callable, List, Optional
 
 
@@ -202,7 +203,10 @@ class TextToSpeech:
         failures = []
         for name, speak_function in providers:
             try:
+                t0 = time.monotonic()
                 speak_function(text)
+                elapsed = time.monotonic() - t0
+                self._info(f"TTS playback took {elapsed:.1f}s (backend='{name}')")
                 if name != self.provider:
                     self._warn(f"TTS fallback active: using '{name}'.")
                 return name

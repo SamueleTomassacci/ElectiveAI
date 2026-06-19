@@ -99,13 +99,13 @@ class AttentionMonitorNode(Node):
             if self._activity_type and not self._armed:
                 self._armed = True
                 self._half_threshold_logged = False
-                self.get_logger().debug(f"Armed: dialog_state={state}")
+                self.get_logger().info(f"Armed: dialog_state={state}")
         else:
             if self._armed:
                 self._armed = False
                 self._loss_start = None
                 self._half_threshold_logged = False
-                self.get_logger().debug(f"Disarmed: dialog_state={state}")
+                self.get_logger().info(f"Disarmed: dialog_state={state}")
 
     def _gaze_callback(self, msg: String) -> None:
         try:
@@ -116,8 +116,13 @@ class AttentionMonitorNode(Node):
         self._last_gaze_target = payload.get("target_class")
         self._gaze_msg_count += 1
 
-        if self._gaze_msg_count <= 3 or self._gaze_msg_count % 100 == 0:
-            self.get_logger().debug(
+        if self._gaze_msg_count <= 3:
+            self.get_logger().info(
+                f"Gaze #{self._gaze_msg_count}: status={self._last_gaze_status}, "
+                f"target={self._last_gaze_target}, armed={self._armed}"
+            )
+        elif self._gaze_msg_count % 200 == 0:
+            self.get_logger().info(
                 f"Gaze #{self._gaze_msg_count}: status={self._last_gaze_status}, "
                 f"target={self._last_gaze_target}, armed={self._armed}"
             )

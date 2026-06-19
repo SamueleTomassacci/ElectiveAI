@@ -10,9 +10,13 @@ DOCKER_GPU_ARGS="--env DISPLAY \
 
 # PulseAudio: mount host socket so the container can record from the microphone
 PULSE_SOCKET="/run/user/$(id -u)/pulse/native"
+PULSE_COOKIE="$HOME/.config/pulse/cookie"
 if [ -S "$PULSE_SOCKET" ]; then
   PULSE_ARGS="--volume=${PULSE_SOCKET}:/run/pulse/native \
     --env PULSE_SERVER=unix:/run/pulse/native"
+  if [ -f "$PULSE_COOKIE" ]; then
+    PULSE_ARGS="${PULSE_ARGS} --volume=${PULSE_COOKIE}:/root/.config/pulse/cookie:ro"
+  fi
 else
   echo "WARNING: PulseAudio socket not found at ${PULSE_SOCKET}, microphone may not work"
   PULSE_ARGS=""

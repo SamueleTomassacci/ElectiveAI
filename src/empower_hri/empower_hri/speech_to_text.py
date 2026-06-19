@@ -4,7 +4,35 @@ import os
 import tempfile
 from typing import Callable, Optional
 
+import numpy as np
+
 from empower_hri.terminal_io import read_terminal
+
+
+def _resample(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+    """Simple linear-interpolation resample. Good enough for speech STT."""
+    if orig_sr == target_sr:
+        return audio
+    duration = len(audio) / orig_sr
+    target_len = int(duration * target_sr)
+    indices = np.linspace(0, len(audio) - 1, target_len)
+    return np.interp(indices, np.arange(len(audio)), audio.flatten()).astype(np.float32)
+
+
+def _get_device_samplerate(device_index, target_sr: int) -> int:
+    """Return a working sample rate for the device, preferring target_sr."""
+    try:
+        import sounddevice as sd
+        sd.check_input_settings(device=device_index, samplerate=target_sr)
+        return target_sr
+    except Exception:
+        pass
+    try:
+        import sounddevice as sd
+        info = sd.query_devices(device_index, "input")
+        return int(info["default_samplerate"])
+    except Exception:
+        return target_sr
 
 
 class SpeechToTextError(RuntimeError):
@@ -95,23 +123,29 @@ class FasterWhisperSpeechToText:
                 "python3 -m pip install sounddevice soundfile"
             ) from exc
 
-        frame_count = int(self.record_seconds * self.sample_rate)
+        hw_rate = _get_device_samplerate(self.device_index, self.sample_rate)
+        frame_count = int(self.record_seconds * hw_rate)
         if frame_count <= 0:
             raise SpeechToTextError("record_seconds must be greater than zero.")
         try:
             self._set_state("recording")
             if self.logger is not None:
                 self.logger.info(
-                    f"Recording from microphone for {self.record_seconds:.1f} seconds..."
+                    f"Recording from microphone for {self.record_seconds:.1f} seconds "
+                    f"(hw_rate={hw_rate}, target={self.sample_rate})..."
                 )
             audio = sd.rec(
                 frame_count,
-                samplerate=self.sample_rate,
+                samplerate=hw_rate,
                 channels=1,
                 dtype="float32",
                 device=self.device_index,
             )
             sd.wait()
+            if hw_rate != self.sample_rate:
+                audio = _resample(audio.flatten(), hw_rate, self.sample_rate)
+            else:
+                audio = audio.flatten()
             sf.write(wav_path, audio, self.sample_rate, subtype="PCM_16")
         except Exception as exc:
             raise SpeechToTextError(
@@ -159,7 +193,6 @@ class FasterWhisperSpeechToText:
         Returns empty string if no speech was detected within max_duration_sec.
         """
         try:
-            import numpy as np
             import sounddevice as sd
             import soundfile as sf
         except ImportError as exc:
@@ -167,8 +200,9 @@ class FasterWhisperSpeechToText:
                 "Automatic recording requires sounddevice, soundfile, and numpy."
             ) from exc
 
+        hw_rate = _get_device_samplerate(self.device_index, self.sample_rate)
         chunk_sec = 0.05  # 50 ms per chunk for responsive VAD
-        chunk_frames = int(self.sample_rate * chunk_sec)
+        chunk_frames = int(hw_rate * chunk_sec)
         silence_chunks_needed = max(1, int(silence_duration_sec / chunk_sec))
         max_chunks = int(max_duration_sec / chunk_sec)
         min_speech_chunks = max(1, int(min_speech_sec / chunk_sec))
@@ -180,11 +214,13 @@ class FasterWhisperSpeechToText:
 
         self._set_state("listening")
         if self.logger is not None:
-            self.logger.info("Auto-listening... (speak when you are ready)")
+            self.logger.info(
+                f"Auto-listening (hw_rate={hw_rate}, target={self.sample_rate})..."
+            )
 
         try:
             with sd.InputStream(
-                samplerate=self.sample_rate,
+                samplerate=hw_rate,
                 channels=1,
                 dtype="float32",
                 blocksize=chunk_frames,
@@ -219,7 +255,9 @@ class FasterWhisperSpeechToText:
 
         wav_path = ""
         try:
-            audio = np.concatenate(recorded_chunks, axis=0)
+            audio = np.concatenate(recorded_chunks, axis=0).flatten()
+            if hw_rate != self.sample_rate:
+                audio = _resample(audio, hw_rate, self.sample_rate)
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_file:
                 wav_path = wav_file.name
             sf.write(wav_path, audio, self.sample_rate, subtype="PCM_16")
