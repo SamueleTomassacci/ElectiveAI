@@ -37,6 +37,7 @@ class ModelsCacherNode(Node):
         self.declare_parameter("multi_view.merge.small_object_distance_m", 0.25)
         self.declare_parameter("multi_view.merge.large_object_distance_m", 0.60)
         self.declare_parameter("multi_view.merge.z_threshold_m", 0.25)
+        self.declare_parameter("multi_view.merge.min_detection_confidence", 0.15)
         self.declare_parameter("object_simulation.objects.book.aliases", ["book"])
         self.declare_parameter(
             "object_simulation.objects.computer.aliases",
@@ -110,6 +111,9 @@ class ModelsCacherNode(Node):
                 ),
                 "z_threshold_m": float(
                     self.get_parameter("multi_view.merge.z_threshold_m").value
+                ),
+                "min_detection_confidence": float(
+                    self.get_parameter("multi_view.merge.min_detection_confidence").value
                 ),
             }
         }

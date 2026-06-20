@@ -174,14 +174,16 @@ def build_global_scene_text(objects):
         aliases = item.get("aliases") or []
         alias_text = f", also known as {', '.join(aliases)}" if aliases else ""
         centroid = item["centroid_map"]
+        confidence = item.get("confidence", 0.0)
         lines.append(
             f"- {item['id']}{alias_text}, seen in views {item['seen_in_views']}, "
+            f"confidence={confidence:.2f}, "
             f"centroid_map=({centroid[0]:.2f}, {centroid[1]:.2f}, {centroid[2]:.2f})."
         )
     return "\n".join(lines)
 
 
-def collect_view_detections(manifest, alias_lookup, log=None):
+def collect_view_detections(manifest, alias_lookup, log=None, min_confidence=0.15):
     raw = []
     for view in manifest.get("views", []):
         view_id = int(view["view_id"])
@@ -191,6 +193,15 @@ def collect_view_detections(manifest, alias_lookup, log=None):
         camera_info = load_pickle(view["camera_info_path"])
         camera_pose = load_json(view["camera_pose_map_path"])
         for key, detection in detections.items():
+            score = float(detection.get("score", 0.0))
+            if score < min_confidence:
+                if log:
+                    label_raw = detection.get("label", "?")
+                    log(
+                        f"[MultiViewAggregator] Skipping {label_raw!r} in view {view_id}: "
+                        f"confidence {score:.3f} < {min_confidence:.2f}"
+                    )
+                continue
             label = canonical_label(detection.get("label", ""), alias_lookup)
             camera_points = camera_points_from_mask(detection.get("mask"), depth, camera_info)
             if camera_points.size == 0:
@@ -207,7 +218,7 @@ def collect_view_detections(manifest, alias_lookup, log=None):
                     "view_id": view_id,
                     "label": label,
                     "original_label": detection.get("label", label),
-                    "confidence": float(detection.get("score", 0.0)),
+                    "confidence": score,
                     "points": map_points,
                     "centroid": stats["centroid"],
                     "bbox_min": stats["min"],
@@ -249,10 +260,12 @@ def run_aggregation(output_root, use_case, merge_config=None, extra_aliases=None
         "small_object_distance_m": 0.25,
         "large_object_distance_m": 0.60,
         "z_threshold_m": 0.25,
+        "min_detection_confidence": 0.15,
     }
     config.update(merge_config or {})
+    min_confidence = float(config.get("min_detection_confidence", 0.15))
 
-    raw = collect_view_detections(manifest, alias_lookup, log=log)
+    raw = collect_view_detections(manifest, alias_lookup, log=log, min_confidence=min_confidence)
     if log:
         log(f"[MultiViewAggregator] Loaded detections from {len(manifest.get('views', []))} views")
     global_objects = merge_detections(raw, aliases, config)
@@ -295,6 +308,7 @@ class MultiViewAggregatorNode(Node):
         self.declare_parameter("multi_view.merge.small_object_distance_m", 0.25)
         self.declare_parameter("multi_view.merge.large_object_distance_m", 0.60)
         self.declare_parameter("multi_view.merge.z_threshold_m", 0.25)
+        self.declare_parameter("multi_view.merge.min_detection_confidence", 0.15)
         self._run()
 
     def _run(self):
@@ -303,6 +317,7 @@ class MultiViewAggregatorNode(Node):
             "small_object_distance_m": float(self.get_parameter("multi_view.merge.small_object_distance_m").value),
             "large_object_distance_m": float(self.get_parameter("multi_view.merge.large_object_distance_m").value),
             "z_threshold_m": float(self.get_parameter("multi_view.merge.z_threshold_m").value),
+            "min_detection_confidence": float(self.get_parameter("multi_view.merge.min_detection_confidence").value),
         }
         run_aggregation(
             self.get_parameter("output_root").value,

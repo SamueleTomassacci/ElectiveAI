@@ -25,6 +25,7 @@
         small_object_distance_m: 0.25
         large_object_distance_m: 0.60
         z_threshold_m: 0.25
+        min_detection_confidence: 0.15
     server_host: 127.0.0.1
     server_port: 10000
     openai_api_key_file: /root/exchange/openai_api_key.txt
