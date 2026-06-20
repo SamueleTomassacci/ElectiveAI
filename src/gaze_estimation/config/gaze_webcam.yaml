@@ -27,3 +27,8 @@ gaze_estimation:
     face_detector_checkpoint: "yolov8n-face.pt"
 
     print_debug: true
+
+    activity_detection_classes:
+      storytelling: ["book"]
+      mood_check_teddy: ["teddy bear"]
+      computer_emotion_recognition: ["laptop", "computer"]

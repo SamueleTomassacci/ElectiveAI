@@ -111,7 +111,7 @@ class Detection:
         words = words.lower()
         doc = self.loader_instance.nlp(words)
         for token in doc:
-            if token.pos_ == "AUX" or (token.pos_ == "NOUN" and token.dep_ in ["dobj","ROOT","nsubj"]) or token.pos_ == "VERB":
+            if token.pos_ == "AUX" or (token.pos_ in ("NOUN", "PROPN") and token.dep_ in ["dobj","ROOT","nsubj","compound"]) or token.pos_ == "VERB":
                 splitted_word.append(token.text)
         return splitted_word
 

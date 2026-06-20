@@ -216,3 +216,44 @@ Verifica che espeak-ng produca audio reale:
 time espeak-ng -v en "Hello, this is a test"
 ```
 (deve durare ~2 secondi e produrre suono)
+
+---
+
+## target_classes dinamico per attivita' (2026-06-20)
+
+### Problema
+
+`gaze_webcam_node` usava un set fisso di classi YOLO-World per tutte le
+attivita' (es. "book, peluche, computer" sempre). Questo causava rumore
+da rilevazioni irrilevanti per l'attivita' in corso.
+
+### Soluzione
+
+`gaze_webcam_node` sottoscrive `/hri/dialog_command`. Quando riceve
+`start_child_activity`, aggiorna dinamicamente le classi YOLO-World in
+base all'attivita' usando una mappa `activity_detection_classes`:
+
+- `storytelling` -> `["book"]`
+- `mood_check_teddy` -> `["teddy bear"]`
+- `computer_emotion_recognition` -> `["laptop", "computer"]`
+- `generic_child_activity` / non mappato -> usa le classi iniziali dal YAML
+
+Al `stop`, ripristina le classi iniziali.
+
+### Differenza con activity_target_map di attention_monitor
+
+Le due mappe hanno semantiche diverse e NON sono duplicazioni:
+
+- `activity_detection_classes` (gaze_webcam): classi fisiche che
+  YOLO-World deve cercare nel frame webcam
+- `activity_target_map` (attention_monitor): classi target valide per
+  giudicare se il bambino sta prestando attenzione (include "robot",
+  che non e' un oggetto rilevabile da YOLO nel frame webcam)
+
+### File modificati
+
+- `src/gaze_estimation/gaze_estimation/gaze_webcam_node.py`:
+  nuovi parametri `activity_detection_classes.*`, sottoscrizione a
+  `/hri/dialog_command`, aggiornamento dinamico YOLO classes
+- `src/gaze_estimation/config/gaze_webcam.yaml`:
+  aggiunta sezione `activity_detection_classes`

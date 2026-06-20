@@ -27,6 +27,11 @@ class GazeWebcamNode(Node):
 
         self.gaze_status_pub = self.create_publisher(String, "/gaze/status", 10)
         self.node_status_pub = self.create_publisher(String, "/gaze/node_status", 10)
+        self.create_subscription(
+            String, "/hri/dialog_command", self._dialog_command_callback, 10,
+        )
+        self._initial_target_classes = list(self.params["target_classes"])
+        self._activity_detection_map = self._load_activity_detection_map()
 
         if self.params["print_debug"]:
             self.get_logger().info(f"Selected device: {self.device}")
@@ -54,6 +59,16 @@ class GazeWebcamNode(Node):
         self.declare_parameter("yolo_world_checkpoint", "yolov8x-worldv2.pt")
         self.declare_parameter("face_detector_checkpoint", "best.pt")
         self.declare_parameter("print_debug", True)
+        self.declare_parameter(
+            "activity_detection_classes.storytelling", ["book"],
+        )
+        self.declare_parameter(
+            "activity_detection_classes.mood_check_teddy", ["teddy bear"],
+        )
+        self.declare_parameter(
+            "activity_detection_classes.computer_emotion_recognition",
+            ["laptop", "computer"],
+        )
 
     def _read_parameters(self):
         return {
@@ -77,6 +92,47 @@ class GazeWebcamNode(Node):
             "face_detector_checkpoint": str(self.get_parameter("face_detector_checkpoint").value),
             "print_debug": bool(self.get_parameter("print_debug").value),
         }
+
+    def _load_activity_detection_map(self) -> dict[str, list[str]]:
+        mapping: dict[str, list[str]] = {}
+        for activity in ("storytelling", "mood_check_teddy", "computer_emotion_recognition"):
+            param_name = f"activity_detection_classes.{activity}"
+            try:
+                value = self.get_parameter(param_name).value
+            except rclpy.exceptions.ParameterUninitializedException:
+                continue
+            if value:
+                mapping[activity] = list(value)
+        return mapping
+
+    def _dialog_command_callback(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        command = payload.get("command", "")
+        if command == "start_child_activity":
+            context = payload.get("context", {})
+            activity_type = str(context.get("activity_type", ""))
+            new_classes = self._activity_detection_map.get(activity_type)
+            if new_classes and self.yolo is not None:
+                self.yolo.set_classes(new_classes)
+                self.get_logger().info(
+                    f"Updated YOLO-World classes for activity '{activity_type}': "
+                    f"{', '.join(new_classes)}"
+                )
+            elif self.yolo is not None:
+                self.yolo.set_classes(self._initial_target_classes)
+                self.get_logger().info(
+                    f"No specific detection classes for activity '{activity_type}'; "
+                    f"using initial classes: {', '.join(self._initial_target_classes)}"
+                )
+        elif command == "stop" and self.yolo is not None:
+            self.yolo.set_classes(self._initial_target_classes)
+            self.get_logger().info(
+                f"Activity stopped; restored initial classes: "
+                f"{', '.join(self._initial_target_classes)}"
+            )
 
     def _publish_node_status(self, state: str, message: str = "") -> None:
         payload: dict = {"state": state}
