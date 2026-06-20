@@ -5,10 +5,8 @@ gaze_estimation:
 
     target_classes:
       - "book"
-      - "bottle"
-      - "cube"
-      - "sunglasses"
-      - "smartphone"
+      - "peluche"
+      - "computer"
 
     show_window: true
     window_name: "Gaze Estimation Webcam"
