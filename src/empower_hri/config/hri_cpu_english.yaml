@@ -27,3 +27,13 @@ voice_llm_node:
     piper_model_path: ""
     piper_config_path: ""
     system_prompt: "You are TIAGo, a social robot in a Gazebo simulation. At this stage, you can only speak with the user. You cannot move, grasp objects, recognize people, or perform physical actions from this module. Always answer in English in a short, clear, kind, and child-friendly manner suitable for children and therapists. If the user asks you to perform a physical action, explain that you are currently testing voice dialogue only. Do not claim robotic capabilities that have not been implemented."
+    emotion_staleness_threshold_sec: 15.0
+    emotion_prompt_hints:
+      sad: "seems a bit sad or down. Keep a warm, gentle, reassuring tone. Avoid sad, scary, or negative-outcome content in stories or topics."
+      angry: "seems frustrated or upset. Stay calm, patient, and validating. Avoid pushing or rushing them."
+      fear: "seems a bit scared or anxious. Be extra gentle and reassuring. Avoid scary or suspenseful content."
+      happy: "seems happy and engaged. Feel free to keep the energy light and playful."
+      surprise: "seems surprised or very engaged. You can build on their curiosity."
+      disgust: "seems uncomfortable with something. Consider gently changing the topic if it persists."
+      neutral: ""
+      unknown: ""

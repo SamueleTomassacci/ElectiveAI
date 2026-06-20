@@ -32,6 +32,19 @@ _ATTENTION_RECALL_SYSTEM_PROMPT = (
     "Just be kind and playful."
 )
 
+_DEFAULT_EMOTION_PROMPT_HINTS = {
+    "sad": "seems a bit sad or down. Keep a warm, gentle, reassuring tone. Avoid sad, scary, or negative-outcome content in stories or topics.",
+    "angry": "seems frustrated or upset. Stay calm, patient, and validating. Avoid pushing or rushing them.",
+    "fear": "seems a bit scared or anxious. Be extra gentle and reassuring. Avoid scary or suspenseful content.",
+    "happy": "seems happy and engaged. Feel free to keep the energy light and playful.",
+    "surprise": "seems surprised or very engaged. You can build on their curiosity.",
+    "disgust": "seems uncomfortable with something. Consider gently changing the topic if it persists.",
+    "neutral": "",
+    "unknown": "",
+}
+
+_EMOTION_HINT_EMOTIONS = list(_DEFAULT_EMOTION_PROMPT_HINTS.keys())
+
 _ATTENTION_RECALL_FALLBACKS = {
     "storytelling": "Hey! Can you look at the book with me?",
     "mood_check_teddy": "The teddy bear wants to see your eyes!",
@@ -157,6 +170,10 @@ class VoiceLlmNode(Node):
 
         self.create_subscription(String, "/hri/dialog_command", self._dialog_command_callback, 10)
         self.create_subscription(String, "/hri/attention_alert", self._attention_alert_callback, 10)
+        self.create_subscription(
+            String, "/child/emotion_status_smoothed",
+            self._emotion_status_callback, 10,
+        )
         mission_state_qos = QoSProfile(depth=1)
         mission_state_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.create_subscription(
@@ -189,6 +206,14 @@ class VoiceLlmNode(Node):
         self._pending_attention_alert: Dict[str, Any] | None = None
         self._attention_alert_lock = threading.Lock()
         self._attention_llm = self._create_attention_llm()
+
+        self._last_emotion: str | None = None
+        self._last_emotion_ts: float = 0.0
+        self._emotion_lock = threading.Lock()
+        self._emotion_staleness_sec = float(
+            self.get_parameter("emotion_staleness_threshold_sec").value
+        )
+        self._emotion_prompt_hints = self._load_emotion_prompt_hints()
 
         self._stop_event = threading.Event()
         self._worker = threading.Thread(
@@ -230,6 +255,9 @@ class VoiceLlmNode(Node):
         self.declare_parameter("stt_vad_max_duration_sec", 30.0)
         self.declare_parameter("attention_recall_llm_timeout", 4.0)
         self.declare_parameter("attention_recall_max_tokens", 30)
+        self.declare_parameter("emotion_staleness_threshold_sec", 15.0)
+        for emotion, hint in _DEFAULT_EMOTION_PROMPT_HINTS.items():
+            self.declare_parameter(f"emotion_prompt_hints.{emotion}", hint)
 
     def _validate_parameters(self) -> None:
         input_mode = str(self.get_parameter("input_mode").value)
@@ -352,7 +380,8 @@ class VoiceLlmNode(Node):
             context = dict(self._child_activity_context)
         if mode == _MODE_CHILD_ACTIVITY:
             activity_type = str(context.get("activity_type", "generic_child_activity"))
-            return build_child_activity_system_prompt(activity_type, context)
+            base = build_child_activity_system_prompt(activity_type, context)
+            return base + self._get_emotion_context()
         return str(self.get_parameter("system_prompt").value)
 
     def _publish(self, publisher, text: str) -> None:
@@ -476,6 +505,45 @@ class VoiceLlmNode(Node):
             return
         with self._attention_alert_lock:
             self._pending_attention_alert = payload
+
+    def _load_emotion_prompt_hints(self) -> Dict[str, str]:
+        hints: Dict[str, str] = {}
+        for emotion in _EMOTION_HINT_EMOTIONS:
+            param_name = f"emotion_prompt_hints.{emotion}"
+            try:
+                hints[emotion] = str(self.get_parameter(param_name).value)
+            except rclpy.exceptions.ParameterUninitializedException:
+                hints[emotion] = _DEFAULT_EMOTION_PROMPT_HINTS.get(emotion, "")
+        return hints
+
+    def _emotion_status_callback(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        with self._emotion_lock:
+            self._last_emotion = payload.get("emotion")
+            self._last_emotion_ts = float(payload.get("timestamp", 0.0))
+
+    def _get_emotion_context(self) -> str:
+        with self._emotion_lock:
+            emotion = self._last_emotion
+            emotion_ts = self._last_emotion_ts
+
+        if emotion is None or emotion in ("neutral", "unknown"):
+            return ""
+
+        if time.time() - emotion_ts > self._emotion_staleness_sec:
+            return ""
+
+        hint = self._emotion_prompt_hints.get(emotion, "")
+        if not hint:
+            return ""
+
+        self.get_logger().info(
+            f"[EMOTION_CONTEXT] Adding tone hint for '{emotion}' to current turn prompt"
+        )
+        return f"\nNote: the child currently {hint}"
 
     def _handle_attention_recall(self) -> None:
         with self._attention_alert_lock:

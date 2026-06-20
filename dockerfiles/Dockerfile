@@ -121,6 +121,15 @@ import torch; \
 torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', pretrained=True); \
 print('DINOv2 ViT-L/14 cached')"
 
+# EmotiEffLib for facial emotion recognition (--no-deps: only torch backend needed, avoids pulling onnxruntime)
+RUN python3 -m pip install --no-cache-dir --no-deps emotiefflib
+
+# Pre-cache EmotiEffLib emotion model weights
+RUN python3 -c "\
+from emotiefflib.facial_analysis import EmotiEffLibRecognizer; \
+EmotiEffLibRecognizer(engine='torch', model_name='enet_b0_8_best_vgaf', device='cpu'); \
+print('EmotiEffLib enet_b0_8_best_vgaf cached')"
+
 RUN mkdir -p /app
 COPY dockerfiles/entrypoint_tiago.sh /app/entrypoint_tiago.sh
 RUN chmod +x /app/entrypoint_tiago.sh

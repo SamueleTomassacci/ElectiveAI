@@ -2,6 +2,7 @@ attention_monitor:
   ros__parameters:
     attention_loss_threshold_sec: 2.5
     attention_cooldown_sec: 20.0
+    emotion_smoothing_window_sec: 7.0
     activity_target_map:
       storytelling: ["book", "robot"]
       mood_check_teddy: ["teddy bear", "robot"]

@@ -15,6 +15,17 @@ from gaze_estimation.geometry import is_gaze_on_object, select_largest_face
 from gaze_estimation.visualization import draw_debug_overlay
 from gaze_estimation.yolo_world_wrapper import YoloWorldDetector
 
+_EMOTION_CLASS_MAP = {
+    "Anger": "angry",
+    "Contempt": "neutral",
+    "Disgust": "disgust",
+    "Fear": "fear",
+    "Happiness": "happy",
+    "Neutral": "neutral",
+    "Sadness": "sad",
+    "Surprise": "surprise",
+}
+
 
 class GazeWebcamNode(Node):
     def __init__(self):
@@ -27,6 +38,7 @@ class GazeWebcamNode(Node):
 
         self.gaze_status_pub = self.create_publisher(String, "/gaze/status", 10)
         self.node_status_pub = self.create_publisher(String, "/gaze/node_status", 10)
+        self.emotion_pub = self.create_publisher(String, "/child/emotion_status", 10)
         self.create_subscription(
             String, "/hri/dialog_command", self._dialog_command_callback, 10,
         )
@@ -40,6 +52,8 @@ class GazeWebcamNode(Node):
         self.gazelle = None
         self.yolo = None
         self.capture = None
+        self.emotion_recognizer = None
+        self._emotion_frame_count = 0
 
     def _declare_parameters(self):
         self.declare_parameter("camera_index", 0)
@@ -59,6 +73,8 @@ class GazeWebcamNode(Node):
         self.declare_parameter("yolo_world_checkpoint", "yolov8x-worldv2.pt")
         self.declare_parameter("face_detector_checkpoint", "best.pt")
         self.declare_parameter("print_debug", True)
+        self.declare_parameter("emotion_process_every_n_frames", 1)
+        self.declare_parameter("emotion_model_name", "enet_b0_8_best_vgaf")
         self.declare_parameter(
             "activity_detection_classes.storytelling", ["book"],
         )
@@ -91,6 +107,10 @@ class GazeWebcamNode(Node):
             "yolo_world_checkpoint": str(self.get_parameter("yolo_world_checkpoint").value),
             "face_detector_checkpoint": str(self.get_parameter("face_detector_checkpoint").value),
             "print_debug": bool(self.get_parameter("print_debug").value),
+            "emotion_process_every_n_frames": max(1, int(
+                self.get_parameter("emotion_process_every_n_frames").value
+            )),
+            "emotion_model_name": str(self.get_parameter("emotion_model_name").value),
         }
 
     def _load_activity_detection_map(self) -> dict[str, list[str]]:
@@ -189,6 +209,23 @@ class GazeWebcamNode(Node):
             self._publish_node_status("ERROR", f"Model init failed: {exc}")
             return False
 
+        try:
+            from emotiefflib.facial_analysis import EmotiEffLibRecognizer
+            self.emotion_recognizer = EmotiEffLibRecognizer(
+                engine="torch",
+                model_name=self.params["emotion_model_name"],
+                device=str(self.device),
+            )
+            self.get_logger().info(
+                f"EmotiEffLib emotion model '{self.params['emotion_model_name']}' "
+                f"loaded on {self.device}"
+            )
+        except Exception as exc:
+            self.get_logger().error(
+                f"EmotiEffLib failed to load (emotion recognition disabled): {exc}"
+            )
+            self.emotion_recognizer = None
+
         self.capture = cv2.VideoCapture(self.params["camera_index"])
         if not self.capture.isOpened():
             error_msg = f"Could not open webcam camera_index={self.params['camera_index']}"
@@ -241,12 +278,14 @@ class GazeWebcamNode(Node):
         gaze_results = self.gazelle.estimate(rgb_image)
         object_detections = self.yolo.predict(frame_bgr)
 
-        if not gaze_results:
-            self._set_status("NO_FACE")
-            return draw_debug_overlay(frame_bgr, object_detections=object_detections, status="NO_FACE")
+        gaze_result = None
+        if gaze_results:
+            face_index = select_largest_face(gaze_results)
+            if face_index is not None:
+                gaze_result = gaze_results[face_index]
 
-        face_index = select_largest_face(gaze_results)
-        gaze_result = gaze_results[face_index] if face_index is not None else None
+        self._process_emotion(rgb_image, gaze_result)
+
         if gaze_result is None:
             self._set_status("NO_FACE")
             return draw_debug_overlay(frame_bgr, object_detections=object_detections, status="NO_FACE")
@@ -297,6 +336,62 @@ class GazeWebcamNode(Node):
             status=status,
             matched_object=matched_object,
         )
+
+    def _process_emotion(self, rgb_image, gaze_result):
+        self._emotion_frame_count += 1
+        if self._emotion_frame_count % self.params["emotion_process_every_n_frames"] != 0:
+            return
+
+        if self.emotion_recognizer is None:
+            self._publish_emotion_status("unavailable", error="EmotiEffLib not loaded")
+            return
+
+        if gaze_result is None:
+            self._publish_emotion_status("no_face")
+            return
+
+        try:
+            x1, y1, x2, y2 = (int(v) for v in gaze_result["face_bbox_px"])
+            h, w = rgb_image.shape[:2]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            face_crop = rgb_image[y1:y2, x1:x2]
+            if face_crop.size == 0:
+                self._publish_emotion_status("no_face")
+                return
+
+            _, scores = self.emotion_recognizer.predict_emotions(face_crop, logits=False)
+            score_values = scores[0]
+            all_scores: dict[str, float] = {}
+            for idx, class_name in self.emotion_recognizer.idx_to_emotion_class.items():
+                mapped = _EMOTION_CLASS_MAP.get(class_name, class_name.lower())
+                all_scores[mapped] = all_scores.get(mapped, 0.0) + float(score_values[idx])
+
+            emotion = max(all_scores, key=all_scores.get)
+            self._publish_emotion_status(
+                emotion, confidence=all_scores[emotion], all_scores=all_scores,
+            )
+        except Exception as exc:
+            self.get_logger().warning(f"Emotion inference error: {exc}")
+            self._publish_emotion_status("unavailable", error=str(exc))
+
+    def _publish_emotion_status(
+        self,
+        emotion: str,
+        confidence: float = 0.0,
+        all_scores: dict | None = None,
+        error: str | None = None,
+    ) -> None:
+        payload: dict = {"emotion": emotion, "timestamp": time.time()}
+        if error is not None:
+            payload["error"] = error
+        else:
+            payload["confidence"] = round(confidence, 4)
+            if all_scores is not None:
+                payload["all_scores"] = {k: round(v, 4) for k, v in all_scores.items()}
+        msg = String()
+        msg.data = json.dumps(payload)
+        self.emotion_pub.publish(msg)
 
     def _set_status(self, status: str, target_class: str | None = None):
         if self.params["print_debug"] and status != self.last_status:

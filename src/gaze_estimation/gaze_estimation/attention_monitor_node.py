@@ -1,4 +1,15 @@
-"""ROS 2 node that monitors child gaze attention during HRI child activities."""
+"""ROS 2 node that monitors child gaze attention and emotion during HRI child activities.
+
+This node combines two parallel, independent monitoring functions:
+- **Attention monitoring**: armed only during the ``speaking`` dialog phase, tracks
+  gaze-based inattention and publishes alerts on ``/hri/attention_alert``.
+- **Emotion smoothing**: active whenever a child activity is running (regardless of
+  dialog phase), receives raw per-frame emotion from ``/child/emotion_status`` and
+  publishes a temporally smoothed result on ``/child/emotion_status_smoothed``.
+
+Both functions coexist here to reuse the existing dialog-command / dialog-state
+subscription infrastructure; they do not interfere with each other's logic.
+"""
 
 import json
 import time
@@ -14,6 +25,7 @@ class AttentionMonitorNode(Node):
         super().__init__("attention_monitor")
         self.declare_parameter("attention_loss_threshold_sec", 2.5)
         self.declare_parameter("attention_cooldown_sec", 20.0)
+        self.declare_parameter("emotion_smoothing_window_sec", 7.0)
         self.declare_parameter(
             "activity_target_map.storytelling",
             ["book", "robot"],
@@ -38,12 +50,19 @@ class AttentionMonitorNode(Node):
             self.get_parameter("attention_cooldown_sec").value
         )
         self._activity_target_map = self._load_activity_target_map()
+        self._emotion_window_sec = float(
+            self.get_parameter("emotion_smoothing_window_sec").value
+        )
 
         self.alert_pub = self.create_publisher(String, "/hri/attention_alert", 10)
+        self.emotion_smoothed_pub = self.create_publisher(
+            String, "/child/emotion_status_smoothed", 10,
+        )
 
         self.create_subscription(String, "/gaze/status", self._gaze_callback, 10)
         self.create_subscription(String, "/hri/dialog_state", self._dialog_state_callback, 10)
         self.create_subscription(String, "/hri/dialog_command", self._dialog_command_callback, 10)
+        self.create_subscription(String, "/child/emotion_status", self._emotion_callback, 10)
 
         self._activity_type = ""
         self._valid_targets: list[str] = []
@@ -55,9 +74,13 @@ class AttentionMonitorNode(Node):
         self._half_threshold_logged = False
         self._gaze_msg_count = 0
 
+        self._emotion_window: list[tuple[float, str, float]] = []
+        self._last_smoothed_emotion = ""
+
         self.get_logger().info(
             f"Attention monitor ready "
-            f"(threshold={self._threshold_sec}s, cooldown={self._cooldown_sec}s)"
+            f"(threshold={self._threshold_sec}s, cooldown={self._cooldown_sec}s, "
+            f"emotion_window={self._emotion_window_sec}s)"
         )
 
     def _load_activity_target_map(self) -> dict[str, list[str]]:
@@ -183,6 +206,55 @@ class AttentionMonitorNode(Node):
         if self._last_gaze_status == "GAZE_OUT_OF_FRAME":
             return "out_of_frame"
         return "looking_elsewhere"
+
+    def _emotion_callback(self, msg: String) -> None:
+        if not self._activity_type:
+            return
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        emotion = payload.get("emotion", "")
+        confidence = float(payload.get("confidence", 0.0))
+        ts = float(payload.get("timestamp", time.time()))
+        self._emotion_window.append((ts, emotion, confidence))
+        self._compute_smoothed_emotion()
+
+    def _compute_smoothed_emotion(self) -> None:
+        now = time.time()
+        self._emotion_window = [
+            entry for entry in self._emotion_window
+            if now - entry[0] <= self._emotion_window_sec
+        ]
+
+        valid = [
+            (ts, em, conf) for ts, em, conf in self._emotion_window
+            if em not in ("no_face", "unavailable")
+        ]
+
+        if not valid:
+            smoothed = "unknown"
+        else:
+            scores: dict[str, float] = {}
+            for _, em, conf in valid:
+                scores[em] = scores.get(em, 0.0) + conf
+            smoothed = max(scores, key=scores.get)
+
+        if smoothed != self._last_smoothed_emotion:
+            self.get_logger().info(
+                f"Smoothed emotion changed: "
+                f"{self._last_smoothed_emotion or '(none)'} -> {smoothed}"
+            )
+            self._last_smoothed_emotion = smoothed
+
+        msg = String()
+        msg.data = json.dumps({
+            "emotion": smoothed,
+            "window_sec": self._emotion_window_sec,
+            "sample_count": len(valid),
+            "timestamp": now,
+        })
+        self.emotion_smoothed_pub.publish(msg)
 
     def _reset_tracking(self) -> None:
         self._loss_start = None

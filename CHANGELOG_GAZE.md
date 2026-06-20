@@ -257,3 +257,120 @@ Le due mappe hanno semantiche diverse e NON sono duplicazioni:
   `/hri/dialog_command`, aggiornamento dinamico YOLO classes
 - `src/gaze_estimation/config/gaze_webcam.yaml`:
   aggiunta sezione `activity_detection_classes`
+
+---
+
+## Facial Emotion Recognition + integrazione LLM (2026-06-20)
+
+### Obiettivo
+
+Riconoscimento continuo delle emozioni del bambino durante l'attivita',
+con influenza soft sul tono/contenuto delle risposte dell'LLM.
+
+### Architettura
+
+1. **Inferenza grezza** (`gaze_webcam_node`): EmotiEffLib (backend PyTorch,
+   modello `enet_b0_8_best_vgaf`) gira nello stesso loop frame, riusando
+   la face-crop gia' rilevata da Gazelle. Pubblica emozione frame-by-frame
+   su `/child/emotion_status`.
+
+2. **Smoothing temporale** (`attention_monitor_node`): sottoscrive
+   `/child/emotion_status`, mantiene una finestra scorrevole (default 7s),
+   calcola la moda pesata per confidenza, pubblica il risultato stabilizzato
+   su `/child/emotion_status_smoothed`. Gira sempre durante CHILD_ACTIVITY,
+   indipendentemente dalla fase speaking (diverso dall'attention monitor
+   che si arma solo durante speaking).
+
+3. **Consumo LLM** (`voice_llm_node`): sottoscrive
+   `/child/emotion_status_smoothed`, mantiene l'ultimo valore ricevuto.
+   Ad ogni turno di risposta durante CHILD_ACTIVITY, se l'emozione e'
+   significativa (non neutral/unknown) e non scaduta (< 15s), aggiunge
+   una nota di tono al system prompt dell'LLM. La nota non entra nella
+   history narrativa.
+
+### Gestione errori
+
+Se EmotiEffLib non si carica, `gaze_webcam_node` continua a funzionare
+normalmente per gaze/attention, pubblicando `{"emotion": "unavailable"}`
+sul topic emozione. Il fallimento dell'emotion recognition non blocca
+mai la missione.
+
+### File modificati
+
+#### `src/gaze_estimation/gaze_estimation/gaze_webcam_node.py`
+
+- Aggiunto publisher `/child/emotion_status` (JSON: emotion, confidence,
+  all_scores, timestamp)
+- Caricamento EmotiEffLib in `initialize()` con fallback graceful
+- Metodo `_process_emotion()`: crop volto da bbox Gazelle, inferenza
+  EmotiEffLib, mapping classi (Anger->angry, Happiness->happy, ecc.;
+  Contempt mappato a neutral)
+- Consolidato selezione volto in `_process_frame()` per riuso tra gaze
+  e emotion
+- Nuovi parametri: `emotion_process_every_n_frames` (default 1),
+  `emotion_model_name` (default "enet_b0_8_best_vgaf")
+
+#### `src/gaze_estimation/gaze_estimation/attention_monitor_node.py`
+
+- Aggiunto docstring che documenta la coesistenza di attention monitoring
+  e emotion smoothing nello stesso nodo
+- Sottoscrizione a `/child/emotion_status`
+- Publisher `/child/emotion_status_smoothed`
+- Finestra scorrevole con moda pesata per confidenza
+- Log INFO quando l'emozione smoothed cambia
+- Nuovo parametro: `emotion_smoothing_window_sec` (default 7.0)
+
+#### `src/empower_hri/empower_hri/voice_llm_node.py`
+
+- Sottoscrizione a `/child/emotion_status_smoothed`
+- Metodo `_get_emotion_context()`: costruisce la nota di tono basata
+  sull'emozione corrente (con check staleness)
+- Nota iniettata nel system prompt ad ogni turno child activity
+  (non nella history)
+- Mappa `emotion_prompt_hints` configurabile da YAML
+- Log INFO `[EMOTION_CONTEXT]` quando una nota viene inclusa
+- Nuovi parametri: `emotion_staleness_threshold_sec` (default 15.0),
+  `emotion_prompt_hints.*`
+
+#### `dockerfiles/Dockerfile`
+
+- `pip install --no-deps emotiefflib` (evita di tirare onnxruntime)
+- Pre-cache pesi `enet_b0_8_best_vgaf` in build time
+
+#### Config YAML
+
+- `gaze_webcam.yaml`: aggiunti `emotion_process_every_n_frames`,
+  `emotion_model_name`
+- `attention_monitor.yaml`: aggiunto `emotion_smoothing_window_sec`
+- `hri_cpu_english.yaml`: aggiunti `emotion_staleness_threshold_sec`,
+  `emotion_prompt_hints.*`
+
+### Nuovi topic ROS 2
+
+| Topic | Tipo | Publisher | Schema |
+|-------|------|-----------|--------|
+| `/child/emotion_status` | `std_msgs/String` | `gaze_webcam_node` | `{"emotion": "happy"\|..., "confidence": float, "all_scores": {...}, "timestamp": float}` |
+| `/child/emotion_status_smoothed` | `std_msgs/String` | `attention_monitor_node` | `{"emotion": "happy"\|..., "window_sec": float, "sample_count": int, "timestamp": float}` |
+
+### Nuovi parametri
+
+#### gaze_webcam_node
+
+- `emotion_process_every_n_frames` (int, default 1)
+- `emotion_model_name` (string, default "enet_b0_8_best_vgaf")
+
+#### attention_monitor_node
+
+- `emotion_smoothing_window_sec` (float, default 7.0)
+
+#### voice_llm_node
+
+- `emotion_staleness_threshold_sec` (float, default 15.0)
+- `emotion_prompt_hints.sad` (string)
+- `emotion_prompt_hints.angry` (string)
+- `emotion_prompt_hints.fear` (string)
+- `emotion_prompt_hints.happy` (string)
+- `emotion_prompt_hints.surprise` (string)
+- `emotion_prompt_hints.disgust` (string)
+- `emotion_prompt_hints.neutral` (string, vuoto)
+- `emotion_prompt_hints.unknown` (string, vuoto)

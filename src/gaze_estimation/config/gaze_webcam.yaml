@@ -28,6 +28,9 @@ gaze_estimation:
 
     print_debug: true
 
+    emotion_process_every_n_frames: 1
+    emotion_model_name: "enet_b0_8_best_vgaf"
+
     activity_detection_classes:
       storytelling: ["book"]
       mood_check_teddy: ["teddy bear"]
