@@ -111,7 +111,7 @@ RUN python3 -m pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cu117
 
 RUN python3 -m pip install --no-cache-dir \
-    timm==0.6.13 \
+    timm==1.0.27 \
     ultralytics==8.4.71 \
     ftfy
 
