@@ -1,5 +1,6 @@
 
 import pickle
+import json
 import cv2
 import numpy as np
 # import time
@@ -30,15 +31,20 @@ class Detection:
     
     def run_experiment(self):
         use_case = self.loader_instance.use_case
-        image_path = self.loader_instance.SCAN_DIR+"scan.jpg"
-        with open(image_path, "rb") as im_file:
-            encoded_image = base64.b64encode(im_file.read()).decode("utf-8")
+        image_paths = self._planning_image_paths()
+        encoded_images = []
+        for image_path in image_paths:
+            with open(image_path, "rb") as im_file:
+                encoded_images.append(base64.b64encode(im_file.read()).decode("utf-8"))
+        image_payload = encoded_images if len(encoded_images) > 1 else encoded_images[0]
+        if len(encoded_images) > 1:
+            print(f"Passing {len(encoded_images)} multi-view images to the EMPOWER planning agents")
 
         child_context = getattr(self.loader_instance, "child_planner_context", "")
         if child_context:
             print("Passing non-visual child context to the EMPOWER planning agent")
         agents = Agents(
-            encoded_image,
+            image_payload,
             self.task_dict[use_case],
             child_context=child_context,
         )
@@ -62,7 +68,43 @@ class Detection:
     def set_loader(self,loader_instance):
         self.loader_instance = loader_instance
         self.run_experiment()
-        self.run_image(image_path=self.loader_instance.SCAN_DIR+"scan.jpg")
+        if self._multi_view_enabled() and os.path.exists(self._views_manifest_path()):
+            self.run_multi_view_images()
+        else:
+            self.run_image(image_path=self.loader_instance.SCAN_DIR+"scan.jpg")
+
+    def _multi_view_enabled(self):
+        return bool(getattr(self.loader_instance, "multi_view_enabled", False))
+
+    def _views_manifest_path(self):
+        return os.path.join(self.loader_instance.DUMP_DIR, "views_manifest.json")
+
+    def _planning_image_paths(self):
+        if self._multi_view_enabled() and os.path.exists(self._views_manifest_path()):
+            with open(self._views_manifest_path(), "r", encoding="utf-8") as manifest_file:
+                manifest = json.load(manifest_file)
+            view_paths = [
+                view.get("rgb_path")
+                for view in manifest.get("views", [])
+                if view.get("rgb_path") and os.path.exists(view.get("rgb_path"))
+            ]
+            if view_paths:
+                return view_paths
+            print("Multi-view manifest found, but no RGB view paths were readable; using primary image")
+        return [self._primary_image_path()]
+
+    def _primary_image_path(self):
+        legacy_scan = self.loader_instance.SCAN_DIR+"scan.jpg"
+        if os.path.exists(legacy_scan):
+            return legacy_scan
+        manifest_path = self._views_manifest_path()
+        if os.path.exists(manifest_path):
+            with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+                manifest = json.load(manifest_file)
+            views = manifest.get("views", [])
+            if views:
+                return views[0]["rgb_path"]
+        return legacy_scan
         
     def split_word(self,words):
         splitted_word = []
@@ -215,21 +257,26 @@ class Detection:
             return
     
         if "on" in relation:
-            min_distance_x = 30000
+            index_first = None
+            index_second = None
+            min_distance = float("inf")
             for key_first in position_in_image_first.keys():
                 for key_second in position_in_image_second.keys():
                     dis_x = abs(position_in_image_first[key_first]['x'] - position_in_image_second[key_second]['x'])
                     dis_y = abs(position_in_image_first[key_first]['y'] - position_in_image_second[key_second]['y'])
                     distance = math.sqrt((dis_x*dis_x + dis_y*dis_y))
-                    if min_distance_x > dis_y:
+                    if min_distance > distance:
                         index_first = key_first
                         index_second = key_second
-                        min_distance_x = distance
+                        min_distance = distance
 
-            self.data_reordered[index_first]['label'] = object_first
-            self.data_reordered[index_second]['label'] = object_second
+            if index_first is not None and index_second is not None:
+                self.data_reordered[index_first]['label'] = object_first
+                self.data_reordered[index_second]['label'] = object_second
        
         if "left" in relation:
+            index_first = None
+            index_second = None
             min_distance_x = 30000
             min_distance_y = 10000
             for key_first in position_in_image_first.keys():
@@ -242,12 +289,15 @@ class Detection:
                         min_distance_x = min_distance_x_bb
                         min_distance_y = min_distance_y_bb
 
-            self.data_reordered[index_first]['label'] = object_first
-            self.data_reordered[index_second]['label'] = object_second
-            self.dict_detections.pop(index_first)
-            self.dict_detections.pop(index_second)
+            if index_first is not None and index_second is not None:
+                self.data_reordered[index_first]['label'] = object_first
+                self.data_reordered[index_second]['label'] = object_second
+                self.dict_detections.pop(index_first, None)
+                self.dict_detections.pop(index_second, None)
 
         if "right" in relation:
+            index_first = None
+            index_second = None
             min_distance_x = 30000
             min_distance_y = 10000
             for key_first in position_in_image_first.keys():
@@ -260,10 +310,11 @@ class Detection:
                         index_second = key_second
                         min_distance_x = min_distance_x_bb
                         min_distance_y = min_distance_y_bb
-            self.data_reordered[index_first]['label'] = object_first
-            self.data_reordered[index_second]['label'] = object_second
-            self.dict_detections.pop(index_first)
-            self.dict_detections.pop(index_second)
+            if index_first is not None and index_second is not None:
+                self.data_reordered[index_first]['label'] = object_first
+                self.data_reordered[index_second]['label'] = object_second
+                self.dict_detections.pop(index_first, None)
+                self.dict_detections.pop(index_second, None)
 
         
 
@@ -284,9 +335,11 @@ class Detection:
             self.compare_two_list_of_objects(position_in_image_first,position_in_image_second,relation,object_first,object_second)
 
 
-    def run_image(self,image_path):
+    def run_image(self,image_path, output_dir=None):
         index_detection = 0
         print("Running detection")
+        output_dir = output_dir or self.loader_instance.DUMP_DIR
+        os.makedirs(output_dir, exist_ok=True)
         object_relations = self.results_multi['environment_agent_info'].split('\n')
         object_relations = self._filter_child_relations(object_relations)
 
@@ -323,6 +376,7 @@ class Detection:
                     self.dict_detections[index_detection] = {'bbox':None,'label':None}
                     self.dict_detections[index_detection]['bbox'] = bbox
                     self.dict_detections[index_detection]['label'] = label
+                    self.dict_detections[index_detection]['score'] = float(score)
                     cv2.rectangle(image_yolow, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 1)
                     cv2.putText(image_yolow, f"{label}: {score:.2f}", (int(x1), int(y1)-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 1)
                     
@@ -332,13 +386,13 @@ class Detection:
                     overlay = masked_image
                     self.dict_detections[index_detection]['mask'] = binary_mask
                     overlay = cv2.addWeighted(overlay, 1, binary_mask, 0.5, 0)
-                    cv2.imwrite(self.loader_instance.DUMP_DIR+f"rgb_{index_detection}.jpg", overlay)
+                    cv2.imwrite(os.path.join(output_dir, f"rgb_{index_detection}.jpg"), overlay)
                     overlay_ = cv2.addWeighted(overlay_, 1, binary_mask, 0.5, 0)
                 index_detection += 1
         
         # print("mask : " + str(i) + " : " + str(time.time() -start))
-        cv2.imwrite(self.loader_instance.DUMP_DIR+"mask.jpg", overlay_)
-        cv2.imwrite(self.loader_instance.DUMP_DIR+"yolo.jpg", image_yolow)
+        cv2.imwrite(os.path.join(output_dir, "mask.jpg"), overlay_)
+        cv2.imwrite(os.path.join(output_dir, "yolo.jpg"), image_yolow)
 
         self.data_reordered = self.dict_detections.copy()
         # start = time.time()
@@ -351,7 +405,7 @@ class Detection:
                 relation_object_second = parts[2]
                 index_bounding_box_first = self.find_bb_relation(relation_object_first)
                 index_bounding_box_second = self.find_bb_relation(relation_object_second)
-                if index_bounding_box_first != [] or index_bounding_box_second != []:
+                if index_bounding_box_first != [] and index_bounding_box_second != []:
                     self.obtain_bb_grounded(index_bounding_box_first,index_bounding_box_second,relation_type,relation_object_first,relation_object_second)
 
         # print("grounfing : " + str(time.time() -start))
@@ -359,8 +413,85 @@ class Detection:
             cv2.rectangle(image_with_bbox, (int(value['bbox'][0]), int(value['bbox'][1])), (int(value['bbox'][2]), int(value['bbox'][3])), (255, 0, 0), 1 )
             cv2.putText(image_with_bbox, value['label'], (int(value['bbox'][0]+10), int(value['bbox'][1]+20)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-        with open(self.loader_instance.DUMP_DIR+"detection.pkl", 'wb') as f:
+        with open(os.path.join(output_dir, "detection.pkl"), 'wb') as f:
             pickle.dump(self.data_reordered, f, protocol=2)
-        
-        cv2.imwrite(self.loader_instance.DUMP_DIR+"scan_with_bb.jpg", image_with_bbox)
+
+        with open(os.path.join(output_dir, "detections.json"), "w", encoding="utf-8") as f:
+            json.dump(self._detections_json(self.data_reordered), f, indent=2)
+
+        cv2.imwrite(os.path.join(output_dir, "scan_with_bb.jpg"), image_with_bbox)
         os.system(f'rm -rf {self.loader_instance.YOLOW_PATH}/logs/')
+
+    def _detections_json(self, detections):
+        serializable = {}
+        for key, detection in detections.items():
+            item = {
+                "label": detection.get("label"),
+                "bbox": self._json_ready(detection.get("bbox")),
+                "score": float(detection.get("score", 0.0)),
+            }
+            mask = detection.get("mask")
+            if mask is not None:
+                item["mask_shape"] = list(mask.shape)
+                item["mask_nonzero"] = int(np.count_nonzero(mask))
+            serializable[str(key)] = item
+        return serializable
+
+    def _json_ready(self, value):
+        if hasattr(value, "tolist"):
+            return value.tolist()
+        if isinstance(value, (list, tuple)):
+            return [self._json_ready(item) for item in value]
+        return value
+
+    def run_multi_view_images(self):
+        print("Running multi-view detection")
+        with open(self._views_manifest_path(), "r", encoding="utf-8") as manifest_file:
+            manifest = json.load(manifest_file)
+        for view in manifest.get("views", []):
+            output_dir = os.path.dirname(view["rgb_path"])
+            self.run_image(image_path=view["rgb_path"], output_dir=output_dir)
+        self._aggregate_multi_view_results()
+
+    def _aggregate_multi_view_results(self):
+        try:
+            from empower_ros2.multi_view_aggregator import run_aggregation
+        except ImportError as exc:
+            print(f"Multi-view aggregation unavailable: {exc}")
+            return
+
+        merge_config = getattr(self.loader_instance, "multi_view_config", {}).get("merge", {})
+        result = run_aggregation(
+            os.path.dirname(self.loader_instance.OUTPUT.rstrip("/")),
+            self.loader_instance.use_case,
+            merge_config=merge_config,
+            extra_aliases=getattr(self.loader_instance, "object_aliases", {}),
+            log=print,
+        )
+        self._rewrite_plan_from_global_scene(result)
+
+    def _rewrite_plan_from_global_scene(self, result):
+        scene_path = os.path.join(self.loader_instance.DUMP_DIR, "global_scene_description.txt")
+        if not os.path.exists(scene_path):
+            return
+        with open(scene_path, "r", encoding="utf-8") as scene_file:
+            global_scene = scene_file.read()
+        if not global_scene.strip() or not result.get("objects"):
+            print("Multi-view aggregation produced no objects; keeping original plan")
+            return
+        image_path = self._primary_image_path()
+        with open(image_path, "rb") as im_file:
+            encoded_image = base64.b64encode(im_file.read()).decode("utf-8")
+        agents = Agents(
+            encoded_image,
+            self.task_dict[self.loader_instance.use_case],
+            child_context=getattr(self.loader_instance, "child_planner_context", ""),
+        )
+        planning_agent_info = agents.plan_from_scene_description(global_scene)
+        self.results_multi["description_agent_info"] = global_scene
+        self.results_multi["planning_agent_info"] = planning_agent_info
+        with open(self.loader_instance.DUMP_DIR+"planning.pkl",'wb') as f:
+            pickle.dump(self.results_multi, f, protocol=2)
+        with open(self.loader_instance.DUMP_DIR+"planning.txt",'w') as f:
+            f.write(planning_agent_info)
+        print("Rewrote planning.txt from deduplicated multi-view global scene")

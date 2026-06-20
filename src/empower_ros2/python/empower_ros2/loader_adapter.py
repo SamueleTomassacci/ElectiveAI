@@ -23,6 +23,9 @@ class EmpowerRos2Loader:
         word2vec_model="word2vec-google-news-300",
         child_planner_context="",
         child_aliases=None,
+        multi_view_enabled=False,
+        multi_view_config=None,
+        object_aliases=None,
     ):
         self._use_case = use_case
         self._CONFIG = os.path.abspath(config_dir) + "/"
@@ -39,6 +42,9 @@ class EmpowerRos2Loader:
         self._DUMP_DIR = os.path.join(self._OUTPUT, use_case) + "/"
         self._child_planner_context = child_planner_context or ""
         self._child_aliases = list(child_aliases or ["child", "the child", "kid"])
+        self._multi_view_enabled = bool(multi_view_enabled)
+        self._multi_view_config = dict(multi_view_config or {})
+        self._object_aliases = dict(object_aliases or {})
 
         os.makedirs(self._SCAN_DIR, exist_ok=True)
         os.makedirs(self._DUMP_DIR, exist_ok=True)
@@ -116,3 +122,15 @@ class EmpowerRos2Loader:
     @property
     def child_aliases(self):
         return self._child_aliases
+
+    @property
+    def multi_view_enabled(self):
+        return self._multi_view_enabled
+
+    @property
+    def multi_view_config(self):
+        return self._multi_view_config
+
+    @property
+    def object_aliases(self):
+        return self._object_aliases

@@ -44,6 +44,8 @@ setup(
     entry_points={
         "console_scripts": [
             "scene_capture_node = empower_ros2.scene_capture_node:main",
+            "multi_view_capture_node = empower_ros2.multi_view_capture_node:main",
+            "multi_view_aggregator = empower_ros2.multi_view_aggregator:main",
             "models_cacher_node = empower_ros2.models_cacher_node:main",
             "plan_generator_node = empower_ros2.plan_generator_node:main",
             "export_reports = empower_ros2.export_reports:main",

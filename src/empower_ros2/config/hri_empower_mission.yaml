@@ -15,7 +15,7 @@ mission_orchestrator_node:
     action_server_timeout_sec: 20.0
     nav_result_timeout_sec: 300.0
     empower_process_timeout_sec: 0.0
-    capture_timeout_sec: 60.0
+    capture_timeout_sec: 300.0
     capture_before_empower: true
     execute_empower_plan: true
     child_delivery_handled_by_empower: true

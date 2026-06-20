@@ -514,16 +514,23 @@ class MissionOrchestratorNode(Node):
 
     def _run_capture(self, params_file):
         paths = self._capture_output_paths(params_file)
+        capture_executable = (
+            "multi_view_capture_node"
+            if self._multi_view_enabled(params_file)
+            else "scene_capture_node"
+        )
         start_time = time.time()
         process, label = self._start_process(
             [
                 "ros2",
                 "run",
                 "empower_ros2",
-                "scene_capture_node",
+                capture_executable,
                 "--ros-args",
                 "--params-file",
                 params_file,
+                "-p",
+                f"use_sim_time:={self._use_sim_time_value()}",
             ],
             "EMPOWER scene capture",
         )
@@ -564,12 +571,23 @@ class MissionOrchestratorNode(Node):
             "output_root",
             self.get_parameter("output_root").value,
         )
+        if self._multi_view_enabled(params_file):
+            output_subdir = self._empower_param(params_file, "multi_view.output_subdir", "views")
+            return [
+                os.path.join(output_root, "output", use_case, "views_manifest.json"),
+                os.path.join(output_root, "output", use_case, output_subdir, "view_000", "rgb.jpg"),
+                os.path.join(output_root, "output", use_case, output_subdir, "view_000", "depth.npy"),
+                os.path.join(output_root, "output", use_case, output_subdir, "view_000", "camera_pose_map.json"),
+            ]
         return [
             os.path.join(output_root, "images", use_case, "scan.jpg"),
             os.path.join(output_root, "output", use_case, "depth.npy"),
             os.path.join(output_root, "output", use_case, "depth_pointcloud.pcd"),
             os.path.join(output_root, "output", use_case, "camera_info.json"),
         ]
+
+    def _multi_view_enabled(self, params_file):
+        return bool(self._empower_param(params_file, "multi_view.enabled", False))
 
     def _empower_param(self, params_file, name, default):
         try:
@@ -585,9 +603,20 @@ class MissionOrchestratorNode(Node):
             if not isinstance(section, dict):
                 continue
             ros_parameters = section.get("ros__parameters", {})
-            if name in ros_parameters:
-                return ros_parameters[name]
+            found, value = self._nested_param(ros_parameters, name)
+            if found:
+                return value
         return default
+
+    def _nested_param(self, ros_parameters, name):
+        if name in ros_parameters:
+            return True, ros_parameters[name]
+        current = ros_parameters
+        for part in str(name).split("."):
+            if not isinstance(current, dict) or part not in current:
+                return False, None
+            current = current[part]
+        return True, current
 
     def _files_ready(self, paths, start_time):
         for path in paths:
@@ -598,6 +627,24 @@ class MissionOrchestratorNode(Node):
         return True
 
     def _run_empower_execution(self, params_file):
+        low_level_command = [
+            "ros2",
+            "run",
+            "empower_ros2",
+            "low_level_execution_node",
+            "--ros-args",
+            "--params-file",
+            params_file,
+            "-p",
+            f"use_sim_time:={self._use_sim_time_value()}",
+        ]
+        if self._multi_view_enabled(params_file):
+            self._publish_feedback(
+                "Skipping single-view point cloud/marker publishers because multi-view "
+                "execution uses global_detections.json"
+            )
+            return self._run_checked(low_level_command, "EMPOWER low-level execution")
+
         helpers = []
         try:
             helpers.append(
@@ -610,6 +657,8 @@ class MissionOrchestratorNode(Node):
                         "--ros-args",
                         "--params-file",
                         params_file,
+                        "-p",
+                        f"use_sim_time:={self._use_sim_time_value()}",
                     ],
                     "EMPOWER colored point cloud publisher",
                 )
@@ -624,6 +673,8 @@ class MissionOrchestratorNode(Node):
                         "--ros-args",
                         "--params-file",
                         params_file,
+                        "-p",
+                        f"use_sim_time:={self._use_sim_time_value()}",
                     ],
                     "EMPOWER marker publisher",
                 )
@@ -636,18 +687,7 @@ class MissionOrchestratorNode(Node):
                         log_level="error",
                     )
                     return False
-            return self._run_checked(
-                [
-                    "ros2",
-                    "run",
-                    "empower_ros2",
-                    "low_level_execution_node",
-                    "--ros-args",
-                    "--params-file",
-                    params_file,
-                ],
-                "EMPOWER low-level execution",
-            )
+            return self._run_checked(low_level_command, "EMPOWER low-level execution")
         finally:
             for process, label in reversed(helpers):
                 self._stop_process(process, label)
@@ -698,6 +738,9 @@ class MissionOrchestratorNode(Node):
     def _process_timeout(self):
         timeout = float(self.get_parameter("empower_process_timeout_sec").value)
         return timeout if timeout > 0.0 else None
+
+    def _use_sim_time_value(self):
+        return str(bool(self.get_parameter("use_sim_time").value)).lower()
 
     def _wait_for_future(self, future, timeout_sec, description):
         deadline = time.monotonic() + timeout_sec

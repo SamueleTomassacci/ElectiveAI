@@ -132,6 +132,7 @@ class LowLevelExecutionNode(Node):
         )
         if self.object_simulation_enabled:
             self._cache_object_sdf_xml()
+        self.global_objects = self._load_global_detections()
         self.create_subscription(
             MarkerArray,
             self.get_parameter("centroids_topic").value,
@@ -166,7 +167,11 @@ class LowLevelExecutionNode(Node):
             for step in plan
             if str(step.get("action", "")).upper() == NAVIGATE
         ]
-        if any(not self._is_configured_navigation_step(step) for step in nav_steps):
+        if any(
+            not self._is_configured_navigation_step(step)
+            and not self._can_resolve_global_navigation_step(step)
+            for step in nav_steps
+        ):
             objects = self._wait_for_objects()
             if not objects:
                 self.get_logger().error("No EMPOWER object centroids available")
@@ -390,7 +395,8 @@ class LowLevelExecutionNode(Node):
         normalized = str(target).lower().strip()
         normalized = re.sub(r"[^a-z0-9 ]+", " ", normalized)
         normalized = re.sub(r"\s+", " ", normalized).strip()
-        return re.sub(r"^the\s+", "", normalized)
+        normalized = re.sub(r"^the\s+", "", normalized)
+        return re.sub(r"\s+\d+$", "", normalized).strip()
 
     def _gz_model_base_command(self):
         command = [
@@ -790,6 +796,36 @@ class LowLevelExecutionNode(Node):
                 self.last_navigation_target_is_child = False
             return ok
 
+        global_label, target_pose = self._resolve_global_target_pose(step)
+        if target_pose is not None:
+            robot_pose = self._wait_for_current_robot_pose()
+            if robot_pose is None:
+                self.get_logger().error(
+                    "Cannot execute NAVIGATE from global_detections.json: "
+                    "robot pose in map frame is unavailable"
+                )
+                return False
+            nav_goal = make_nav_goal_pose(
+                target_pose,
+                robot_pose,
+                float(self.get_parameter("standoff_distance").value),
+            )
+            nav_goal.header.stamp = self.get_clock().now().to_msg()
+            self.get_logger().info(
+                f"Executing NAVIGATE to '{global_label}' from global_detections.json "
+                f"({target_pose.pose.position.x:.3f}, {target_pose.pose.position.y:.3f})"
+            )
+            ok = navigate(
+                self,
+                self.nav_client,
+                nav_goal,
+                float(self.get_parameter("action_server_timeout_sec").value),
+                float(self.get_parameter("nav_result_timeout_sec").value),
+            )
+            if ok:
+                self.last_navigation_target_is_child = False
+            return ok
+
         target_label, marker = self._resolve_target_marker(step)
         if marker is None:
             self.get_logger().error(
@@ -802,7 +838,13 @@ class LowLevelExecutionNode(Node):
         except RuntimeError as exc:
             self.get_logger().error(str(exc))
             return False
-        robot_pose = self._current_robot_pose()
+        robot_pose = self._wait_for_current_robot_pose()
+        if robot_pose is None:
+            self.get_logger().error(
+                "Cannot execute NAVIGATE from EMPOWER centroid: "
+                "robot pose in map frame is unavailable"
+            )
+            return False
         nav_goal = make_nav_goal_pose(
             target_pose,
             robot_pose,
@@ -823,6 +865,74 @@ class LowLevelExecutionNode(Node):
         if ok:
             self.last_navigation_target_is_child = False
         return ok
+
+    def _load_global_detections(self):
+        path = os.path.join(self._dump_dir(), "global_detections.json")
+        if not os.path.exists(path):
+            return []
+        try:
+            with open(path, "r", encoding="utf-8") as file_obj:
+                data = json.load(file_obj)
+        except (OSError, json.JSONDecodeError) as exc:
+            self.get_logger().warn(f"Cannot load global detections from {path}: {exc}")
+            return []
+        objects = data.get("objects", [])
+        if objects:
+            self.get_logger().info(
+                f"Loaded {len(objects)} global objects from global_detections.json"
+            )
+        return objects
+
+    def _can_resolve_global_navigation_step(self, step):
+        return self._resolve_global_target_pose(step, log_ambiguity=False)[1] is not None
+
+    def _resolve_global_target_pose(self, step, log_ambiguity=True):
+        if not self.global_objects:
+            return None, None
+        matches = []
+        for candidate in self._target_candidates(step):
+            normalized = self._normalize_label(candidate)
+            for obj in self.global_objects:
+                if normalized in self._global_object_names(obj):
+                    matches.append(obj)
+        deduped = []
+        seen = set()
+        for obj in matches:
+            object_id = obj.get("id", "")
+            if object_id and object_id not in seen:
+                seen.add(object_id)
+                deduped.append(obj)
+        if not deduped:
+            return None, None
+        if len(deduped) > 1:
+            if log_ambiguity:
+                names = ", ".join(obj.get("id", obj.get("label", "object")) for obj in deduped)
+                self.get_logger().error(
+                    f"Ambiguous global visual target '{step.get('target')}': matches {names}"
+                )
+            return None, None
+        obj = deduped[0]
+        centroid = obj.get("centroid_map")
+        if not centroid or len(centroid) < 3:
+            return None, None
+        pose = PoseStamped()
+        pose.header.frame_id = self.get_parameter("map_frame").value
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.pose.position.x = float(centroid[0])
+        pose.pose.position.y = float(centroid[1])
+        pose.pose.position.z = float(centroid[2])
+        pose.pose.orientation.w = 1.0
+        return obj.get("id") or obj.get("label"), pose
+
+    def _global_object_names(self, obj):
+        names = set()
+        aliases = obj.get("aliases") or []
+        for value in [obj.get("id"), obj.get("label"), *aliases]:
+            normalized = self._normalize_label(value)
+            if normalized:
+                names.add(normalized)
+                names.add(re.sub(r"\s+\d+$", "", normalized).strip())
+        return names
 
     def _resolve_target_marker(self, step):
         normalized_objects = {
@@ -1004,6 +1114,48 @@ class LowLevelExecutionNode(Node):
         pose.pose.position.z = transform.transform.translation.z
         pose.pose.orientation = transform.transform.rotation
         return pose
+
+    def _wait_for_current_robot_pose(self):
+        map_frame = self.get_parameter("map_frame").value
+        base_frame = self.get_parameter("base_frame").value
+        timeout_sec = float(self.get_parameter("tf_timeout_sec").value)
+        deadline = time.monotonic() + timeout_sec
+        last_exc = None
+        warned = False
+        while rclpy.ok() and time.monotonic() < deadline:
+            try:
+                transform = self.tf_buffer.lookup_transform(
+                    map_frame,
+                    base_frame,
+                    Time(),
+                    timeout=Duration(seconds=0.0),
+                )
+            except TransformException as exc:
+                last_exc = exc
+                if not warned:
+                    self.get_logger().warn(
+                        f"Waiting for robot pose TF {map_frame}->{base_frame}: {exc}"
+                    )
+                    warned = True
+                rclpy.spin_once(self, timeout_sec=0.1)
+                continue
+            pose = PoseStamped()
+            pose.header.frame_id = map_frame
+            pose.header.stamp = self.get_clock().now().to_msg()
+            pose.pose.position.x = transform.transform.translation.x
+            pose.pose.position.y = transform.transform.translation.y
+            pose.pose.position.z = transform.transform.translation.z
+            pose.pose.orientation = transform.transform.rotation
+            self.get_logger().info(
+                f"Using current robot pose from TF {map_frame}->{base_frame}: "
+                f"x={pose.pose.position.x:.3f}, y={pose.pose.position.y:.3f}"
+            )
+            return pose
+        self.get_logger().error(
+            f"Timed out after {timeout_sec:.1f}s waiting for robot pose TF "
+            f"{map_frame}->{base_frame}: {last_exc}"
+        )
+        return None
 
     def _apply_transform(self, point, transform):
         rotated = self._rotate_vector(point, transform.transform.rotation)

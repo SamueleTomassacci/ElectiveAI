@@ -32,6 +32,20 @@ class ModelsCacherNode(Node):
         self.declare_parameter("child_context.enabled", False)
         self.declare_parameter("child_context.planner_description", "")
         self.declare_parameter("child_context.aliases", ["child", "the child", "kid"])
+        self.declare_parameter("multi_view.enabled", False)
+        self.declare_parameter("multi_view.merge.default_distance_m", 0.35)
+        self.declare_parameter("multi_view.merge.small_object_distance_m", 0.25)
+        self.declare_parameter("multi_view.merge.large_object_distance_m", 0.60)
+        self.declare_parameter("multi_view.merge.z_threshold_m", 0.25)
+        self.declare_parameter("object_simulation.objects.book.aliases", ["book"])
+        self.declare_parameter(
+            "object_simulation.objects.computer.aliases",
+            ["computer", "laptop", "laptop computer"],
+        )
+        self.declare_parameter(
+            "object_simulation.objects.peluche.aliases",
+            ["peluche", "teddy bear", "plush toy", "stuffed animal"],
+        )
 
         package_share = get_package_share_directory("empower_ros2")
         config_dir = (
@@ -56,9 +70,14 @@ class ModelsCacherNode(Node):
             word2vec_model=self.get_parameter("word2vec_model").value,
             child_planner_context=self._child_planner_context(),
             child_aliases=list(self.get_parameter("child_context.aliases").value),
+            multi_view_enabled=bool(self.get_parameter("multi_view.enabled").value),
+            multi_view_config=self._multi_view_config(),
+            object_aliases=self._object_aliases(),
         )
         if self.loader.child_planner_context:
             self.get_logger().info("Child planner context is enabled for EMPOWER planning")
+        if self.loader.multi_view_enabled:
+            self.get_logger().info("Multi-view EMPOWER detection/aggregation is enabled")
         self.server_thread = threading.Thread(target=self._serve, daemon=True)
         self.server_thread.start()
         self.get_logger().info("Model cacher ready")
@@ -76,6 +95,32 @@ class ModelsCacherNode(Node):
         if alias_text:
             description = f"{description}\nChild aliases: {alias_text}".strip()
         return description
+
+    def _multi_view_config(self):
+        return {
+            "merge": {
+                "default_distance_m": float(
+                    self.get_parameter("multi_view.merge.default_distance_m").value
+                ),
+                "small_object_distance_m": float(
+                    self.get_parameter("multi_view.merge.small_object_distance_m").value
+                ),
+                "large_object_distance_m": float(
+                    self.get_parameter("multi_view.merge.large_object_distance_m").value
+                ),
+                "z_threshold_m": float(
+                    self.get_parameter("multi_view.merge.z_threshold_m").value
+                ),
+            }
+        }
+
+    def _object_aliases(self):
+        aliases = {}
+        for name in ("book", "computer", "peluche"):
+            aliases[name] = list(
+                self.get_parameter(f"object_simulation.objects.{name}.aliases").value
+            )
+        return aliases
 
     def _load_openai_api_key(self):
         if os.environ.get("OPENAI_API_KEY"):

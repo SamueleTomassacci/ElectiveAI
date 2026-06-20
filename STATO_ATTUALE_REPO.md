@@ -1,223 +1,297 @@
-# Stato attuale del progetto ElectiveAI
+# Stato attuale della repo ElectiveAI
 
-Data del report: 2026-06-19
+Questo documento e' pensato per essere passato a ChatGPT come contesto tecnico
+della repo. Descrive lo stato attuale del codice, l'architettura dei package
+ROS 2, il flusso di esecuzione della simulazione TIAGo in Gazebo e, in modo
+particolare, la pipeline EMPOWER, che e' la componente su cui sono previsti i
+prossimi cambiamenti.
 
-Questo file serve come contesto da incollare in ChatGPT o in un altro assistente
-quando si devono fare modifiche al progetto. Il focus principale e' EMPOWER,
-cioe' il package `empower_ros2`, perche' e' la parte su cui sono previsti i
-cambiamenti. In questa versione e' documentata in dettaglio l'interazione
-robot-bambino per facilitare la progettazione della gaze estimation durante
-l'attivita' child.
+## Sintesi generale
 
-## Sintesi breve
+La repo contiene il codice necessario per eseguire una simulazione del robot
+TIAGo in Gazebo Classic, con ROS 2 Humble, Nav2 e una pipeline di task planning
+basata su EMPOWER. La scena supportata e' una scena custom:
 
-La repository e' una workspace ROS 2 Humble per una simulazione TIAGo in Gazebo.
-Il progetto e' organizzato intorno a tre componenti principali:
+- world: `exchange/person_table_child.world`
+- mappa statica Nav2: `exchange/maps/person_table_child_static.yaml`
+- configurazione EMPOWER: `src/empower_ros2/config/empower_person_table_child.yaml`
 
-1. `empower_ros2`: adattamento ROS 2 della pipeline EMPOWER. Gestisce capture
-   RGB-D, perception, grounding, planning simbolico con LLM, generazione report,
-   visualizzazione 3D dei rilevamenti, navigazione Nav2, manipolazione simulata
-   (GRAB/DROP via CLI Gazebo) e missione orchestrata con HRI.
-2. `empower_hri`: interazione vocale/testuale locale. Usa STT con
-   `faster-whisper`, LLM locale tramite Ollama/Qwen e TTS locale. Pubblica e
-   riceve messaggi ROS 2 su topic `/hri/*` e viene coordinato
-   dall'orchestratore missione di `empower_ros2`. Supporta tre attivita'
-   specifiche per bambini piu' un fallback generico.
-3. `gaze_estimation`: package ROS 2 standalone per stimare se una persona sta
-   guardando un oggetto target usando webcam RGB, Gazelle/Gaze-LLE,
-   face detector YOLO e YOLO-World. Al momento e' indipendente da EMPOWER e HRI.
+La repo e' organizzata intorno a tre componenti principali:
 
-La scena supportata e':
+1. `empower_ros2`: adapter ROS 2 della pipeline EMPOWER, piu orchestrazione
+   missione, Nav2, capture RGB-D, planning, grounding, visualizzazione ed
+   esecuzione low-level.
+2. `empower_hri`: componente di interazione vocale/testuale. Usa STT,
+   LLM locale via Ollama e TTS per raccogliere istruzioni dal terapista e
+   dialogare con il bambino.
+3. `gaze_estimation`: componente autonoma per stimare se una persona guarda un
+   oggetto target usando webcam, Gazelle/Gaze-LLE e YOLO-World.
+
+Il sistema attuale e' un MVP integrato: TIAGo puo' navigare in Gazebo usando
+Nav2, generare un piano simbolico da immagine RGB-D e task testuale, eseguire
+azioni `NAVIGATE`, e simulare alcune azioni di manipolazione (`GRAB`/`DROP`) su
+oggetti noti tramite comandi Gazebo. Non esiste ancora una manipolazione reale
+con braccio, MoveIt o gripper.
+
+## Ambiente di runtime
+
+La simulazione viene eseguita dentro un container Docker basato su
+`hrai-2025:v1`. Lo script principale e':
+
+```bash
+bash start_tiago.sh
+```
+
+Lo script:
+
+- monta la repo host in `/root/exchange`;
+- usa `--net host` e `--privileged`;
+- passa X11 per Gazebo/RViz;
+- prova a usare GPU NVIDIA se `nvidia-container-toolkit` e' presente;
+- monta il socket PulseAudio se disponibile;
+- avvia `/root/exchange/docker/entrypoint_tiago.sh`.
+
+L'entrypoint fa il source di:
+
+```bash
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+```
+
+Nel Dockerfile (`dockerfiles/Dockerfile`) sono installati ROS 2 Humble, Nav2,
+Gazebo ROS packages, dipendenze TIAGo, dipendenze EMPOWER, modelli EMPOWER
+scaricati in `/opt/empower_models/config`, e dipendenze HRI audio/STT/TTS.
+
+## Scena Gazebo e navigazione
+
+La scena principale e' `exchange/person_table_child.world`, con world name:
 
 ```text
-exchange/person_table_child.world
-exchange/maps/person_table_child_static.yaml
+person_table_child_room
+```
+
+Oggetti e posizioni rilevanti:
+
+- TIAGo deve partire all'origine guardando verso `+X` per vedere tavolo/shelf
+  con la camera frontale.
+- Adulto/terapista: lato `-Y`, modello `adult_person_in_front_of_tiago`.
+- Bambino: lato `+Y`, modello `child_straight_ahead_after_turn`.
+- Tavolo di consegna bambino: `child_delivery_table`, posizione circa
+  `(0.0, 1.65)`.
+- Area laterale con shelf/tavolo a destra: oggetti manipolabili noti:
+  - `clear_red_book_on_right_table`
+  - `laptop_computer_on_right_table`
+  - `teddy_bear_on_right_table`
+
+La mappa Nav2 e' `exchange/maps/person_table_child_static.yaml`:
+
+```yaml
+resolution: 0.05
+origin: [-4.7, -3.9, 0.0]
+mode: trinary
+```
+
+Il bringup Nav2 custom e':
+
+```bash
+ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
+  map:=/root/exchange/exchange/maps/person_table_child_static.yaml
+```
+
+Questo launch avvia:
+
+- `nav2_map_server`
+- `nav2_lifecycle_manager`
+- `ground_truth_localizer_node`
+- `nav2_bringup/launch/navigation_launch.py`
+
+La localizzazione non usa AMCL: viene pubblicata da
+`ground_truth_localizer_node` a partire da `/ground_truth_odom`, per mantenere
+semplice e stabile la simulazione.
+
+## Package `empower_ros2`: ruolo e struttura
+
+`empower_ros2` e' il package centrale. E' un package `ament_python` che espone
+questi console script:
+
+- `scene_capture_node`
+- `models_cacher_node`
+- `plan_generator_node`
+- `export_reports`
+- `color_pcl_node`
+- `marker_centroids_node`
+- `ground_truth_localizer_node`
+- `low_level_execution_node`
+- `mission_orchestrator_node`
+
+Il package contiene due livelli di codice:
+
+- moduli EMPOWER stile upstream in `src/empower_ros2/python/*.py`
+  (`agents.py`, `detection.py`, `models.py`, `loader.py`, `paths.py`);
+- adapter ROS 2 in `src/empower_ros2/python/empower_ros2/*.py`.
+
+I file `agents.py`, `detection.py`, `models.py`, `loader.py`, `paths.py` sono
+presenti anche direttamente in `src/empower_ros2/` e risultano identici alle
+copie sotto `src/empower_ros2/python/`. La configurazione `setup.py` installa
+questi file come `py_modules`, mentre il package ROS 2 vero e proprio sta in
+`python/empower_ros2`.
+
+## Configurazione principale EMPOWER
+
+Il file corrente e':
+
+```text
 src/empower_ros2/config/empower_person_table_child.yaml
 ```
 
-La scena contiene TIAGo, una persona/terapista sul lato `-Y`, un bambino sul
-lato `+Y`, e un tavolo con oggetti sul lato `+X`. La pipeline EMPOWER assume che
-TIAGo possa vedere il tavolo con la camera frontale quando parte dall'origine
-guardando verso `+X`, cioe' yaw `0`.
-
-## Struttura generale della repo
-
-File e directory principali:
-
-```text
-README.md
-README_QWEN_ENGLISH.md
-README_GAZE_ESTIMATION.md
-start_tiago.sh
-exchange/
-  person_table_child.world
-  maps/person_table_child_static.yaml
-  models/person_standing/
-empower_data/
-  images/person_table_child_task/
-  output/person_table_child_task/
-src/
-  empower_ros2/
-  empower_hri/
-  gaze_estimation/
-models/
-  gaze_estimation/
-  piper/
-```
-
-`empower_data/` contiene gli output generati dalla pipeline: immagine RGB,
-depth, point cloud, detection, planning, report e file intermedi.
-
-Attenzione: il file `openai_api_key.txt` e' usato per la chiave OpenAI ma non
-deve essere incollato in report o prompt esterni.
-
-## Componente 1: EMPOWER / `empower_ros2`
-
-### Obiettivo di `empower_ros2`
-
-`empower_ros2` porta nel mondo ROS 2 una pipeline EMPOWER che parte da una
-snapshot RGB-D della scena e produce:
-
-- relazioni simboliche tra oggetti;
-- descrizione testuale della scena;
-- piano simbolico con azioni primitive;
-- bounding box e maschere degli oggetti;
-- point cloud colorata e marker 3D degli oggetti;
-- esecuzione low-level tramite Nav2 e simulazione Gazebo (GRAB/DROP).
-
-La pipeline e' centrata su questo task configurato:
+Parametri chiave:
 
 ```yaml
 use_case: person_table_child_task
-task_description: "Take the book, go to the child and drop the book"
+task_description: "Take the peluche, go to the child and drop the peluche"
 output_root: /root/exchange/empower_data
+rgb_topic: /head_front_camera/rgb/image_raw
+depth_topic: /head_front_camera/depth/image_raw
+camera_info_topic: /head_front_camera/depth/camera_info
+pointcloud_topic: /empower/colored_pointcloud
+fixed_frame: map
+camera_frame: head_front_camera_color_optical_frame
+map_frame: map
+base_frame: base_footprint
+nav_action_name: navigate_to_pose
+standoff_distance: 1.0
+continue_on_nav_failure: false
 ```
 
-Il file di configurazione principale e':
+Nota: alcuni README storici parlano ancora di task "Take the book from the
+table", ma la YAML corrente usa il task sul `peluche` e include anche la
+consegna al bambino.
 
-```text
-src/empower_ros2/config/empower_person_table_child.yaml
+### Contesto non visuale del bambino
+
+EMPOWER vede solo l'immagine RGB frontale. Il bambino puo' non essere visibile
+quando il robot osserva gli oggetti. Per questo la YAML aggiunge contesto non
+visuale:
+
+```yaml
+child_context:
+  enabled: true
+  planner_description: >
+    The child is present in the room but is not visible in the RGB image.
+    The child is a known non-visual target.
+    The child is a valid navigation target and a valid drop destination.
+    If the task asks to bring an object to the child, the plan must include
+    NAVIGATE to the child before dropping the object.
+  aliases: ["child", "the child", "kid"]
 ```
 
-### File principali di EMPOWER
+Questo contesto viene passato all'agente LLM di planning, ma viene filtrato
+dalla detection visuale per evitare che YOLO-World provi a rilevare il bambino
+nell'immagine.
 
-Codice "upstream style" EMPOWER, installato come moduli Python top-level:
+### Navigazione verso target non visuali
 
-```text
-src/empower_ros2/agents.py
-src/empower_ros2/detection.py
-src/empower_ros2/loader.py
-src/empower_ros2/models.py
-src/empower_ros2/paths.py
+La YAML definisce pose hardcoded per target non visuali:
+
+```yaml
+child_navigation:
+  enabled: true
+  frame_id: map
+  x: 0.0
+  y: 0.95
+  yaw: 1.5708
+  via_waypoint:
+    enabled: true
+    x: 3.0
+    y: 0.0
+    yaw: 3.14159
+
+person_navigation:
+  enabled: true
+  frame_id: map
+  x: 0.0
+  y: 0.0
+  yaw: -1.5708
 ```
 
-Gli stessi file sono duplicati in:
+Il nodo low-level intercetta `NAVIGATE to child` e `NAVIGATE to person` senza
+usare marker EMPOWER: genera goal Nav2 direttamente da queste pose.
 
-```text
-src/empower_ros2/python/agents.py
-src/empower_ros2/python/detection.py
-src/empower_ros2/python/loader.py
-src/empower_ros2/python/models.py
-src/empower_ros2/python/paths.py
+### Simulazione oggetti
+
+La manipolazione non e' reale. La YAML abilita pero' una simulazione via Gazebo:
+
+```yaml
+object_simulation:
+  enabled: true
+  gz_command: gz
+  gz_world_name: person_table_child_room
+  world_sdf_path: /root/exchange/exchange/person_table_child.world
+  objects:
+    book:
+      aliases: ["book"]
+      gazebo_entity: clear_red_book_on_right_table
+      drop_z: 0.01
+    computer:
+      aliases: ["computer", "laptop", "laptop computer"]
+      gazebo_entity: laptop_computer_on_right_table
+      drop_z: 0.12
+    peluche:
+      aliases: ["peluche", "teddy bear", "plush toy", "stuffed animal"]
+      gazebo_entity: teddy_bear_on_right_table
+      drop_z: 0.01
 ```
 
-Al momento risultano identici alle versioni in `src/empower_ros2/`. Il
-`setup.py` installa i moduli top-level tramite `py_modules`, quindi questi file
-sono effettivamente importati come `agents`, `detection`, `loader`, `models`,
-`paths`.
+Quando `low_level_execution_node` esegue:
 
-Nodi ROS 2 e adapter:
+- `GRAB peluche`: sposta/nasconde il modello Gazebo del peluche in
+  `hidden_z = -10.0`;
+- `DROP peluche`: riposiziona il modello. Se l'ultima navigazione era verso il
+  bambino, usa una posa fissa sul tavolo di consegna:
+  `(x=0.0, y=1.65, z=1.30, yaw=1.5708)` nella YAML corrente.
 
-```text
-src/empower_ros2/python/empower_ros2/scene_capture_node.py
-src/empower_ros2/python/empower_ros2/models_cacher_node.py
-src/empower_ros2/python/empower_ros2/plan_generator_node.py
-src/empower_ros2/python/empower_ros2/loader_adapter.py
-src/empower_ros2/python/empower_ros2/report_writer.py
-src/empower_ros2/python/empower_ros2/plan_parser.py
-src/empower_ros2/python/empower_ros2/color_pcl_node.py
-src/empower_ros2/python/empower_ros2/marker_centroids_node.py
-src/empower_ros2/python/empower_ros2/low_level_execution_node.py
-src/empower_ros2/python/empower_ros2/primitive_actions.py
-src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py
-src/empower_ros2/python/empower_ros2/ground_truth_localizer_node.py
-src/empower_ros2/python/empower_ros2/pointcloud_utils.py
+Questa simulazione e' centrale nello stato attuale: il piano puo' manipolare il
+peluche anche se la detection finale non ha un marker specifico del peluche,
+perche' il mapping simbolico `peluche -> teddy_bear_on_right_table` e'
+hardcoded.
+
+## Flusso EMPOWER manuale
+
+Il flusso manuale tipico richiede terminali separati.
+
+### 1. Gazebo
+
+```bash
+ros2 launch tiago_gazebo tiago_gazebo.launch.py \
+  is_public_sim:=True \
+  gazebo_version:=classic \
+  world_name:=/root/exchange/exchange/person_table_child.world
 ```
 
-Launch file principali:
+### 2. Nav2 con ground truth
 
-```text
-src/empower_ros2/launch/empower_capture.launch.py
-src/empower_ros2/launch/empower_models_cacher.launch.py
-src/empower_ros2/launch/empower_plan.launch.py
-src/empower_ros2/launch/empower_visualization.launch.py
-src/empower_ros2/launch/empower_execute.launch.py
-src/empower_ros2/launch/hri_empower_mission.launch.py
-src/empower_ros2/launch/tiago_nav2_ground_truth.launch.py
+```bash
+ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
+  map:=/root/exchange/exchange/maps/person_table_child_static.yaml
 ```
 
-### Dipendenze concettuali di EMPOWER
+### 3. Capture RGB-D
 
-La pipeline EMPOWER usa:
-
-- ROS 2 Humble;
-- Gazebo classic con TIAGo;
-- Nav2 per la navigazione mobile;
-- topic RGB-D della camera frontale di TIAGo;
-- OpenAI GPT-4o via `openai` Python SDK per scene understanding e planning;
-- YOLO-World tramite MMEngine/MMYOLO per detection open-vocabulary;
-- EfficientViT-SAM via encoder/decoder ONNX per segmentazione;
-- spaCy `en_core_web_sm`;
-- gensim `word2vec-google-news-300`;
-- Open3D per point cloud;
-- TF2 per trasformazioni fra camera, map e base.
-
-I pesi attesi da EMPOWER sono sotto la config installata del package:
-
-```text
-config/yolow/yolow.pth
-config/efficientvitsam/l2_encoder.onnx
-config/efficientvitsam/l2_decoder.onnx
+```bash
+ros2 launch empower_ros2 empower_capture.launch.py \
+  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
 ```
 
-`models_cacher_node.py` controlla che questi file esistano tramite
-`EmpowerRos2Loader`.
-
-### Flusso operativo EMPOWER dettagliato
-
-Il flusso completo, senza HRI, e':
-
-1. Avvio Gazebo con `exchange/person_table_child.world`.
-2. Avvio Nav2 con localizzazione ground truth.
-3. Capture RGB-D con `empower_capture.launch.py`.
-4. Avvio model cacher con `empower_models_cacher.launch.py`.
-5. Planning con `empower_plan.launch.py`.
-6. Visualizzazione opzionale con `empower_visualization.launch.py`.
-7. Execution low-level con `empower_execute.launch.py`.
-
-#### 1. Capture scena
-
-Nodo:
-
-```text
-empower_ros2.scene_capture_node
-```
-
-File:
-
-```text
-src/empower_ros2/python/empower_ros2/scene_capture_node.py
-```
+Nodo coinvolto: `scene_capture_node`.
 
 Input ROS:
 
-```text
-/head_front_camera/rgb/image_raw
-/head_front_camera/depth/image_raw
-/head_front_camera/depth/camera_info
-```
+- RGB: `/head_front_camera/rgb/image_raw`
+- depth: `/head_front_camera/depth/image_raw`
+- camera info: `/head_front_camera/depth/camera_info`
 
-Output salvati:
+Output:
 
 ```text
 empower_data/images/person_table_child_task/scan.jpg
@@ -227,110 +301,132 @@ empower_data/output/person_table_child_task/camera_info.pkl
 empower_data/output/person_table_child_task/camera_info.json
 ```
 
-Il nodo aspetta un messaggio RGB, uno depth e uno camera info. Poi:
+Implementazione:
 
-- converte RGB in immagine OpenCV BGR e salva `scan.jpg`;
-- normalizza depth in millimetri e salva `depth.npy`;
-- usa gli intrinseci camera per generare una point cloud da depth;
-- applica una trasformazione assi compatibile con la convenzione usata dal
-  resto della pipeline;
-- salva camera info in pickle e JSON;
-- se `capture_once` e' true, termina il nodo.
+- converte RGB con `cv_bridge` e salva `scan.jpg`;
+- converte depth in millimetri;
+- ricostruisce la point cloud con gli intrinseci camera;
+- applica trasformazione ottica `[[1,0,0], [0,-1,0], [0,0,-1]]`;
+- salva PCD e camera info.
 
-#### 2. Model cacher
+### 4. Model cacher
 
-Nodo:
-
-```text
-empower_ros2.models_cacher_node
+```bash
+ros2 launch empower_ros2 empower_models_cacher.launch.py \
+  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
 ```
 
-File:
+Nodo coinvolto: `models_cacher_node`.
 
-```text
-src/empower_ros2/python/empower_ros2/models_cacher_node.py
+Ruolo:
+
+- carica una sola volta i modelli pesanti:
+  - YOLO-World;
+  - EfficientViT-SAM encoder/decoder ONNX;
+  - spaCy `en_core_web_sm`;
+  - word2vec `word2vec-google-news-300`;
+- legge `OPENAI_API_KEY` oppure `openai_api_key.txt`;
+- crea un `EmpowerRos2Loader`, compatibile con il codice EMPOWER upstream;
+- apre un socket TCP su `127.0.0.1:10000`;
+- aspetta un messaggio JSON con `command: "detection"`;
+- esegue detection, grounding e planning.
+
+Questo design evita di ricaricare i modelli ad ogni planning. Il nodo rimane
+attivo e `plan_generator_node` lo usa come servizio esterno via socket.
+
+### 5. Planning EMPOWER
+
+```bash
+ros2 launch empower_ros2 empower_plan.launch.py \
+  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
 ```
 
-Il model cacher carica una sola volta i modelli pesanti:
+Nodo coinvolto: `plan_generator_node`.
 
-- YOLO-World;
-- EfficientViT-SAM encoder/decoder;
-- spaCy;
-- word2vec;
-- chiave OpenAI da ambiente o da `openai_api_key_file`.
+Ruolo:
 
-Poi apre un server TCP locale:
-
-```text
-127.0.0.1:10000
-```
-
-Quando riceve un payload con comando `"detection"`, importa/reloada il modulo
-top-level `detection`, crea `Detection()` e chiama:
-
-```python
-detection_instance.set_loader(self.loader)
-```
-
-Se viene passato un `task_description`, il model cacher sovrascrive la voce
-`task_dict[use_case]` dentro `Detection`, cosi' il planning usa il task arrivato
-dal launch/orchestratore invece dei task hardcoded.
-
-Questa architettura evita di ricaricare i modelli a ogni run del planning.
-
-#### 3. Planning e detection EMPOWER
-
-Nodo:
-
-```text
-empower_ros2.plan_generator_node
-```
-
-File:
-
-```text
-src/empower_ros2/python/empower_ros2/plan_generator_node.py
-```
-
-Il plan generator:
-
-- rimuove il vecchio `planning.txt`;
-- invia al model cacher un JSON con:
+- cancella un eventuale `planning.txt` precedente;
+- invia al model cacher un payload:
 
 ```json
 {
   "command": "detection",
-  "task_description": "..."
+  "task_description": "<task corrente>"
 }
 ```
 
-- aspetta che venga generato `planning.txt`;
-- parsea il piano in `planning.json`;
-- rigenera report leggibili con `report_writer.py`;
-- termina.
+- attende la comparsa di `planning.txt`;
+- converte il piano in `planning.json` usando `plan_parser.py`;
+- valida, se possibile, la presenza di `NAVIGATE to child` quando il task cita
+  il bambino;
+- genera report leggibili tramite `report_writer.py`.
 
-La logica EMPOWER vera e propria sta in:
+Output principali:
 
 ```text
-src/empower_ros2/detection.py
-src/empower_ros2/agents.py
-src/empower_ros2/models.py
+empower_data/output/person_table_child_task/planning.pkl
+empower_data/output/person_table_child_task/planning.txt
+empower_data/output/person_table_child_task/planning.json
+empower_data/output/person_table_child_task/relations.txt
+empower_data/output/person_table_child_task/relations.json
+empower_data/output/person_table_child_task/scene_description.txt
+empower_data/output/person_table_child_task/symbolic_plan.txt
+empower_data/output/person_table_child_task/detection.pkl
+empower_data/output/person_table_child_task/detections.json
+empower_data/output/person_table_child_task/empower_report.txt
 ```
 
-##### `Agents`
+### 6. Visualizzazione EMPOWER
 
-`agents.py` usa OpenAI GPT-4o con immagine base64. Ci sono due modalita':
+```bash
+ros2 launch empower_ros2 empower_visualization.launch.py \
+  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+```
 
-- `single_agent()`: produce relazioni e piano in un'unica chiamata.
-- `multi_agent_vision_planning()`: modalita' usata attualmente.
+Nodi coinvolti:
 
-La modalita' multi-agent fa tre passaggi:
+- `color_pcl_node`
+- `marker_centroids_node`
 
-1. `enviroment_agent()` produce triple `(subject, relation, object)` rilevanti
-   per il task.
-2. `description_agent()` produce una descrizione testuale della scena usando le
-   relazioni.
-3. planning agent produce una sequenza di azioni simboliche usando solo:
+`color_pcl_node`:
+
+- legge `depth_pointcloud.pcd`, `detection.pkl`, `camera_info.pkl` e `scan.jpg`;
+- proietta le maschere 2D sulla point cloud;
+- colora i punti segmentati;
+- salva:
+  - `colored_image.png`
+  - `colored_pcl.pcd`
+  - `colors_dict.pkl`
+- pubblica `/empower/colored_pointcloud`.
+
+`marker_centroids_node`:
+
+- legge `detection.pkl` e `colors_dict.pkl`;
+- calcola centroidi e punti massimi dei cluster;
+- prova a trasformare i marker nel frame `map`;
+- pubblica:
+  - `/pcl_centroids`
+  - `/pcl_names`
+  - `/pcl_maximum`
+
+Questi marker sono usati anche dall'esecuzione low-level per navigare verso
+target visuali come `shelf`.
+
+### 7. Esecuzione low-level
+
+```bash
+ros2 launch empower_ros2 empower_execute.launch.py \
+  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+```
+
+Nodi coinvolti:
+
+- `color_pcl_node`
+- `marker_centroids_node`
+- `low_level_execution_node`
+
+`low_level_execution_node` carica `planning.json` se presente, altrimenti
+parsa `planning.txt`. Le azioni supportate dal parser sono:
 
 ```text
 NAVIGATE
@@ -340,288 +436,251 @@ PULL
 PUSH
 ```
 
-Il modello e' hardcoded a:
+Stato implementativo:
 
-```text
-gpt-4o
-```
+- `NAVIGATE` e' implementato via Nav2 `NavigateToPose`;
+- `GRAB` e `DROP` sono simulati via `gz model` solo per oggetti configurati;
+- `PUSH` e `PULL` vengono riconosciuti ma non implementati;
+- non c'e' controllo reale di braccio/gripper.
 
-Non c'e' ancora un parametro YAML per cambiare modello OpenAI.
+Per target visuali, il nodo risolve il marker da `/pcl_names` e
+`/pcl_centroids`, poi calcola un goal Nav2 con `standoff_distance`: il robot si
+ferma a distanza dal centroide e si orienta verso l'oggetto.
 
-##### `Detection.run_experiment()`
+Per target non visuali (`child`, `person`) usa pose configurate nella YAML.
 
-Questa funzione:
+## EMPOWER: come e' realizzato internamente
 
-- legge `scan.jpg`;
-- codifica l'immagine in base64;
-- istanzia `Agents(encoded_image, task_description)`;
-- chiama `multi_agent_vision_planning()`;
-- salva:
+La parte piu importante da modificare e' questa.
 
-```text
-planning.pkl
-planning.txt
-```
+### Loader ROS 2 compatibile con EMPOWER
 
-`planning.pkl` contiene:
+`loader_adapter.py` definisce `EmpowerRos2Loader`, che espone gli attributi che
+il codice EMPOWER originale si aspetta:
 
-```python
-{
-  "environment_agent_info": "...",
-  "description_agent_info": "...",
-  "planning_agent_info": "..."
-}
-```
+- `SCAN_DIR`
+- `DUMP_DIR`
+- `CONFIG`
+- `IMAGES`
+- `OUTPUT`
+- `YOLOW_PATH`
+- `ENCODER_PATH`
+- `DECODER_PATH`
+- `nlp`
+- `wv`
+- `yolow_model`
+- `vit_sam_model`
+- `use_case`
+- `child_planner_context`
+- `child_aliases`
 
-##### `Detection.run_image()`
+Questo adapter e' il ponte principale fra ROS 2 e la logica EMPOWER portata
+dalla repo upstream.
 
-Dopo il planning testuale, `run_image()` fa grounding visivo:
+### Agenti LLM
 
-1. prende le relazioni prodotte dall'LLM;
-2. estrae classi oggetto con spaCy e word2vec;
-3. costruisce una stringa di classi per YOLO-World;
-4. esegue YOLO-World su `scan.jpg`;
-5. per ogni bounding box con score `> 0.1`, esegue EfficientViT-SAM;
-6. salva maschere e immagini debug;
-7. prova a riordinare/associare le detection alle relazioni testuali;
-8. salva `detection.pkl`.
+`agents.py` usa OpenAI Chat Completions con modello `gpt-4o`.
 
-Output principali:
+La pipeline multi-agent e':
 
-```text
-detection.pkl
-scan_with_bb.jpg
-mask.jpg
-yolo.jpg
-rgb_0.jpg
-rgb_1.jpg
-...
-```
+1. `enviroment_agent`:
+   - input: immagine RGB base64 + task visuale;
+   - output: triple `(subject, relation, object)`;
+   - relazioni consentite/promosse: `right to`, `left to`, `behind to`,
+     `beside to`, `on`, ecc.
+2. `description_agent`:
+   - input: immagine + relazioni del primo agente;
+   - output: descrizione testuale della scena e istruzioni preliminari.
+3. planning agent:
+   - input: task completo + descrizione + relazioni;
+   - output: solo azioni simboliche fra `NAVIGATE`, `GRAB`, `DROP`, `PULL`,
+     `PUSH`.
 
-Il grounding relazionale e' fragile: il codice parsea le relazioni facendo split
-su `")"` e `","`, quindi si aspetta un formato molto preciso tipo:
+Quando il task cita il bambino, `Agents` costruisce anche una versione
+"visual-only" del task per evitare che gli agenti visuali pretendano di vedere
+il bambino. Il contesto non visuale del bambino viene invece aggiunto al prompt
+di planning.
 
-```text
-1) (book, on, table)
-```
+### Detection e visual grounding
 
-Se l'LLM cambia formato, aggiunge testo extra, usa virgole nei nomi, o produce
-relazioni non previste, questa parte puo' rompersi o associare male le label.
+`detection.py` contiene la classe `Detection`.
 
-#### 4. Report leggibili
+Sequenza:
 
-File:
+1. `run_experiment()`:
+   - legge `scan.jpg`;
+   - codifica l'immagine in base64;
+   - crea `Agents`;
+   - ottiene:
+     - `environment_agent_info`
+     - `description_agent_info`
+     - `planning_agent_info`
+   - salva `planning.pkl` e `planning.txt`.
+2. `run_image()`:
+   - legge le relazioni generate;
+   - filtra relazioni che coinvolgono il bambino non visuale;
+   - estrae classi nominali usando spaCy e word2vec;
+   - passa le classi a YOLO-World;
+   - per ogni bbox sopra soglia usa EfficientViT-SAM per segmentare;
+   - salva mask, bbox e label in `detection.pkl`;
+   - genera immagini debug `mask.jpg`, `yolo.jpg`, `rgb_*.jpg`,
+     `scan_with_bb.jpg`.
 
-```text
-src/empower_ros2/python/empower_ros2/report_writer.py
-src/empower_ros2/python/empower_ros2/plan_parser.py
-src/empower_ros2/python/empower_ros2/export_reports.py
-```
+Il grounding delle label avviene confrontando le relazioni LLM con le detection.
+La logica e' euristica:
 
-Report generati:
+- usa similarita' word2vec con soglia circa `0.708`;
+- per relazioni `on`, `left`, `right` prova a scegliere bbox compatibili in
+  coordinate immagine;
+- aggiorna `data_reordered`, che diventa il `detection.pkl` finale.
 
-```text
-relations.txt
-relations.json
-scene_description.txt
-symbolic_plan.txt
-planning.json
-detections.json
-empower_report.txt
-```
-
-`plan_parser.py` riconosce solo azioni con primo token:
-
-```text
-NAVIGATE, GRAB, DROP, PULL, PUSH
-```
-
-Per `NAVIGATE` estrae `target`.
-Per `GRAB`, `PULL`, `PUSH` estrae `target`.
-Per `DROP` prova a identificare una relazione spaziale, per esempio:
-
-```text
-DROP book right to laptop
-```
-
-diventa:
+Punto fragile attuale: nel run presente in repo `detections.json` contiene solo
+una detection:
 
 ```json
 {
-  "action": "DROP",
-  "target": "book",
-  "spatial_relation": "right to",
-  "reference": "laptop"
+  "0": {
+    "label": "shelf",
+    "bbox": [197.22, 241.03, 488.45, 478.15],
+    "mask_shape": [480, 640, 3]
+  }
 }
 ```
 
-#### 5. Visualizzazione 3D
-
-Nodi:
+Il piano invece e':
 
 ```text
-empower_ros2.color_pcl_node
-empower_ros2.marker_centroids_node
+NAVIGATE to the shelf
+GRAB peluche
+NAVIGATE to the child
+DROP peluche
 ```
 
-`color_pcl_node.py`:
+Quindi l'attuale esecuzione si appoggia al marker visuale dello `shelf` per la
+navigazione iniziale e al mapping statico Gazebo per la manipolazione del
+`peluche`.
 
-- legge `depth_pointcloud.pcd`;
-- legge `detection.pkl` e `camera_info.pkl`;
-- proietta le maschere 2D sulla point cloud;
-- colora i punti appartenenti agli oggetti;
-- salva:
+### Parsing del piano
+
+`plan_parser.py` converte il testo LLM in JSON strutturato.
+
+Esempio attuale:
+
+```json
+[
+  {
+    "step": 1,
+    "action": "NAVIGATE",
+    "description": "NAVIGATE to the shelf",
+    "target": "the shelf"
+  },
+  {
+    "step": 2,
+    "action": "GRAB",
+    "description": "GRAB peluche",
+    "target": "peluche"
+  },
+  {
+    "step": 3,
+    "action": "NAVIGATE",
+    "description": "NAVIGATE to the child",
+    "target": "child"
+  },
+  {
+    "step": 4,
+    "action": "DROP",
+    "description": "DROP peluche",
+    "target": "peluche"
+  }
+]
+```
+
+Il parser normalizza `child`, `the child`, `kid` in `child`. Per `DROP` prova a
+riconoscere relazioni spaziali come `left to`, `right to`, `on`, `into`, `near`,
+`at`, e compila eventuali campi `spatial_relation` e `reference`.
+
+### Report leggibili
+
+`report_writer.py` rigenera file `.txt` e `.json` a partire da pickle e piano.
+`export_reports` permette di rigenerare solo i report senza rifare detection o
+planning:
+
+```bash
+ros2 run empower_ros2 export_reports \
+  --ros-args \
+  --params-file /root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+```
+
+## Output EMPOWER attualmente presenti
+
+La repo contiene output gia' generati per:
 
 ```text
-colored_image.png
-colored_pcl.pcd
-colors_dict.pkl
+empower_data/output/person_table_child_task
 ```
 
-- pubblica:
+File principali:
 
-```text
-/empower/colored_pointcloud
+- `scene_description.txt`
+- `relations.txt`
+- `relations.json`
+- `planning.txt`
+- `planning.json`
+- `symbolic_plan.txt`
+- `detection.pkl`
+- `detections.json`
+- `depth.npy`
+- `depth_pointcloud.pcd`
+- `camera_info.json`
+- `colored_pcl.pcd`
+- `colored_image.png`
+- `colors_dict.pkl`
+- `empower_report.txt`
+
+Contenuto sintetico dell'ultimo run:
+
+- scena descritta come shelf con book e peluche;
+- relazioni:
+  - `(peluche, on, shelf)`
+  - `(book, on, shelf)`
+  - `(peluche, right to, book)`
+- piano:
+  - `NAVIGATE to the shelf`
+  - `GRAB peluche`
+  - `NAVIGATE to the child`
+  - `DROP peluche`
+
+## Missione orchestrata HRI + EMPOWER
+
+Il launch integrato e':
+
+```bash
+ros2 launch empower_ros2 hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+  hri_input_mode:=voice
 ```
 
-`marker_centroids_node.py`:
+Questo launch avvia:
 
-- legge `detection.pkl` e `colors_dict.pkl`;
-- calcola centroidi e punti massimi dei cluster 3D;
-- prova a trasformare i punti in `map` usando TF;
-- se TF fallisce, pubblica nel frame camera;
-- pubblica:
+- `models_cacher_node` di EMPOWER;
+- `voice_llm_node` di `empower_hri`;
+- `mission_orchestrator_node`.
 
-```text
-/pcl_centroids
-/pcl_names
-/pcl_maximum
-```
-
-Questi marker sono usati sia per RViz sia per la navigation low-level.
-
-#### 6. Execution low-level
-
-Nodi:
-
-```text
-empower_ros2.low_level_execution_node
-empower_ros2.primitive_actions
-```
-
-`low_level_execution_node.py` legge `planning.json` o `planning.txt`, poi esegue
-gli step uno alla volta.
-
-Azioni supportate:
-
-- `NAVIGATE`: eseguita realmente via Nav2 `NavigateToPose`;
-- `GRAB`: simulata in Gazebo via CLI `gz model` (nasconde l'oggetto);
-- `DROP`: simulata in Gazebo via CLI `gz model` (riposiziona l'oggetto);
-- `PUSH` e `PULL`: riconosciute ma saltate come non implementate.
-
-Per `NAVIGATE`:
-
-- il nodo aspetta marker su `/pcl_centroids` e `/pcl_names`;
-- normalizza le label degli oggetti;
-- cerca un marker compatibile col target del piano;
-- converte il marker in `map`;
-- calcola un goal a distanza `standoff_distance` dal centroide;
-- orienta TIAGo verso l'oggetto;
-- invia il goal a Nav2.
-
-Navigazione speciale non basata su marker EMPOWER:
-
-- `child_navigation`: se il target contiene un alias del bambino (default:
-  `child`, `the child`, `kid`), naviga verso una posa fissa configurata in YAML
-  (`child_navigation.x/y/yaw`). Attualmente: `(0.0, 0.95, 1.5708)`.
-- `person_navigation`: se il target contiene un alias della persona/terapista
-  (default: `person`, `adult`, `standing person`, ecc.), naviga verso una posa
-  fissa configurata.
-
-Per `GRAB`:
-
-- se `object_simulation.enabled` e' false, viene saltata;
-- se e' true, il nodo nasconde il modello Gazebo spostando l'entita' a una
-  posizione nascosta (attualmente `0, 0, -10` sotto il pavimento);
-- traccia l'oggetto come `held_object`.
-
-Oggetti configurati per la simulazione:
-
-```text
-book -> clear_red_book_on_right_table (aliases: book)
-computer -> laptop_computer_on_right_table (aliases: computer, laptop, laptop computer)
-peluche -> teddy_bear_on_right_table (aliases: peluche, teddy bear, plush toy, stuffed animal)
-```
-
-Per `DROP`:
-
-- se il robot e' stato navigato verso il bambino
-  (`last_navigation_target_is_child`), usa la posizione fissa
-  `child_delivery_table_drop` (`0, 1.65, 1.30`, cioe' sul tavolo lato bambino);
-- se `object_simulation.fixed_drop.enabled` e' true, usa una posizione fissa
-  configurata;
-- altrimenti, calcola una posa davanti al robot usando TF e `drop_distance`;
-- sposta il modello Gazebo alla posizione calcolata via CLI `gz model`.
-
-Questa e' manipolazione simulata a livello mondo Gazebo, non manipolazione reale
-con MoveIt, braccio o gripper.
-
-Parametro `child_delivery_handled_by_empower`:
-
-```yaml
-child_delivery_handled_by_empower: true
-```
-
-Attualmente e' `true` nel YAML della missione. Significa che e' il piano EMPOWER
-(che contiene `NAVIGATE to the child`) a gestire la navigazione verso il bambino,
-e il mission_orchestrator salta il suo `GO_TO_CHILD` hardcoded.
-
-### Configurazione scena attuale (YAML)
-
-Parametri chiave da `empower_person_table_child.yaml`:
-
-```yaml
-task_description: "Take the book, go to the child and drop the book"
-child_context:
-  enabled: true
-  planner_description: >
-    The child is present in the room but is not visible in the RGB image.
-    The child is a known non-visual target. ...
-child_navigation:
-  enabled: true
-  x: 0.0
-  y: 0.95
-  yaw: 1.5708
-object_simulation:
-  enabled: true
-  child_delivery_table_drop_x: 0.0
-  child_delivery_table_drop_y: 1.65
-  child_delivery_table_drop_z: 1.30
-```
-
-#### 7. Missione HRI + EMPOWER
-
-Nodo:
-
-```text
-empower_ros2.mission_orchestrator_node
-```
-
-Launch:
-
-```text
-src/empower_ros2/launch/hri_empower_mission.launch.py
-```
-
-Config:
+La configurazione missione e':
 
 ```text
 src/empower_ros2/config/hri_empower_mission.yaml
 ```
 
-La missione orchestrata collega Nav2, HRI e EMPOWER.
+Pose correnti:
 
-Stati principali:
+```yaml
+therapist_pose: [0.0, -1.3, -1.5708]
+spawn_pose: [4.8, 0.0, 1.72]
+child_pose: [0.0, 0.95, 1.5708]
+```
+
+Stati missione:
 
 ```text
 GO_TO_THERAPIST
@@ -631,814 +690,156 @@ WAIT_ACTIVITY
 ACK_ACTIVITY
 GO_TO_SPAWN
 RUN_EMPOWER
-GO_TO_CHILD      (saltato se child_delivery_handled_by_empower=true)
+GO_TO_CHILD
 CHILD_READY
 CHILD_ACTIVITY
 MISSION_COMPLETE
 ```
 
-Flusso:
-
-1. TIAGo naviga verso la terapista (posa: `0, -1.3, -pi/2`).
-2. Aspetta un task fisico su `/hri/user_utterance` (timeout 300s).
-3. Pubblica un ack vocale (`"Okay, I understood the task."`) su
-   `/hri/dialog_command`.
-4. Aspetta una descrizione di attivita' per il bambino (timeout 300s).
-5. Normalizza il tipo di attivita' tramite keyword matching (vedi sotto).
-6. Pubblica un ack vocale (`"Okay, I understood the activity."`).
-7. Naviga allo spawn (posa: `0, 0, 0`).
-8. Esegue capture EMPOWER (lancia `scene_capture_node`).
-9. Lancia planning EMPOWER (`empower_plan.launch.py`).
-10. Lancia execution EMPOWER (color_pcl_node + marker_centroids_node +
-    low_level_execution_node).
-11. Se `child_delivery_handled_by_empower=false`, naviga verso il bambino;
-    altrimenti salta (attualmente e' `true`).
-12. Pubblica `/mission/child_ready`.
-13. Pubblica `start_child_activity` su `/hri/dialog_command` con context.
-14. Aspetta `/hri/dialog_complete` (timeout 300s).
-
-Il nodo lancia capture e EMPOWER come processi figli (`subprocess.Popen`),
-monitorandone l'output.
-
-Topic missione:
-
-```text
-/mission/state
-/mission/feedback
-/mission/task_description
-/mission/child_ready
-```
-
-Topic HRI usati:
-
-```text
-/hri/user_utterance
-/hri/dialog_command
-/hri/dialog_complete
-```
-
-##### Normalizzazione del tipo di attivita'
-
-`_normalize_activity_type()` in `mission_orchestrator_node.py` (riga 275)
-usa keyword matching sull'utterance del terapista. Le regole vengono
-controllate nell'ordine sotto; vince la prima che matcha:
-
-**1. `computer_emotion_recognition`** — keyword:
-
-```text
-computer emotion recognition, emotion recognition with the computer,
-use the computer for emotion recognition, show emotion pictures,
-recognize emotions from photos, recognize emotions from pictures,
-look at emotion photos, look at pictures of emotions,
-emotion recognition, recognize emotions, emotion pictures,
-emotion photos, emotions
-```
-
-**2. `mood_check_teddy`** — keyword:
-
-```text
-how they feel, how he feels, how she feels, feelings, mood,
-state of mind, teddy, teddy bear, plush
-```
-
-**3. `storytelling`** — keyword:
-
-```text
-story, storytelling, read the story, tell a story
-```
-
-Se nessuna keyword matcha, il tipo e' `generic_child_activity`.
-
-### Output EMPOWER attualmente presenti
-
-Nella repo sono presenti output generati per:
-
-```text
-empower_data/output/person_table_child_task/
-```
-
-Esempio di report corrente:
-
-```text
-Relations:
-1) (teddy bear, on, table)
-2) (laptop, on, table)
-3) (book, on, table)
-4) (laptop, right to, teddy bear)
-5) (book, right to, laptop)
-
-Symbolic plan:
-1. NAVIGATE to the table
-2. NAVIGATE to the right side of the table
-3. GRAB book
-4. DROP book right to laptop
-
-Detections:
-- laptop
-- table
-- book
-```
-
-Il `planning.json` corrente contiene quattro step:
-
-```text
-NAVIGATE -> target "the table"
-NAVIGATE -> target "the right side of the table"
-GRAB -> target "book"
-DROP -> target "book", reference "laptop", relation "right to"
-```
-
-### Punti critici e fragilita' di EMPOWER
-
-Questi sono i punti piu' importanti da considerare prima di modificare
-`empower_ros2`.
-
-1. Parsing LLM fragile.
-   `detection.py` assume che le relazioni abbiano formato preciso con parentesi
-   e virgole. `plan_parser.py` e' piu' robusto, ma anche lui dipende da action
-   words all'inizio della riga.
-
-2. Prompt e modello OpenAI sono hardcoded.
-   `agents.py` usa `gpt-4o` direttamente. Non c'e' parametro YAML per modello,
-   temperatura o prompt esterni.
-
-3. `Detection.task_dict` contiene task storici hardcoded.
-   Il task reale arriva da YAML/orchestratore solo perche' `models_cacher_node`
-   sovrascrive `task_dict[use_case]`. Se si usa `Detection` fuori dal model
-   cacher, `person_table_child_task` non e' nel dizionario originale.
-
-4. Label mismatch.
-   La scena/config usa `computer`, ma l'LLM/detection puo' produrre `laptop`.
-   La simulazione oggetti conosce `computer`, mentre i marker possono chiamarsi
-   `laptop`. Il low_level_execution_node gestisce alias
-   (`"computer", "laptop", "laptop computer"`), ma il matching dipende dalla
-   catena completa.
-
-5. Navigation target mismatch.
-   EMPOWER puo' generare target non-oggetto, come "right side of the table".
-   L'esecuzione low-level naviga verso marker oggetto, non verso regioni
-   semantiche astratte. Il codice prova sotto-stringhe, quindi spesso
-   trova `table`, ma non e' garantito.
-
-6. Manipolazione reale non implementata.
-   `GRAB` e `DROP` sono simulati via CLI `gz model`. Non esiste controllo
-   reale del braccio, planning MoveIt, grasp pose o gripper.
-
-7. Object simulation limitata.
-   Solo `book`, `computer`, `peluche` sono configurati. Nuovi oggetti richiedono
-   mapping YAML e probabilmente modifiche se servono alias.
-
-8. Heavy dependencies.
-   YOLO-World, EfficientViT-SAM, spaCy e word2vec sono pesanti. Il model cacher
-   riduce i tempi caricando una volta sola, ma il primo avvio puo' essere lento.
-
-9. Frame e TF delicati.
-   Capture, point cloud e marker dipendono da frame camera, `map`, `base_footprint`
-   e transform disponibili. Se TF non e' disponibile, i marker possono essere
-   pubblicati nel frame camera, ma execution verso Nav2 richiede conversione
-   coerente in `map`.
-
-10. Duplicazione file top-level e `python/`.
-    I file `agents.py`, `detection.py`, `loader.py`, `models.py`, `paths.py`
-    sono duplicati. Se si modifica uno, bisogna verificare quale copia viene
-    installata/importata e mantenere coerenza.
-
-### Dove intervenire per modifiche EMPOWER
-
-Per cambiare il task di default:
-
-```text
-src/empower_ros2/config/empower_person_table_child.yaml
-```
-
-Parametro:
+Nel config attuale:
 
 ```yaml
-task_description: "..."
+capture_before_empower: true
+execute_empower_plan: true
+child_delivery_handled_by_empower: true
 ```
 
-Per cambiare prompt, modello o logica LLM:
+Quindi l'orchestratore:
+
+1. naviga dal terapista;
+2. aspetta il task su `/hri/user_utterance`;
+3. fa ack via `/hri/dialog_command`;
+4. aspetta la descrizione dell'attivita' per il bambino;
+5. torna allo spawn;
+6. esegue capture EMPOWER;
+7. lancia planning EMPOWER;
+8. lancia esecuzione EMPOWER;
+9. se `child_delivery_handled_by_empower` e' true, non fa una seconda
+   navigazione hardcoded al bambino;
+10. pubblica `/mission/child_ready`;
+11. avvia l'attivita' bambino via HRI.
+
+Topic missione importanti:
+
+- `/mission/state`
+- `/mission/feedback`
+- `/mission/task_description`
+- `/mission/child_ready`
+- `/hri/user_utterance`
+- `/hri/dialog_command`
+- `/hri/dialog_complete`
+
+## Package `empower_hri`
+
+`empower_hri` implementa il dialogo locale. Console script:
 
 ```text
-src/empower_ros2/agents.py
-src/empower_ros2/python/agents.py
+voice_llm_node = empower_hri.voice_llm_node:main
 ```
 
-Per rendere piu' robusto parsing relazioni / classi / grounding:
+Launch:
+
+- `hri_voice_llm_english.launch.py`
+- `hri_voice_llm_cpu.launch.py`
+
+Config principali:
+
+- `src/empower_hri/config/hri_cpu_english.yaml`
+- `src/empower_hri/config/hri_cpu_local.yaml`
+
+Pipeline inglese tipica:
 
 ```text
-src/empower_ros2/detection.py
-src/empower_ros2/python/detection.py
+microfono -> faster-whisper base -> Ollama/Qwen -> system TTS -> speaker
 ```
 
-Per cambiare parser piano simbolico:
+Pipeline locale/testuale:
 
 ```text
-src/empower_ros2/python/empower_ros2/plan_parser.py
+terminal input -> Ollama/Qwen -> pyttsx3/system TTS
 ```
 
-Per cambiare report generati:
+Il nodo pubblica:
+
+- `/hri/user_utterance`
+- `/hri/robot_utterance`
+- `/hri/dialog_state`
+- `/hri/dialog_complete`
+
+Il nodo sottoscrive:
+
+- `/hri/dialog_command`
+- `/mission/state`
+
+Quando `follow_mission_state_for_therapist_input` e' true, l'HRI legge input
+dal terapista solo negli stati missione `WAIT_TASK` e `WAIT_ACTIVITY`. Questo
+evita che input vocali casuali entrino nella missione fuori fase.
+
+Per il bambino, il nodo supporta tipi di attivita':
+
+- `computer_emotion_recognition`
+- `mood_check_teddy`
+- `storytelling`
+- `generic_child_activity`
+
+La normalizzazione dell'attivita' viene fatta nell'orchestratore in base a
+keyword nella frase del terapista.
+
+## Package `gaze_estimation`
+
+`gaze_estimation` e' un package ROS 2 separato e sostanzialmente autonomo.
+Console script:
 
 ```text
-src/empower_ros2/python/empower_ros2/report_writer.py
+gaze_webcam = gaze_estimation.gaze_webcam_node:main
 ```
 
-Per cambiare logica di navigazione verso oggetti:
+Launch:
+
+```bash
+ros2 launch gaze_estimation gaze_webcam.launch.py
+```
+
+Config:
 
 ```text
-src/empower_ros2/python/empower_ros2/low_level_execution_node.py
-src/empower_ros2/python/empower_ros2/primitive_actions.py
-```
-
-Per aggiungere oggetti simulati `GRAB`/`DROP`:
-
-```text
-src/empower_ros2/config/empower_person_table_child.yaml
-src/empower_ros2/python/empower_ros2/low_level_execution_node.py
-```
-
-Per cambiare il flusso missione HRI + EMPOWER:
-
-```text
-src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py
-src/empower_ros2/config/hri_empower_mission.yaml
-src/empower_ros2/launch/hri_empower_mission.launch.py
-```
-
-## Componente 2: Interazione / `empower_hri`
-
-### Obiettivo
-
-`empower_hri` implementa un nodo ROS 2 per dialogo locale:
-
-```text
-microfono o terminale -> STT -> LLM locale -> TTS -> speaker
-```
-
-Il package non controlla direttamente il robot. Pubblica utterance e riceve
-comandi da altri nodi. Nella missione completa, il controllo del robot resta in
-`mission_orchestrator_node.py`.
-
-### File principali
-
-```text
-src/empower_hri/empower_hri/voice_llm_node.py
-src/empower_hri/empower_hri/speech_to_text.py
-src/empower_hri/empower_hri/text_to_speech.py
-src/empower_hri/empower_hri/ollama_client.py
-src/empower_hri/empower_hri/terminal_io.py
-src/empower_hri/config/hri_cpu_english.yaml
-src/empower_hri/config/hri_cpu_local.yaml
-src/empower_hri/launch/hri_voice_llm_english.launch.py
-src/empower_hri/launch/hri_voice_llm_cpu.launch.py
-```
-
-### Topic ROS 2
-
-Pubblica:
-
-```text
-/hri/user_utterance
-/hri/robot_utterance
-/hri/dialog_state
-/hri/dialog_complete
-```
-
-Sottoscrive:
-
-```text
-/hri/dialog_command
-/mission/state
-```
-
-### Modalita' del nodo HRI
-
-`voice_llm_node.py` ha due modalita' principali che vengono gestite dal thread
-`_interaction_loop`:
-
-1. `therapist_command`
-   - modalita' iniziale;
-   - usata per ricevere task e descrizione attivita' dal terapista;
-   - nel launch missione, `therapist_llm_replies` e' impostato a `false`,
-     quindi il nodo non risponde con l'LLM ma si limita a pubblicare l'utterance
-     del terapista su `/hri/user_utterance`;
-   - `follow_mission_state_for_therapist_input` e' `true`: il nodo legge input
-     dal terapista solo quando `/mission/state` e' `WAIT_TASK` o `WAIT_ACTIVITY`,
-     e solo una volta per stato (evita input multipli nello stesso stato).
-
-2. `child_activity`
-   - attivata quando il nodo riceve un comando `start_child_activity` su
-     `/hri/dialog_command`;
-   - il nodo genera un'apertura dell'attivita';
-   - poi fa turni interattivi con STT/LLM/TTS;
-   - al termine pubblica il risultato su `/hri/dialog_complete` e torna a
-     `therapist_command`.
-
-### Attivita' bambino (child activity) — DETTAGLIO
-
-Questa sezione descrive in dettaglio il flusso dell'interazione robot-bambino,
-che e' il momento in cui potrebbe intervenire la gaze estimation.
-
-#### Attivazione
-
-Il mission orchestrator, dopo aver completato EMPOWER ed essere arrivato
-(o meno) davanti al bambino, pubblica su `/hri/dialog_command`:
-
-```json
-{
-  "command": "start_child_activity",
-  "context": {
-    "task": "Take the book, go to the child and drop the book",
-    "activity_description": "<testo inserito dal terapista>",
-    "activity_type": "storytelling"
-  }
-}
-```
-
-Il campo `activity_type` e' gia' normalizzato dall'orchestratore.
-
-#### Tipi di attivita' supportati
-
-Definiti in `voice_llm_node.py` riga 35:
-
-```python
-SUPPORTED_CHILD_ACTIVITY_TYPES = {
-    "computer_emotion_recognition",
-    "mood_check_teddy",
-    "storytelling",
-    "generic_child_activity",
-}
-```
-
-Se `activity_type` non e' nell'insieme, viene forzato a
-`generic_child_activity`.
-
-#### System prompt per attivita'
-
-Ogni tipo ha un system prompt specifico (funzione `build_child_activity_system_prompt`,
-riga 43):
-
-**`computer_emotion_recognition`**:
-
-TIAGo aiuta il bambino a riconoscere emozioni da foto mostrate al computer.
-Offre scelte semplici (happy, sad, angry, scared, surprised). Chiede una
-domanda alla volta, incoraggia il bambino, da' suggerimenti se serve.
-
-**`mood_check_teddy`**:
-
-TIAGo usa un orsacchiotto come intermediario per chiedere al bambino come si
-sente. Domande semplici e non forzate sui sentimenti. L'orsacchiotto puo'
-essere curioso, timido, felice, stanco o calmo.
-
-**`storytelling`**:
-
-TIAGo legge/inventa una storia da un libro. Racconta in piccole parti per
-mantenere il bambino coinvolto. Fa domande occasionali sulla storia. Mantiene
-continuita' della storia tra i turni.
-
-**`generic_child_activity`**:
-
-Usa la descrizione testuale dell'attivita' fornita dal terapista come istruzione
-di alto livello. Fallback se il tipo non e' riconosciuto.
-
-#### Frase di apertura
-
-Ogni tipo ha una frase di apertura fissa (funzione `child_activity_opening`,
-riga 107):
-
-- `computer_emotion_recognition`: "Let's look at the pictures on the computer
-  together. What emotion do you see in this picture: happy, sad, angry, or
-  scared?"
-- `mood_check_teddy`: "This teddy bear would like to know how you feel today.
-  Are you happy, sad, tired, calm, or something else?"
-- `storytelling`: "I found a book with many little stories inside. I will
-  choose one and read it with you. Are you ready to begin?"
-- `generic_child_activity`: "Let's do this activity together: <descrizione>.
-  Would you like to start?"
-
-#### Loop interattivo dell'attivita'
-
-Metodo `_run_child_activity_session()` (riga 434):
-
-1. Salva il context dell'attivita' e il tipo.
-2. Pubblica lo stato `child_activity_active` su `/hri/dialog_state`.
-3. Genera e pronuncia la frase di apertura (TTS).
-4. Inserisce nella history LLM:
-   - `user: [START_ACTIVITY]`
-   - `assistant: <frase di apertura>`
-5. Entra nel loop interattivo:
-   - Legge input dal bambino (`_read_child_text()`);
-   - In voice mode con `storytelling_auto_listen=true`, usa VAD automatica
-     (non richiede push-to-talk): registra quando rileva voce, si ferma dopo
-     `stt_vad_silence_sec` (1.5s) di silenzio, max `stt_vad_max_duration_sec`
-     (30s);
-   - In text mode, chiede input da terminale;
-   - Se il bambino dice `/quit` o `exit`, esce;
-   - Se nessun input (silenzio VAD), continua ad ascoltare;
-   - Altrimenti: pubblica utterance bambino, chiama LLM con history + system
-     prompt dell'attivita', pubblica risposta, la pronuncia con TTS;
-   - Incrementa il contatore turni.
-6. Il loop termina quando:
-   - Raggiunge `storytelling_max_turns` (default: 10);
-   - Riceve comando `stop` su `/hri/dialog_command`;
-   - L'utente digita `/quit`;
-   - Il nodo viene fermato.
-7. Al termine, pubblica su `/hri/dialog_complete`:
-
-```json
-{
-  "reason": "max_turns",
-  "turns": 10,
-  "activity_type": "storytelling"
-}
-```
-
-8. Ritorna in modalita' `therapist_command`.
-
-#### Topic e stati durante l'attivita' child
-
-Durante l'interazione robot-bambino, i topic attivi sono:
-
-```text
-/hri/dialog_state      <- pubblica: child_activity_active, waiting_for_text,
-                          waiting_for_push_to_talk, listening, recording,
-                          transcribing, thinking, speaking, ready, error
-/hri/robot_utterance   <- ogni risposta del robot
-/hri/user_utterance    <- ogni utterance del bambino (solo come dato loggato,
-                          non consumato dall'orchestratore in questo stato)
-/hri/dialog_complete   <- quando l'attivita' finisce
-```
-
-Lo stato pubblicato su `/hri/dialog_state` segue questo ciclo per ogni turno:
-
-```text
-child_activity_active -> waiting_for_text / listening -> recording ->
-transcribing -> thinking -> speaking -> ready -> (prossimo turno)
-```
-
-#### Parametri rilevanti per l'interazione child
-
-```yaml
-storytelling_max_turns: 10        # turni massimi dell'attivita'
-storytelling_auto_listen: true    # VAD automatica (senza push-to-talk)
-stt_vad_energy_threshold: 0.01   # soglia energia per rilevamento voce
-stt_vad_silence_sec: 1.5         # secondi di silenzio per chiudere la registrazione
-stt_vad_max_duration_sec: 30.0   # durata massima registrazione
-max_history_turns: 4             # turni di history LLM (deque maxlen=8 messaggi)
-max_response_tokens: 120         # token massimi per risposta LLM
-temperature: 0.4                 # temperatura LLM
-```
-
-#### Punti di integrazione per gaze estimation
-
-Analisi dei punti dove la gaze estimation potrebbe inserirsi durante
-l'interazione robot-bambino:
-
-1. **Quando sapere che l'attivita' child e' in corso**:
-   - Topic `/mission/state` pubblica `CHILD_ACTIVITY`;
-   - Topic `/hri/dialog_state` pubblica `child_activity_active` all'inizio;
-   - Il tipo di attivita' e' nel context di `start_child_activity`.
-
-2. **Quando il bambino dovrebbe guardare un target specifico**:
-   - In `computer_emotion_recognition`, il bambino deve guardare lo schermo
-     del computer (il laptop sul tavolo nella scena);
-   - In `mood_check_teddy`, il bambino potrebbe guardare il peluche o il robot;
-   - In `storytelling`, il bambino potrebbe guardare il robot o il libro.
-
-3. **Timing dell'attenzione**:
-   - Il ciclo di stato su `/hri/dialog_state` indica quando il robot sta
-     parlando (`speaking`), quando aspetta risposta (`listening`,
-     `waiting_for_text`), e quando sta pensando (`thinking`);
-   - La gaze estimation potrebbe correlare lo sguardo del bambino con la fase
-     del dialogo.
-
-4. **Oggetti target gia' rilevati da EMPOWER**:
-   - `detection.pkl` contiene bounding box e maschere degli oggetti nella scena;
-   - `/pcl_centroids` e `/pcl_names` contengono posizioni 3D degli oggetti;
-   - La gaze estimation potrebbe usare queste informazioni per sapere dove sono
-     gli oggetti nella scena.
-
-5. **Topic non ancora pubblicati (gap da colmare)**:
-   - Lo status di gaze non e' pubblicato su nessun topic ROS;
-   - Non c'e' un topic che indichi "il bambino sta guardando X";
-   - Non c'e' integrazione tra `/hri/dialog_state` e gaze;
-   - Non c'e' un nodo che combini gaze + dialog per adattare il comportamento
-     del robot.
-
-6. **Camera disponibile per gaze estimation**:
-   - La camera frontale di TIAGo (`/head_front_camera/rgb/image_raw`) e' gia'
-     usata da EMPOWER per la capture; potrebbe essere usata anche per gaze;
-   - Il package `gaze_estimation` attuale usa una webcam esterna
-     (`cv2.VideoCapture(camera_index)`), non un topic ROS;
-   - Per integrazione in simulazione, bisognerebbe creare un nodo che
-     sottoscriva al topic camera di TIAGo e faccia gaze estimation su quel
-     feed, oppure usare una webcam esterna puntata sulla scena reale;
-   - In Gazebo, la camera frontale vede la scena dal punto di vista del robot;
-     per gaze estimation, servirebbero una camera che vede la faccia del bambino,
-     che non esiste nella simulazione attuale.
-
-### STT
-
-File:
-
-```text
-src/empower_hri/empower_hri/speech_to_text.py
-```
-
-Provider:
-
-- `faster_whisper`: registra WAV e trascrive su CPU;
-- `mock`: input da terminale.
-
-Il codice forza STT CPU-only. Se si configura `stt_device != cpu`, il nodo
-solleva errore.
-
-Sono disponibili:
-
-- push-to-talk: premi invio, registra per `record_seconds` (default 5s);
-- auto-listening con VAD per attivita' child: registra automaticamente quando
-  rileva voce sopra `stt_vad_energy_threshold`, si ferma dopo
-  `stt_vad_silence_sec` di silenzio. Ignora segmenti troppo corti
-  (`min_speech_sec=0.3s`).
-
-### LLM
-
-File:
-
-```text
-src/empower_hri/empower_hri/ollama_client.py
-```
-
-Provider:
-
-- `ollama`;
-- `mock`.
-
-Modello default nei README/config:
-
-```text
-qwen2.5:1.5b
-```
-
-Fallback:
-
-```text
-llama3.2:1b
-```
-
-Il client usa le API HTTP locali di Ollama:
-
-```text
-http://localhost:11434/api/chat
-```
-
-### TTS
-
-File:
-
-```text
-src/empower_hri/empower_hri/text_to_speech.py
-```
-
-Provider supportati:
-
-- `piper`: usa il binario `piper` + model file; genera WAV e lo riproduce
-  con `aplay`/`paplay`/`ffplay`;
-- `pyttsx3`: usa `pyttsx3.init()` con selezione voce per lingua;
-- `system` (`espeak-ng`, `espeak`, `spd-say`);
-- `mock`: stampa a terminale.
-
-Il TTS usa fallback automatici. Per esempio, se `pyttsx3` non funziona, prova
-`system`, poi `mock`. La config inglese usa `tts_provider: "system"`.
-
-### Relazione con EMPOWER
-
-`empower_hri` non lancia EMPOWER. La relazione avviene tramite:
-
-- `/hri/user_utterance`: il nodo HRI pubblica task/attivita';
-- `mission_orchestrator_node`: riceve utterance, decide quando avviare EMPOWER;
-- `/hri/dialog_command`: l'orchestratore chiede al nodo HRI di parlare o avviare
-  attivita' child;
-- `/hri/dialog_complete`: il nodo HRI notifica l'orchestratore quando
-  l'attivita' child e' terminata.
-
-Quindi, se si vuole modificare il comportamento robotico, di solito bisogna
-modificare `empower_ros2`, non `empower_hri`.
-
-## Componente 3: Gaze estimation / `gaze_estimation`
-
-### Obiettivo
-
-`gaze_estimation` e' un package ROS 2 standalone che usa una webcam RGB per
-stimare se la persona sta guardando uno degli oggetti target.
-
-E' esplicitamente indipendente da:
-
-```text
-empower_ros2
-empower_hri
-EMPOWER
-TIAGo
-Gazebo
-Nav2
-/hri/*
-/empower/*
-socket TCP esistenti
-```
-
-Non usa RealSense, rosbag, depth, point cloud o immagini salvate come input
-obbligatorio.
-
-### File principali
-
-```text
-src/gaze_estimation/gaze_estimation/gaze_webcam_node.py
-src/gaze_estimation/gaze_estimation/gazelle_wrapper.py
-src/gaze_estimation/gaze_estimation/yolo_world_wrapper.py
-src/gaze_estimation/gaze_estimation/geometry.py
-src/gaze_estimation/gaze_estimation/visualization.py
-src/gaze_estimation/gaze_estimation/config_loader.py
-src/gaze_estimation/gaze_estimation/device.py
 src/gaze_estimation/config/gaze_webcam.yaml
-src/gaze_estimation/launch/gaze_webcam.launch.py
 ```
 
-### Modelli usati
+Funzionamento:
 
-Pesi attesi in:
+1. apre una webcam OpenCV (`camera_index`);
+2. ridimensiona frame a `resize_width`;
+3. usa Gazelle/Gaze-LLE per stimare face box, gaze point, heatmap e
+   in/out score;
+4. usa YOLO-World per rilevare oggetti target;
+5. decide se lo sguardo cade su uno degli oggetti con:
+   - controllo punto gaze dentro bbox con margine;
+   - opzionale controllo ratio heatmap dentro bbox;
+6. mostra overlay OpenCV e logga stati:
+   - `NO_FACE`
+   - `GAZE_OUT_OF_FRAME`
+   - `NO_TARGET_OBJECT`
+   - `LOOKING_AT_OBJECT: <class>`
+   - `LOOKING_ELSEWHERE`
+
+Pesi attesi:
 
 ```text
-models/gaze_estimation/
+models/gaze_estimation/gazelle_dinov2_vitl14_inout.pt
+models/gaze_estimation/yolov8x-worldv2.pt
+models/gaze_estimation/best.pt
 ```
 
-La config attuale (`gaze_webcam.yaml`) specifica il path locale:
+Nota: nel file YAML di gaze estimation il path `weights_dir` punta a un path
+host specifico (`/home/lorenzo/Scrivania/ElectiveAI/...`), mentre il README
+consiglia `/root/exchange/models/gaze_estimation` dentro container. Questo e'
+un potenziale punto da allineare.
 
-```yaml
-weights_dir: "/home/lorenzo/Scrivania/ElectiveAI/models/gaze_estimation"
-```
+Al momento non risulta un'integrazione diretta fra `gaze_estimation` e la
+missione EMPOWER/HRI: e' una componente eseguibile separatamente.
 
-Checkpoint:
-
-```text
-gazelle_dinov2_vitl14_inout.pt   (Gazelle per heatmap gaze e inout score)
-yolov8x-worldv2.pt              (YOLO-World per detection oggetti target)
-yolov8n-face.pt                 (face detector; nome nel YAML, era best.pt nei README)
-```
-
-### Flusso runtime
-
-Nodo:
-
-```text
-gaze_estimation.gaze_webcam_node
-```
-
-Il nodo:
-
-1. apre la webcam con OpenCV (`cv2.VideoCapture(camera_index)`);
-2. ridimensiona il frame se `resize_width > 0` (default: 640);
-3. ogni `process_every_n_frames` (default: 2) esegue inferenza;
-4. Gazelle/face detector trova facce e heatmap gaze;
-5. YOLO-World rileva oggetti target;
-6. sceglie la faccia piu' grande;
-7. controlla `inout_score` (> 0.50 = guarda dentro l'immagine);
-8. verifica se gaze point cade nella bounding box oggetto, con margine (30px);
-9. opzionalmente controlla quanta massa della heatmap cade nella bbox (> 15%);
-10. disegna overlay OpenCV.
-
-Status possibili:
-
-```text
-LOOKING_AT_OBJECT: <class>
-LOOKING_ELSEWHERE
-NO_FACE
-NO_TARGET_OBJECT
-GAZE_OUT_OF_FRAME
-NO_FRAME
-```
-
-Al momento lo status viene loggato e mostrato nella finestra OpenCV. Non risulta
-un topic ROS pubblicato con lo status, quindi non e' ancora integrato con
-EMPOWER o con la missione HRI.
-
-### Parametri importanti
-
-```yaml
-camera_index: 0
-device: "auto"
-target_classes: ["book", "bottle", "cube", "sunglasses", "smartphone"]
-resize_width: 640
-process_every_n_frames: 2
-yolo_confidence: 0.10
-gaze_inout_threshold: 0.50
-bbox_margin_px: 30
-use_heatmap_ratio_check: true
-heatmap_inside_bbox_threshold: 0.15
-```
-
-`device` puo' essere:
-
-```text
-auto
-cpu
-cuda
-```
-
-Se si chiede CUDA ma non e' disponibile, il codice fa fallback su CPU.
-
-### Limitazioni attuali per l'integrazione con HRI
-
-1. Non pubblica lo status su nessun topic ROS.
-2. Usa `cv2.VideoCapture`, non un topic camera ROS.
-3. Non ha consapevolezza della fase dell'interazione (non sottoscrive
-   `/hri/dialog_state` o `/mission/state`).
-4. Le classi target sono statiche e configurate nel YAML, non dinamiche in
-   base all'attivita'.
-5. Non c'e' modo di avviare/fermare la gaze estimation da un altro nodo.
-6. In simulazione Gazebo, non esiste una camera che veda la faccia del bambino.
-
-## Relazione fra le tre componenti
-
-Stato attuale:
-
-- `empower_ros2` e' la componente centrale robotica.
-- `empower_hri` e' integrato con `empower_ros2` tramite mission orchestrator
-  e topic `/hri/*`.
-- `gaze_estimation` e' separato e non alimenta ancora decisioni EMPOWER/HRI.
-
-Flusso integrato attuale HRI + EMPOWER (per la missione completa):
-
-```text
-terapista parla / scrive nel terminale
-  -> empower_hri pubblica /hri/user_utterance (primo input: task fisico)
-  -> mission_orchestrator cattura task, dice ack
-  -> empower_hri pubblica /hri/user_utterance (secondo input: attivita' child)
-  -> mission_orchestrator normalizza attivita', dice ack
-  -> mission_orchestrator naviga allo spawn
-  -> mission_orchestrator lancia scene capture
-  -> mission_orchestrator lancia planning EMPOWER (relazioni + piano + detection)
-  -> mission_orchestrator lancia execution EMPOWER (navigate + grab + drop)
-  -> (se child_delivery_handled_by_empower=true, il piano EMPOWER naviga al bambino)
-  -> mission_orchestrator pubblica child_ready
-  -> mission_orchestrator invia start_child_activity a empower_hri
-  -> empower_hri pronuncia frase di apertura
-  -> empower_hri entra nel loop interattivo bambino (max 10 turni):
-       bambino parla -> STT -> LLM genera risposta -> TTS pronuncia
-  -> empower_hri pubblica dialog_complete
-  -> mission_orchestrator completa la missione
-```
-
-Gaze estimation oggi non compare in questo flusso.
-
-## Architettura topic durante l'interazione robot-bambino
-
-Questo schema mostra i topic attivi durante la fase CHILD_ACTIVITY, che e' il
-momento rilevante per la gaze estimation:
-
-```text
-mission_orchestrator                   voice_llm_node
-     |                                      |
-     |-- /mission/state: CHILD_ACTIVITY --> |
-     |                                      |
-     |   /hri/dialog_command: ---------->   |
-     |   {start_child_activity, context}    |
-     |                                      |
-     |                         /hri/dialog_state: child_activity_active
-     |                         /hri/robot_utterance: <apertura>
-     |                                      |
-     |                         (loop turni) |
-     |                                      |
-     |                         /hri/dialog_state: listening
-     |                         <bambino parla>
-     |                         /hri/dialog_state: recording
-     |                         /hri/dialog_state: transcribing
-     |                         /hri/user_utterance: <testo bambino>
-     |                         /hri/dialog_state: thinking
-     |                         /hri/dialog_state: speaking
-     |                         /hri/robot_utterance: <risposta robot>
-     |                         /hri/dialog_state: ready
-     |                                      |
-     |                         (fine loop)  |
-     |                                      |
-     |   <-- /hri/dialog_complete: -----    |
-     |   {reason, turns, activity_type}     |
-     |                                      |
-     |-- /mission/state: MISSION_COMPLETE   |
-```
-
-Un nodo di gaze estimation integrato potrebbe sottoscrivere:
-
-- `/mission/state` per sapere quando inizia/finisce l'interazione;
-- `/hri/dialog_state` per sapere la fase del turno corrente;
-- `/hri/robot_utterance` per sapere cosa dice il robot;
-- Un topic camera (frontale TIAGo o webcam esterna) per il frame video.
-
-E pubblicare:
-
-- Un topic dedicato (es. `/gaze/status`) con lo stato gaze;
-- Opzionalmente, un topic con metriche aggregate (tempo di attenzione, ecc.).
-
-## Comandi principali
+## Comandi operativi principali
 
 Build dei package principali:
 
@@ -1446,148 +847,100 @@ Build dei package principali:
 cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
-colcon build --symlink-install --packages-select empower_ros2 empower_hri gaze_estimation
+colcon build --symlink-install --packages-select empower_ros2 empower_hri
 source /root/exchange/install/setup.bash
 ```
 
-Avvio Gazebo:
+Gazebo:
 
 ```bash
+export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
 ros2 launch tiago_gazebo tiago_gazebo.launch.py \
   is_public_sim:=True \
   gazebo_version:=classic \
   world_name:=/root/exchange/exchange/person_table_child.world
 ```
 
-Avvio Nav2 ground truth:
+Nav2:
 
 ```bash
 ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
   map:=/root/exchange/exchange/maps/person_table_child_static.yaml
 ```
 
-Capture:
+Pipeline EMPOWER manuale:
 
 ```bash
 ros2 launch empower_ros2 empower_capture.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
-```
 
-Model cacher:
-
-```bash
 ros2 launch empower_ros2 empower_models_cacher.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
-```
 
-Planning:
-
-```bash
 ros2 launch empower_ros2 empower_plan.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
-```
 
-Execution:
-
-```bash
 ros2 launch empower_ros2 empower_execute.launch.py \
   params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
 ```
 
-Missione completa HRI + EMPOWER:
+Missione integrata:
 
 ```bash
 ros2 launch empower_ros2 hri_empower_mission.launch.py \
   hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
-  hri_input_mode:=text
+  hri_input_mode:=voice
 ```
 
-Gaze estimation:
+## Limiti e punti fragili attuali
 
-```bash
-ros2 launch gaze_estimation gaze_webcam.launch.py \
-  camera_index:=0 \
-  device:=auto \
-  target_classes:="book,bottle,cup"
-```
+- La pipeline EMPOWER dipende da OpenAI `gpt-4o` tramite `agents.py`; serve
+  `OPENAI_API_KEY` o `/root/exchange/openai_api_key.txt`.
+- Il model cacher usa un socket TCP custom, non un service/action ROS 2.
+- La detection/grounding e' euristica e puo' produrre label non corrispondenti
+  perfettamente agli oggetti manipolabili.
+- Il bambino e' gestito come target non visuale hardcoded, non tramite
+  perception.
+- Le pose di bambino/persona/spawn/consegna sono hardcoded nei file YAML.
+- La manipolazione fisica non esiste: `GRAB` e `DROP` sono simulati solo per
+  `book`, `computer`, `peluche` via Gazebo CLI.
+- `PUSH` e `PULL` sono accettati dal piano ma non implementati.
+- L'ultimo output rileva solo `shelf` come detection finale, ma il piano
+  manipola `peluche`; questo funziona solo grazie a `object_simulation`.
+- Ci sono file `__pycache__` e output generati versionati/non puliti nella repo.
+- Alcuni README/config non sono completamente allineati allo stato corrente
+  (`book` vs `peluche`, path gaze weights host vs container).
 
-## Indicazioni pratiche per prossime modifiche
+## Punti da tenere presenti per modifiche future su EMPOWER
 
-### Per integrare gaze estimation nell'interazione robot-bambino
+Per cambiare EMPOWER bisogna prima decidere quale livello modificare:
 
-Le modifiche con piu' impatto per integrare la gaze estimation sarebbero:
+1. Prompt/planning:
+   - modificare `src/empower_ros2/python/agents.py`;
+   - impatta relazioni, descrizione scena e piano simbolico.
+2. Detection/grounding:
+   - modificare `src/empower_ros2/python/detection.py`;
+   - impatta classi YOLO-World, matching relazioni-detection, label finali,
+     `detection.pkl`.
+3. Parsing piano:
+   - modificare `src/empower_ros2/python/empower_ros2/plan_parser.py`;
+   - impatta `planning.json` e quindi l'esecuzione.
+4. Esecuzione low-level:
+   - modificare `src/empower_ros2/python/empower_ros2/low_level_execution_node.py`;
+   - impatta Nav2, target non visuali e simulazione Gazebo degli oggetti.
+5. Configurazione scenario:
+   - modificare `src/empower_ros2/config/empower_person_table_child.yaml`;
+   - impatta task, topic, pose, aliases, oggetti simulabili, standoff distance.
+6. Orchestrazione missione:
+   - modificare `src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py`;
+   - impatta quando viene lanciata EMPOWER e come interagisce con HRI/Nav2.
 
-1. Far pubblicare al nodo `gaze_estimation` lo status su un topic ROS
-   (es. `/gaze/status`), cosi' altri nodi possono reagire.
+Per la maggior parte dei cambiamenti al comportamento EMPOWER e' probabile che
+serva toccare insieme almeno:
 
-2. Far sottoscrivere al nodo gaze `/hri/dialog_state` e/o `/mission/state`,
-   cosi' la gaze estimation sa quando l'interazione e' attiva e in che fase si
-   trova.
+- `agents.py` per ottenere il piano desiderato;
+- `plan_parser.py` se il formato del piano cambia;
+- `low_level_execution_node.py` se una nuova azione deve essere eseguita;
+- `empower_person_table_child.yaml` se servono nuovi target, alias o mapping
+  Gazebo.
 
-3. Decidere la sorgente video: webcam esterna puntata sulla faccia del bambino
-   (realistico per setup reale) oppure un topic camera ROS (necessita di una
-   camera aggiuntiva in simulazione o nella configurazione reale del robot).
-
-4. Adattare le classi target del gaze estimator in base al tipo di attivita':
-   - `computer_emotion_recognition`: target = computer/laptop;
-   - `mood_check_teddy`: target = teddy bear, robot;
-   - `storytelling`: target = book, robot.
-
-5. Creare un nodo integratore che combini gaze status e dialog state per
-   produrre metriche di attenzione del bambino durante l'attivita'.
-
-6. Opzionalmente, far usare le metriche gaze al nodo HRI per adattare il
-   comportamento del robot (es. richiamare l'attenzione se il bambino non
-   guarda).
-
-### Per rendere EMPOWER piu' affidabile
-
-1. Rendere configurabili modello OpenAI e prompt in YAML.
-2. Sostituire l'output LLM libero con JSON strutturato per relazioni e piano.
-3. Rendere robusto il parsing in `detection.py`, evitando split manuali su
-   stringhe fragili.
-4. Aggiungere alias oggetti, per esempio `laptop` == `computer`.
-5. Separare target di navigazione astratti da oggetti fisici.
-6. Migliorare `_resolve_target_marker()` per gestire target come "right side of
-   the table".
-7. Se serve manipolazione reale, introdurre un layer dedicato per MoveIt/gripper
-   invece della simulazione Gazebo attuale.
-
-## Prompt rapido da dare a ChatGPT
-
-Se devo chiedere modifiche a un altro ChatGPT, posso incollare questo blocco:
-
-```text
-Sto lavorando sulla repo ElectiveAI, una workspace ROS 2 Humble per TIAGo in
-Gazebo. Le componenti principali sono:
-
-- empower_ros2: pipeline EMPOWER per capture RGB-D, GPT-4o vision planning,
-  YOLO-World detection, EfficientViT-SAM segmentation, grounding, report,
-  marker 3D, Nav2 execution, simulazione GRAB/DROP via CLI Gazebo e mission
-  orchestrator.
-- empower_hri: dialogo locale STT/LLM/TTS con faster-whisper, Ollama/Qwen e TTS
-  locale. Si integra con EMPOWER tramite topic /hri/* e mission_orchestrator.
-  Supporta 3 attivita' bambino (storytelling, computer_emotion_recognition,
-  mood_check_teddy) con system prompt dedicati e frase di apertura.
-- gaze_estimation: package standalone webcam + Gazelle/Gaze-LLE + YOLO-World per
-  stimare se una persona guarda un oggetto. Non e' ancora integrato con EMPOWER.
-
-Il flusso missione e':
-1. TIAGo va dal terapista, riceve task fisico e tipo di attivita' child
-2. TIAGo va allo spawn, EMPOWER cattura scena, pianifica, esegue (navigate,
-   grab, drop simulati)
-3. TIAGo arriva dal bambino, HRI apre l'attivita' child con frase di apertura
-4. Loop interattivo: bambino parla -> STT -> LLM -> TTS (max 10 turni)
-5. Missione completa
-
-Topic chiave durante l'interazione child:
-  /mission/state (CHILD_ACTIVITY)
-  /hri/dialog_state (child_activity_active, listening, recording, transcribing,
-                     thinking, speaking, ready)
-  /hri/robot_utterance (risposte robot)
-  /hri/dialog_complete (fine attivita')
-
-Obiettivo: integrare gaze estimation durante l'interazione robot-bambino.
-La gaze estimation deve sapere quando l'attivita' e' in corso, in che fase del
-turno si trova, e pubblicare lo status su un topic ROS.
-```

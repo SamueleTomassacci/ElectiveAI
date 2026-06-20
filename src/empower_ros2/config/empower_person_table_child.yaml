@@ -10,6 +10,21 @@
     fixed_frame: map
     camera_frame: head_front_camera_color_optical_frame
     depth_unit_scale_to_mm: -1.0
+    multi_view:
+      enabled: true
+      overlap_ratio: 0.15
+      yaw_coverage: 6.283185307179586
+      min_views: 4
+      max_views: 12
+      settle_time_sec: 1.0
+      rotation_mode: nav2
+      save_debug: true
+      output_subdir: views
+      merge:
+        default_distance_m: 0.35
+        small_object_distance_m: 0.25
+        large_object_distance_m: 0.60
+        z_threshold_m: 0.25
     server_host: 127.0.0.1
     server_port: 10000
     openai_api_key_file: /root/exchange/openai_api_key.txt
@@ -19,10 +34,10 @@
     base_frame: base_footprint
     nav_action_name: navigate_to_pose
     marker_timeout_sec: 30.0
-    tf_timeout_sec: 2.0
+    tf_timeout_sec: 10.0
     action_server_timeout_sec: 20.0
     nav_result_timeout_sec: 300.0
-    standoff_distance: 1.0
+    standoff_distance: 1.2
     continue_on_nav_failure: false
     child_context:
       enabled: true
@@ -57,7 +72,7 @@
       drop_distance: 0.75
       child_delivery_table_drop_x: 0.0
       child_delivery_table_drop_y: 1.65
-      child_delivery_table_drop_z: 1.30
+      child_delivery_table_drop_z: 1.7
       child_delivery_table_drop_yaw: 1.5708
       hidden_x: 0.0
       hidden_y: 0.0
