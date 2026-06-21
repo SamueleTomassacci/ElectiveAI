@@ -24,6 +24,8 @@ class MissionState(str, Enum):
     ACK_TASK = "ACK_TASK"
     WAIT_ACTIVITY = "WAIT_ACTIVITY"
     ACK_ACTIVITY = "ACK_ACTIVITY"
+    WAIT_CHILD_NAME = "WAIT_CHILD_NAME"
+    ACK_CHILD_NAME = "ACK_CHILD_NAME"
     GO_TO_SPAWN = "GO_TO_SPAWN"
     RUN_EMPOWER = "RUN_EMPOWER"
     GO_TO_CHILD = "GO_TO_CHILD"
@@ -38,6 +40,7 @@ class MissionInteractionSpec:
     task_description: str = ""
     activity_description: str = ""
     activity_type: str = "generic_child_activity"
+    child_name: str = ""
 
 
 class MissionOrchestratorNode(Node):
@@ -72,6 +75,8 @@ class MissionOrchestratorNode(Node):
         )
         self._task_event = threading.Event()
         self._activity_event = threading.Event()
+        self._child_name_event = threading.Event()
+        self.child_name = ""
         self._stop_event = threading.Event()
         self._dialog_complete_event = threading.Event()
         self._dialog_complete_payload = ""
@@ -103,8 +108,16 @@ class MissionOrchestratorNode(Node):
         )
         self.declare_parameter("wait_for_task_timeout_sec", 120.0)
         self.declare_parameter("wait_for_activity_timeout_sec", 120.0)
+        self.declare_parameter("wait_for_child_name_timeout_sec", 120.0)
         self.declare_parameter("task_ack_text", "Okay, I understood the task.")
-        self.declare_parameter("activity_ack_text", "Okay, I understood the activity.")
+        self.declare_parameter(
+            "activity_ack_text",
+            "Okay, I understood the activity. What is the child's name?",
+        )
+        self.declare_parameter(
+            "child_name_ack_text",
+            "Okay, I will personalize the activity for {child_name}.",
+        )
         self.declare_parameter("default_activity_type", "generic_child_activity")
         self.declare_parameter("auto_start", True)
         self.declare_parameter("action_server_timeout_sec", 20.0)
@@ -129,9 +142,13 @@ class MissionOrchestratorNode(Node):
         if not text:
             return
         state = self._current_state()
-        if state not in {MissionState.WAIT_TASK, MissionState.WAIT_ACTIVITY}:
+        if state not in {
+            MissionState.WAIT_TASK,
+            MissionState.WAIT_ACTIVITY,
+            MissionState.WAIT_CHILD_NAME,
+        }:
             self._publish_feedback(
-                f"Ignoring HRI utterance outside task/activity capture: {text}",
+                f"Ignoring HRI utterance outside therapist input capture: {text}",
                 log_level="debug",
             )
             return
@@ -140,6 +157,9 @@ class MissionOrchestratorNode(Node):
             return
         if state == MissionState.WAIT_ACTIVITY:
             self._capture_child_activity(text)
+            return
+        if state == MissionState.WAIT_CHILD_NAME:
+            self._capture_child_name(text)
 
     def _capture_physical_task(self, text):
         if self._interaction_spec.task_description:
@@ -168,6 +188,19 @@ class MissionOrchestratorNode(Node):
         )
         self._activity_event.set()
 
+    def _capture_child_name(self, text):
+        if self._interaction_spec.child_name:
+            self._publish_feedback(
+                f"Ignoring extra HRI utterance after child name capture: {text}",
+                log_level="debug",
+            )
+            return
+        child_name = text.strip().strip(".!?;:,")
+        self._interaction_spec.child_name = child_name
+        self.child_name = child_name
+        self._publish_feedback(f"Received child name: {child_name}")
+        self._child_name_event.set()
+
     def _dialog_complete_callback(self, msg):
         self._dialog_complete_payload = msg.data
         self._dialog_complete_event.set()
@@ -191,6 +224,13 @@ class MissionOrchestratorNode(Node):
 
             self._transition(MissionState.ACK_ACTIVITY)
             self._say(str(self.get_parameter("activity_ack_text").value))
+
+            self._transition(MissionState.WAIT_CHILD_NAME)
+            if not self._wait_for_child_name():
+                return
+
+            self._transition(MissionState.ACK_CHILD_NAME)
+            self._say(self._child_name_ack_text())
 
             self._transition(MissionState.GO_TO_SPAWN)
             if not self._navigate_to_pose("spawn", self._pose_parameter("spawn_pose")):
@@ -249,6 +289,23 @@ class MissionOrchestratorNode(Node):
         )
         return False
 
+    def _wait_for_child_name(self):
+        timeout_sec = float(self.get_parameter("wait_for_child_name_timeout_sec").value)
+        self._publish_feedback(
+            f"Waiting up to {timeout_sec:.1f}s for the child name on /hri/user_utterance"
+        )
+        if self._child_name_event.wait(timeout=timeout_sec):
+            return True
+        self._publish_feedback(
+            "Timed out waiting for the child name from /hri/user_utterance",
+            log_level="error",
+        )
+        return False
+
+    def _child_name_ack_text(self):
+        template = str(self.get_parameter("child_name_ack_text").value)
+        return template.format(child_name=self._interaction_spec.child_name)
+
     def _wait_for_activity(self):
         timeout_sec = float(self.get_parameter("wait_for_activity_timeout_sec").value)
         self._publish_feedback(
@@ -270,6 +327,7 @@ class MissionOrchestratorNode(Node):
     def _run_child_activity(self):
         self._dialog_complete_event.clear()
         context = {
+            "child_name": self._interaction_spec.child_name,
             "task": self._interaction_spec.task_description,
             "activity_description": self._interaction_spec.activity_description,
             "activity_type": self._interaction_spec.activity_type,

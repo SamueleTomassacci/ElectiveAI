@@ -19,12 +19,19 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (
             f"share/{package_name}",
-            existing_files(["package.xml", "README.md", "README_QWEN_ENGLISH.md"]),
+            existing_files(
+                [
+                    "package.xml",
+                    "README.md",
+                    "README_QWEN_ENGLISH.md",
+                    "README_CHILD_MEMORY.md",
+                ]
+            ),
         ),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
     ],
-    install_requires=["setuptools"],
+    install_requires=["setuptools", "rdflib"],
     zip_safe=True,
     maintainer="HRAI",
     maintainer_email="student@example.com",

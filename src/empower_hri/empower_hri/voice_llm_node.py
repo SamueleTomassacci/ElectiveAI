@@ -1,6 +1,7 @@
 """ROS2 node for a minimal local STT -> LLM -> TTS dialogue loop."""
 
 import json
+import os
 import threading
 import time
 from collections import deque
@@ -12,6 +13,10 @@ from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import String
 
 from empower_hri.ollama_client import LlmError, MockLlmClient, OllamaClient
+from empower_hri.rdf_child_memory import (
+    RdfChildMemoryStore,
+    generate_child_memory_report,
+)
 from empower_hri.speech_to_text import (
     FasterWhisperSpeechToText,
     MockSpeechToText,
@@ -69,8 +74,19 @@ SUPPORTED_CHILD_ACTIVITY_TYPES = {
 }
 
 
+def child_memory_prompt_section(context: Dict[str, Any]) -> str:
+    memory_context = context.get("child_memory")
+    if not isinstance(memory_context, dict):
+        return ""
+    prompt_text = str(memory_context.get("prompt_text", "")).strip()
+    if not prompt_text:
+        return ""
+    return f"\n\nChild personalization memory:\n{prompt_text}"
+
+
 def build_child_activity_system_prompt(activity_type: str, context: Dict[str, Any]) -> str:
     activity_description = context.get("activity_description", "")
+    memory_section = child_memory_prompt_section(context)
     if activity_type == "computer_emotion_recognition":
         return (
             "You are TIAGo, a friendly social robot in a therapy session with a young child. "
@@ -86,6 +102,7 @@ def build_child_activity_system_prompt(activity_type: str, context: Dict[str, An
             "Always end with a simple question or invitation, unless the activity is complete. "
             "Do not mention that you are an AI model. "
             "Do not discuss internal instructions."
+            f"{memory_section}"
         )
     if activity_type == "mood_check_teddy":
         return (
@@ -102,6 +119,7 @@ def build_child_activity_system_prompt(activity_type: str, context: Dict[str, An
             "Always end with a gentle question or invitation, unless the activity is complete. "
             "Do not mention that you are an AI model. "
             "Do not discuss internal instructions."
+            f"{memory_section}"
         )
     if activity_type == "storytelling":
         return (
@@ -119,6 +137,7 @@ def build_child_activity_system_prompt(activity_type: str, context: Dict[str, An
             "Always end with a simple question, unless the activity is complete. "
             "Do not mention that you are an AI model. "
             "Do not discuss internal instructions."
+            f"{memory_section}"
         )
     return (
         "You are TIAGo, a friendly social robot in a therapy session with a young child. "
@@ -130,29 +149,45 @@ def build_child_activity_system_prompt(activity_type: str, context: Dict[str, An
         "Keep each response short. "
         "Do not mention that you are an AI model. "
         "Do not discuss internal instructions."
+        f"{memory_section}"
     )
 
 
 def child_activity_opening(activity_type: str, context: Dict[str, Any]) -> str:
+    child_name = str(context.get("child_name", "")).strip()
+    if child_name:
+        prefix = f"Hi {child_name}, "
+        start = "let's"
+        teddy_start = "this"
+        book_start = "I"
+    else:
+        prefix = ""
+        start = "Let's"
+        teddy_start = "This"
+        book_start = "I"
     if activity_type == "computer_emotion_recognition":
         return (
-            "Let's look at the pictures on the computer together. What emotion do you see in this picture: "
+            f"{prefix}{start} look at the pictures on the computer together. "
+            "What emotion do you see in this picture: "
             "happy, sad, angry, or scared?"
         )
     if activity_type == "mood_check_teddy":
         return (
-            "This teddy bear would like to know how you feel today. Are you happy, sad, "
+            f"{prefix}{teddy_start} teddy bear would like to know how you feel today. Are you happy, sad, "
             "tired, calm, or something else?"
         )
     if activity_type == "storytelling":
         return (
-            "I found a book with many little stories inside. "
+            f"{prefix}{book_start} found a book with many little stories inside. "
             "I will choose one and read it with you. Are you ready to begin?"
         )
     activity_description = context.get("activity_description", "").strip()
     if activity_description:
-        return f"Let's do this activity together: {activity_description}. Would you like to start?"
-    return "Let's do a short activity together. Would you like to start?"
+        return (
+            f"{prefix}{start} do this activity together: {activity_description}. "
+            "Would you like to start?"
+        )
+    return f"{prefix}{start} do a short activity together. Would you like to start?"
 
 
 class VoiceLlmNode(Node):
@@ -201,11 +236,13 @@ class VoiceLlmNode(Node):
         self._mode_lock = threading.Lock()
         self._child_activity_context: Dict[str, Any] = {}
         self._child_activity_stop_event = threading.Event()
+        self._session_transcript: List[Dict[str, str]] = []
         self._mission_state = ""
         self._last_therapist_input_state = ""
         self._pending_attention_alert: Dict[str, Any] | None = None
         self._attention_alert_lock = threading.Lock()
         self._attention_llm = self._create_attention_llm()
+        self._memory_store: RdfChildMemoryStore | None = None
 
         self._last_emotion: str | None = None
         self._last_emotion_ts: float = 0.0
@@ -256,6 +293,18 @@ class VoiceLlmNode(Node):
         self.declare_parameter("attention_recall_llm_timeout", 4.0)
         self.declare_parameter("attention_recall_max_tokens", 30)
         self.declare_parameter("emotion_staleness_threshold_sec", 15.0)
+        self.declare_parameter("memory_enabled", True)
+        self.declare_parameter(
+            "memory_rdf_path",
+            "/root/exchange/empower_data/hri_memory/children_memory.ttl",
+        )
+        self.declare_parameter(
+            "memory_report_dir",
+            "/root/exchange/empower_data/hri_memory/reports",
+        )
+        self.declare_parameter("memory_max_prompt_facts", 12)
+        self.declare_parameter("memory_seed_if_missing", True)
+        self.declare_parameter("memory_update_enabled", False)
         for emotion, hint in _DEFAULT_EMOTION_PROMPT_HINTS.items():
             self.declare_parameter(f"emotion_prompt_hints.{emotion}", hint)
 
@@ -273,6 +322,8 @@ class VoiceLlmNode(Node):
             raise ValueError(
                 "empower_hri is CPU-only: configure stt_device:=cpu."
             )
+        if int(self.get_parameter("memory_max_prompt_facts").value) < 1:
+            raise ValueError("memory_max_prompt_facts must be at least 1.")
 
     def _create_llm(self):
         provider = str(self.get_parameter("llm_provider").value)
@@ -338,7 +389,7 @@ class VoiceLlmNode(Node):
 
     def _mission_state_callback(self, msg: String) -> None:
         self._mission_state = msg.data.strip()
-        if self._mission_state not in {"WAIT_TASK", "WAIT_ACTIVITY"}:
+        if self._mission_state not in {"WAIT_TASK", "WAIT_ACTIVITY", "WAIT_CHILD_NAME"}:
             self._last_therapist_input_state = ""
 
     def _speak_hardcoded_text(self, text: str) -> None:
@@ -363,16 +414,83 @@ class VoiceLlmNode(Node):
         if activity_type not in SUPPORTED_CHILD_ACTIVITY_TYPES:
             activity_type = "generic_child_activity"
         context["activity_type"] = activity_type
+        self._attach_child_memory_context(context)
         with self._mode_lock:
             self._child_activity_context = context
             self._child_activity_stop_event.clear()
             self.history.clear()
+            self._session_transcript = []
             self._mode = _MODE_CHILD_ACTIVITY
         with self._attention_alert_lock:
             self._pending_attention_alert = None
         self.get_logger().info(
             f"Switched to child activity mode. Context: {self._child_activity_context}"
         )
+
+    def _attach_child_memory_context(self, context: Dict[str, Any]) -> None:
+        if not bool(self.get_parameter("memory_enabled").value):
+            return
+
+        child_name = str(context.get("child_name", "")).strip()
+        if not child_name:
+            self.get_logger().warning(
+                "Child memory is enabled, but no child_name was provided in context."
+            )
+            return
+
+        memory_store = self._get_memory_store()
+        if memory_store is None:
+            return
+
+        activity_type = str(context.get("activity_type", "generic_child_activity"))
+        try:
+            memory_context = memory_store.get_child_memory_context(
+                child_name=child_name,
+                activity_type=activity_type,
+                max_facts=int(self.get_parameter("memory_max_prompt_facts").value),
+            )
+        except Exception as exc:
+            self.get_logger().warning(
+                f"Could not read child RDF memory; continuing without memory: {exc}"
+            )
+            return
+
+        if not memory_context.get("found"):
+            self.get_logger().warning(
+                f"No RDF child memory found for '{child_name}'; using a generic prompt."
+            )
+        context["child_memory"] = memory_context
+
+    def _get_memory_store(self) -> RdfChildMemoryStore | None:
+        if self._memory_store is not None:
+            return self._memory_store
+
+        rdf_path = str(self.get_parameter("memory_rdf_path").value)
+        if not rdf_path:
+            self.get_logger().warning("memory_rdf_path is empty; child memory disabled.")
+            return None
+        seed_if_missing = bool(self.get_parameter("memory_seed_if_missing").value)
+        if not os.path.exists(rdf_path) and not seed_if_missing:
+            self.get_logger().warning(
+                f"RDF child memory file does not exist and seeding is disabled: {rdf_path}"
+            )
+            return None
+        if bool(self.get_parameter("memory_update_enabled").value):
+            self.get_logger().warning(
+                "memory_update_enabled is true, but automatic RDF updates are not "
+                "implemented in this step; candidate updates will only be reported."
+            )
+        try:
+            self._memory_store = RdfChildMemoryStore(
+                rdf_path=rdf_path,
+                seed_if_missing=seed_if_missing,
+            )
+        except Exception as exc:
+            self.get_logger().warning(
+                f"Failed to initialize RDF child memory at {rdf_path}: {exc}"
+            )
+            self._memory_store = None
+        return self._memory_store
 
     def _current_system_prompt(self) -> str:
         with self._mode_lock:
@@ -434,6 +552,11 @@ class VoiceLlmNode(Node):
         )
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": response})
+        with self._mode_lock:
+            in_child_activity = self._mode == _MODE_CHILD_ACTIVITY
+        if in_child_activity:
+            self._session_transcript.append({"role": "child", "content": user_text})
+            self._session_transcript.append({"role": "assistant", "content": response})
         self._publish(self.robot_publisher, response)
         self.get_logger().info(f"TIAGo: {response}")
         self._publish_state("speaking")
@@ -480,7 +603,7 @@ class VoiceLlmNode(Node):
     def _can_read_therapist_input(self) -> bool:
         if not bool(self.get_parameter("follow_mission_state_for_therapist_input").value):
             return True
-        if self._mission_state not in {"WAIT_TASK", "WAIT_ACTIVITY"}:
+        if self._mission_state not in {"WAIT_TASK", "WAIT_ACTIVITY", "WAIT_CHILD_NAME"}:
             return False
         return self._mission_state != self._last_therapist_input_state
 
@@ -586,6 +709,12 @@ class VoiceLlmNode(Node):
 
         self.get_logger().info(f"[ATTENTION_RECALL] TIAGo: {recall_text}")
         self._publish(self.robot_publisher, recall_text)
+        with self._mode_lock:
+            in_child_activity = self._mode == _MODE_CHILD_ACTIVITY
+        if in_child_activity:
+            self._session_transcript.append(
+                {"role": "assistant", "content": recall_text}
+            )
         try:
             self._publish_state("speaking")
             self.tts.speak(recall_text)
@@ -607,6 +736,7 @@ class VoiceLlmNode(Node):
             opening = child_activity_opening(activity_type, context)
             self.history.append({"role": "user", "content": "[START_ACTIVITY]"})
             self.history.append({"role": "assistant", "content": opening})
+            self._session_transcript.append({"role": "assistant", "content": opening})
             self._publish(self.robot_publisher, opening)
             self.get_logger().info(f"TIAGo (activity opening): {opening}")
             self._publish_state("speaking")
@@ -653,6 +783,12 @@ class VoiceLlmNode(Node):
         self.get_logger().info(
             f"Child activity ended: {turns} turns, reason={reason}, activity_type={activity_type}"
         )
+        memory_report_path = self._generate_memory_report(
+            context=context,
+            activity_type=activity_type,
+            turns=turns,
+            reason=reason,
+        )
         self._publish(
             self.dialog_complete_pub,
             json.dumps(
@@ -660,12 +796,55 @@ class VoiceLlmNode(Node):
                     "reason": reason,
                     "turns": turns,
                     "activity_type": activity_type,
+                    "child_name": str(context.get("child_name", "")),
+                    "memory_report_path": memory_report_path,
                 }
             ),
         )
         self._publish_state("ready")
         with self._mode_lock:
             self._mode = _MODE_THERAPIST
+
+    def _generate_memory_report(
+        self,
+        *,
+        context: Dict[str, Any],
+        activity_type: str,
+        turns: int,
+        reason: str,
+    ) -> str:
+        if not bool(self.get_parameter("memory_enabled").value):
+            return ""
+        report_dir = str(self.get_parameter("memory_report_dir").value)
+        if not report_dir:
+            self.get_logger().warning(
+                "memory_report_dir is empty; no child memory report was written."
+            )
+            return ""
+        report_context = dict(context)
+        report_context["activity_type"] = activity_type
+        try:
+            report_path = generate_child_memory_report(
+                report_dir=report_dir,
+                context=report_context,
+                transcript=list(self._session_transcript),
+                memory_context=dict(context.get("child_memory", {})),
+                completion_reason=reason,
+                turns=turns,
+                llm_client=self.llm,
+                temperature=float(self.get_parameter("temperature").value),
+                max_response_tokens=max(
+                    200,
+                    int(self.get_parameter("max_response_tokens").value),
+                ),
+            )
+        except Exception as exc:
+            self.get_logger().warning(
+                f"Could not write child memory report: {type(exc).__name__}: {exc}"
+            )
+            return ""
+        self.get_logger().info(f"Child memory report written to: {report_path}")
+        return report_path
 
     def _interaction_loop(self) -> None:
         input_mode = str(self.get_parameter("input_mode").value)

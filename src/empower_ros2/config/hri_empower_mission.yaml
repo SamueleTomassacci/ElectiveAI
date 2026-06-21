@@ -8,8 +8,10 @@ mission_orchestrator_node:
     params_file: "/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml"
     wait_for_task_timeout_sec: 300.0
     wait_for_activity_timeout_sec: 300.0
+    wait_for_child_name_timeout_sec: 300.0
     task_ack_text: "Okay, I understood the task."
-    activity_ack_text: "Okay, I understood the activity."
+    activity_ack_text: "Okay, I understood the activity. What is the child's name?"
+    child_name_ack_text: "Okay, I will personalize the activity for {child_name}."
     default_activity_type: "generic_child_activity"
     auto_start: true
     action_server_timeout_sec: 20.0
@@ -24,7 +26,7 @@ mission_orchestrator_node:
     storytelling_timeout_sec: 300.0
     child_activity_timeout_sec: 300.0
     gaze_estimation:
-      enabled: true
+      enabled: false 
       camera_index: 0
       device: "auto"
       show_window: true

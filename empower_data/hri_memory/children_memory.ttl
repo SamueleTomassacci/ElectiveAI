@@ -1,0 +1,174 @@
+@prefix child: <http://example.org/child/> .
+@prefix concept: <http://example.org/concept/> .
+@prefix hri: <http://example.org/hri#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+hri:ActivityType a rdfs:Class .
+
+hri:Child a rdfs:Class .
+
+hri:Emotion a rdfs:Class .
+
+hri:EmotionRecognitionStimulus a rdfs:Class .
+
+hri:Preference a rdfs:Class .
+
+hri:StoryCharacter a rdfs:Class .
+
+hri:StoryEnding a rdfs:Class .
+
+hri:StorySetting a rdfs:Class .
+
+hri:StoryTheme a rdfs:Class .
+
+child:luca a hri:Child ;
+    rdfs:label "Luca" ;
+    hri:displayName "Luca" ;
+    hri:likesEmotionRecognitionStimulus concept:cartoon_faces,
+        concept:clear_face_pictures ;
+    hri:likesEmotionTopic concept:brave,
+        concept:curious,
+        concept:happy ;
+    hri:likesStoryCharacter concept:friendly_robot,
+        concept:small_dinosaur ;
+    hri:likesStorySetting concept:jungle,
+        concept:moon ;
+    hri:likesStoryTheme concept:dinosaurs,
+        concept:robots,
+        concept:space ;
+    hri:needsSupportWithEmotion concept:scared,
+        concept:surprised ;
+    hri:prefersActivityType concept:storytelling ;
+    hri:prefersStoryEnding concept:happy_ending ;
+    hri:recognizesEmotionWell concept:happy,
+        concept:sad .
+
+child:sofia a hri:Child ;
+    rdfs:label "Sofia" ;
+    hri:displayName "Sofia" ;
+    hri:likesEmotionRecognitionStimulus concept:animal_characters,
+        concept:illustrated_faces ;
+    hri:likesEmotionTopic concept:calm,
+        concept:kind,
+        concept:proud ;
+    hri:likesStoryCharacter concept:cat,
+        concept:fairy,
+        concept:teddy_bear ;
+    hri:likesStorySetting concept:bedroom,
+        concept:forest,
+        concept:garden ;
+    hri:likesStoryTheme concept:animals,
+        concept:magic_forest,
+        concept:teddy_bear_adventures ;
+    hri:needsSupportWithEmotion concept:disgusted,
+        concept:scared ;
+    hri:prefersActivityType concept:mood_check_teddy ;
+    hri:prefersStoryEnding concept:calm_ending ;
+    hri:recognizesEmotionWell concept:angry,
+        concept:happy .
+
+concept:angry a hri:Emotion ;
+    rdfs:label "angry" .
+
+concept:animal_characters a hri:EmotionRecognitionStimulus ;
+    rdfs:label "animal characters" .
+
+concept:animals a hri:StoryTheme ;
+    rdfs:label "animals" .
+
+concept:bedroom a hri:StorySetting ;
+    rdfs:label "bedroom" .
+
+concept:brave a hri:Emotion ;
+    rdfs:label "brave" .
+
+concept:calm a hri:Emotion ;
+    rdfs:label "calm" .
+
+concept:calm_ending a hri:StoryEnding ;
+    rdfs:label "calm ending" .
+
+concept:cartoon_faces a hri:EmotionRecognitionStimulus ;
+    rdfs:label "cartoon faces" .
+
+concept:cat a hri:StoryCharacter ;
+    rdfs:label "cat" .
+
+concept:clear_face_pictures a hri:EmotionRecognitionStimulus ;
+    rdfs:label "clear face pictures" .
+
+concept:curious a hri:Emotion ;
+    rdfs:label "curious" .
+
+concept:dinosaurs a hri:StoryTheme ;
+    rdfs:label "dinosaurs" .
+
+concept:disgusted a hri:Emotion ;
+    rdfs:label "disgusted" .
+
+concept:fairy a hri:StoryCharacter ;
+    rdfs:label "fairy" .
+
+concept:forest a hri:StorySetting ;
+    rdfs:label "forest" .
+
+concept:friendly_robot a hri:StoryCharacter ;
+    rdfs:label "friendly robot" .
+
+concept:garden a hri:StorySetting ;
+    rdfs:label "garden" .
+
+concept:happy_ending a hri:StoryEnding ;
+    rdfs:label "happy ending" .
+
+concept:illustrated_faces a hri:EmotionRecognitionStimulus ;
+    rdfs:label "illustrated faces" .
+
+concept:jungle a hri:StorySetting ;
+    rdfs:label "jungle" .
+
+concept:kind a hri:Emotion ;
+    rdfs:label "kind" .
+
+concept:magic_forest a hri:StoryTheme ;
+    rdfs:label "magic forest" .
+
+concept:mood_check_teddy a hri:ActivityType ;
+    rdfs:label "mood_check_teddy" .
+
+concept:moon a hri:StorySetting ;
+    rdfs:label "moon" .
+
+concept:proud a hri:Emotion ;
+    rdfs:label "proud" .
+
+concept:robots a hri:StoryTheme ;
+    rdfs:label "robots" .
+
+concept:sad a hri:Emotion ;
+    rdfs:label "sad" .
+
+concept:small_dinosaur a hri:StoryCharacter ;
+    rdfs:label "small dinosaur" .
+
+concept:space a hri:StoryTheme ;
+    rdfs:label "space" .
+
+concept:storytelling a hri:ActivityType ;
+    rdfs:label "storytelling" .
+
+concept:surprised a hri:Emotion ;
+    rdfs:label "surprised" .
+
+concept:teddy_bear a hri:StoryCharacter ;
+    rdfs:label "teddy bear" .
+
+concept:teddy_bear_adventures a hri:StoryTheme ;
+    rdfs:label "teddy bear adventures" .
+
+concept:scared a hri:Emotion ;
+    rdfs:label "scared" .
+
+concept:happy a hri:Emotion ;
+    rdfs:label "happy" .
+
