@@ -17,15 +17,15 @@ voice_llm_node:
     language: "en"
     record_seconds: 5.0
     sample_rate: 16000
-    tts_provider: "system"
-    tts_timeout: 30.0
+    tts_provider: "piper"
+    tts_timeout: 60.0
     storytelling_max_turns: 10
     storytelling_auto_listen: true
     stt_vad_energy_threshold: 0.01
     stt_vad_silence_sec: 1.5
     stt_vad_max_duration_sec: 30.0
-    piper_model_path: ""
-    piper_config_path: ""
+    piper_model_path: "/root/exchange/models/piper/en_GB-jenny_dioco-medium.onnx"
+    piper_config_path: "/root/exchange/models/piper/en_GB-jenny_dioco-medium.onnx.json"
     system_prompt: "You are TIAGo, a social robot in a Gazebo simulation. At this stage, you can only speak with the user. You cannot move, grasp objects, recognize people, or perform physical actions from this module. Always answer in English in a short, clear, kind, and child-friendly manner suitable for children and therapists. If the user asks you to perform a physical action, explain that you are currently testing voice dialogue only. Do not claim robotic capabilities that have not been implemented."
     memory_enabled: true
     memory_rdf_path: "/root/exchange/empower_data/hri_memory/children_memory.ttl"
