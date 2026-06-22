@@ -134,7 +134,7 @@ class RdfChildMemoryStore:
             "Sofia",
             story_themes=["animals", "magic forest", "teddy bear adventures"],
             story_characters=["teddy bear", "cat", "fairy"],
-            story_settings=["forest", "bedroom", "garden"],
+            story_settings=["enchanted world", "bedroom", "garden"],
             story_endings=["calm ending"],
             emotion_topics=["calm", "proud", "kind"],
             recognizes_well=["happy", "angry"],

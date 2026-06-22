@@ -174,6 +174,35 @@ class VoicePromptCompatibilityTest(unittest.TestCase):
         self.assertNotIn("Child personalization memory", prompt)
         self.assertIn("Tell one short", prompt)
 
+    def test_child_activity_prompt_requires_complete_question_ending(self):
+        try:
+            from empower_hri.voice_llm_node import build_child_activity_system_prompt
+        except ImportError as exc:
+            self.skipTest(f"ROS 2 imports unavailable: {exc}")
+
+        prompt = build_child_activity_system_prompt(
+            "mood_check_teddy",
+            {"activity_description": "mood check"},
+        )
+
+        self.assertIn("Use exactly two short sentences", prompt)
+        self.assertIn("Sentence 1: contribute one small new piece", prompt)
+        self.assertIn("Sentence 2: ask one simple question", prompt)
+
+    def test_storytelling_prompt_requires_story_continuation_before_question(self):
+        try:
+            from empower_hri.voice_llm_node import build_child_activity_system_prompt
+        except ImportError as exc:
+            self.skipTest(f"ROS 2 imports unavailable: {exc}")
+
+        prompt = build_child_activity_system_prompt(
+            "storytelling",
+            {"activity_description": "story"},
+        )
+
+        self.assertIn("continue the story with exactly one small new event", prompt)
+        self.assertIn("ask one simple story question", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

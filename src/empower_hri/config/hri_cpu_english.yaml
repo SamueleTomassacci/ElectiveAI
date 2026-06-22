@@ -3,11 +3,11 @@ voice_llm_node:
     input_mode: "voice"
     llm_provider: "ollama"
     llm_base_url: "http://localhost:11434"
-    llm_model: "qwen2.5:1.5b"
+    llm_model: "gemma3:12b"
     llm_fallback_model: "llama3.2:1b"
-    llm_timeout: 60.0
+    llm_timeout: 600.0
     temperature: 0.4
-    max_response_tokens: 120
+    max_response_tokens: 0
     max_history_turns: 4
     stt_provider: "faster_whisper"
     stt_model: "base"

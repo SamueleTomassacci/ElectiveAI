@@ -55,7 +55,7 @@ child:sofia a hri:Child ;
         concept:fairy,
         concept:teddy_bear ;
     hri:likesStorySetting concept:bedroom,
-        concept:forest,
+        concept:enchanted_world,
         concept:garden ;
     hri:likesStoryTheme concept:animals,
         concept:magic_forest,
@@ -109,8 +109,8 @@ concept:disgusted a hri:Emotion ;
 concept:fairy a hri:StoryCharacter ;
     rdfs:label "fairy" .
 
-concept:forest a hri:StorySetting ;
-    rdfs:label "forest" .
+concept:enchanted_world a hri:StorySetting ;
+    rdfs:label "enchanted world" .
 
 concept:friendly_robot a hri:StoryCharacter ;
     rdfs:label "friendly robot" .

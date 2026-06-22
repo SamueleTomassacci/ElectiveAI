@@ -110,16 +110,16 @@ class OllamaClient:
     ) -> str:
         """Generate one non-streaming response from the local model."""
         selected_model = self._select_model()
+        options = {"temperature": temperature}
+        if max_response_tokens > 0:
+            options["num_predict"] = max_response_tokens
         response = self._request_json(
             "/api/chat",
             {
                 "model": selected_model,
                 "messages": messages,
                 "stream": False,
-                "options": {
-                    "temperature": temperature,
-                    "num_predict": max_response_tokens,
-                },
+                "options": options,
             },
         )
         content = response.get("message", {}).get("content", "").strip()

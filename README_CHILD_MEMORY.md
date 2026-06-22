@@ -42,8 +42,8 @@ an initial graph automatically. The seed contains two example children:
 - Luca: dinosaurs, space, robots, friendly robot, small dinosaur, moon, jungle,
   happy ending, happy/curious/brave emotion topics, and storytelling.
 - Sofia: animals, magic forest, teddy bear adventures, teddy bear, cat, fairy,
-  forest/bedroom/garden settings, calm ending, calm/proud/kind emotion topics,
-  and mood check with teddy.
+  enchanted world/bedroom/garden settings, calm ending, calm/proud/kind emotion
+  topics, and mood check with teddy.
 
 ## Prompt Personalization
 
