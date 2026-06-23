@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Callable
 
 
-def _cuda_available() -> bool:
+def cuda_available() -> bool:
     try:
         import torch
 
@@ -15,13 +15,13 @@ def _cuda_available() -> bool:
 def select_device(requested: str = "auto", warn: Callable[[str], None] | None = None) -> str:
     """Select a torch device string without failing when CUDA is absent."""
     requested_normalized = (requested or "auto").strip().lower()
-    cuda_available = _cuda_available()
+    has_cuda = cuda_available()
 
     if requested_normalized == "auto":
-        return "cuda" if cuda_available else "cpu"
+        return "cuda" if has_cuda else "cpu"
 
     if requested_normalized == "cuda":
-        if cuda_available:
+        if has_cuda:
             return "cuda"
         message = "CUDA was requested, but torch.cuda.is_available() is false. Falling back to CPU."
         if warn is not None:
@@ -34,7 +34,7 @@ def select_device(requested: str = "auto", warn: Callable[[str], None] | None = 
     message = f"Unknown device '{requested}'. Use 'auto', 'cpu', or 'cuda'. Falling back to auto selection."
     if warn is not None:
         warn(message)
-    return "cuda" if cuda_available else "cpu"
+    return "cuda" if has_cuda else "cpu"
 
 
 def yolo_device_arg(device: str) -> int | str:

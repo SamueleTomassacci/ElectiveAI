@@ -199,34 +199,34 @@ class VoiceLlmNode(Node):
 
     def __init__(self):
         super().__init__("voice_llm_node")
-        self._declare_parameters()
-        self._validate_parameters()
+        self.declare_node_parameters()
+        self.validate_parameters()
 
         self.user_publisher = self.create_publisher(String, "/hri/user_utterance", 10)
         self.robot_publisher = self.create_publisher(String, "/hri/robot_utterance", 10)
         self.state_publisher = self.create_publisher(String, "/hri/dialog_state", 10)
         self.dialog_complete_pub = self.create_publisher(String, "/hri/dialog_complete", 10)
 
-        self.create_subscription(String, "/hri/dialog_command", self._dialog_command_callback, 10)
-        self.create_subscription(String, "/hri/attention_alert", self._attention_alert_callback, 10)
+        self.create_subscription(String, "/hri/dialog_command", self.dialog_command_callback, 10)
+        self.create_subscription(String, "/hri/attention_alert", self.attention_alert_callback, 10)
         self.create_subscription(
             String, "/child/emotion_status_smoothed",
-            self._emotion_status_callback, 10,
+            self.emotion_status_callback, 10,
         )
         mission_state_qos = QoSProfile(depth=1)
         mission_state_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.create_subscription(
             String,
             "/mission/state",
-            self._mission_state_callback,
+            self.mission_state_callback,
             mission_state_qos,
         )
 
         self.history: Deque[Dict[str, str]] = deque(
             maxlen=2 * int(self.get_parameter("max_history_turns").value)
         )
-        self.llm = self._create_llm()
-        self.stt = self._create_stt()
+        self.llm = self.create_llm()
+        self.stt = self.create_stt()
         self.tts = TextToSpeech(
             provider=str(self.get_parameter("tts_provider").value),
             piper_model_path=str(self.get_parameter("piper_model_path").value),
@@ -245,7 +245,7 @@ class VoiceLlmNode(Node):
         self._last_therapist_input_state = ""
         self._pending_attention_alert: Dict[str, Any] | None = None
         self._attention_alert_lock = threading.Lock()
-        self._attention_llm = self._create_attention_llm()
+        self._attention_llm = self.create_attention_llm()
         self._memory_store: RdfChildMemoryStore | None = None
 
         self._last_emotion: str | None = None
@@ -254,17 +254,17 @@ class VoiceLlmNode(Node):
         self._emotion_staleness_sec = float(
             self.get_parameter("emotion_staleness_threshold_sec").value
         )
-        self._emotion_prompt_hints = self._load_emotion_prompt_hints()
+        self._emotion_prompt_hints = self.load_emotion_prompt_hints()
 
         self._stop_event = threading.Event()
         self._worker = threading.Thread(
-            target=self._interaction_loop,
+            target=self.interaction_loop,
             name="voice_llm_interaction",
             daemon=True,
         )
         self._worker.start()
 
-    def _declare_parameters(self) -> None:
+    def declare_node_parameters(self) -> None:
         self.declare_parameter("input_mode", "text")
         self.declare_parameter("llm_provider", "ollama")
         self.declare_parameter("llm_base_url", "http://localhost:11434")
@@ -312,7 +312,7 @@ class VoiceLlmNode(Node):
         for emotion, hint in _DEFAULT_EMOTION_PROMPT_HINTS.items():
             self.declare_parameter(f"emotion_prompt_hints.{emotion}", hint)
 
-    def _validate_parameters(self) -> None:
+    def validate_parameters(self) -> None:
         input_mode = str(self.get_parameter("input_mode").value)
         if input_mode not in {"text", "voice"}:
             raise ValueError("input_mode must be 'text' or 'voice'.")
@@ -332,7 +332,7 @@ class VoiceLlmNode(Node):
         if int(self.get_parameter("memory_max_prompt_facts").value) < 1:
             raise ValueError("memory_max_prompt_facts must be at least 1.")
 
-    def _create_llm(self):
+    def create_llm(self):
         provider = str(self.get_parameter("llm_provider").value)
         if provider == "mock":
             return MockLlmClient()
@@ -348,7 +348,7 @@ class VoiceLlmNode(Node):
             )
         raise ValueError(f"Unsupported LLM provider: '{provider}'. Use ollama or mock.")
 
-    def _create_stt(self):
+    def create_stt(self):
         if str(self.get_parameter("input_mode").value) == "text":
             return None
         provider = str(self.get_parameter("stt_provider").value)
@@ -364,13 +364,13 @@ class VoiceLlmNode(Node):
                 sample_rate=int(self.get_parameter("sample_rate").value),
                 device_index=int(self.get_parameter("stt_device_index").value),
                 logger=self.get_logger(),
-                state_callback=self._publish_state,
+                state_callback=self.publish_state,
             )
         raise ValueError(
             f"Unsupported STT provider: '{provider}'. Use faster_whisper or mock."
         )
 
-    def _dialog_command_callback(self, msg: String) -> None:
+    def dialog_command_callback(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -380,48 +380,48 @@ class VoiceLlmNode(Node):
             return
         command = payload.get("command", "")
         if command in {"say", "speak_text"}:
-            self._speak_hardcoded_text(str(payload.get("text", "")))
+            self.speak_hardcoded_text(str(payload.get("text", "")))
         elif command == "start_child_activity":
-            self._start_child_activity(dict(payload.get("context", {})))
+            self.start_child_activity(dict(payload.get("context", {})))
         elif command == "start_storytelling":
             context = dict(payload.get("context", {}))
             context.setdefault("activity_type", "storytelling")
             context.setdefault("activity_description", "Tell a short story.")
-            self._start_child_activity(context)
+            self.start_child_activity(context)
         elif command == "stop":
             self._child_activity_stop_event.set()
             self.get_logger().info("Child activity stop requested via /hri/dialog_command")
         else:
             self.get_logger().warning(f"Unknown dialog_command: '{command}'")
 
-    def _mission_state_callback(self, msg: String) -> None:
+    def mission_state_callback(self, msg: String) -> None:
         self._mission_state = msg.data.strip()
         if self._mission_state not in {"WAIT_TASK", "WAIT_ACTIVITY", "WAIT_CHILD_NAME"}:
             self._last_therapist_input_state = ""
 
-    def _speak_hardcoded_text(self, text: str) -> None:
+    def speak_hardcoded_text(self, text: str) -> None:
         text = text.strip()
         if not text:
             self.get_logger().warning("Ignoring empty say command")
             return
-        self._publish(self.robot_publisher, text)
+        self.publish(self.robot_publisher, text)
         self.get_logger().info(f"TIAGo: {text}")
         try:
-            self._publish_state("speaking")
+            self.publish_state("speaking")
             backend = self.tts.speak(text)
             self.get_logger().info(f"Response played with TTS '{backend}'.")
         except TextToSpeechError as exc:
-            self._publish_state("error")
+            self.publish_state("error")
             self.get_logger().error(f"Hardcoded speech failed: {exc}")
         finally:
-            self._publish_state("ready")
+            self.publish_state("ready")
 
-    def _start_child_activity(self, context: Dict[str, Any]) -> None:
+    def start_child_activity(self, context: Dict[str, Any]) -> None:
         activity_type = str(context.get("activity_type", "generic_child_activity"))
         if activity_type not in SUPPORTED_CHILD_ACTIVITY_TYPES:
             activity_type = "generic_child_activity"
         context["activity_type"] = activity_type
-        self._attach_child_memory_context(context)
+        self.attach_child_memory_context(context)
         with self._mode_lock:
             self._child_activity_context = context
             self._child_activity_stop_event.clear()
@@ -434,7 +434,7 @@ class VoiceLlmNode(Node):
             f"Switched to child activity mode. Context: {self._child_activity_context}"
         )
 
-    def _attach_child_memory_context(self, context: Dict[str, Any]) -> None:
+    def attach_child_memory_context(self, context: Dict[str, Any]) -> None:
         if not bool(self.get_parameter("memory_enabled").value):
             return
 
@@ -445,7 +445,7 @@ class VoiceLlmNode(Node):
             )
             return
 
-        memory_store = self._get_memory_store()
+        memory_store = self.get_memory_store()
         if memory_store is None:
             return
 
@@ -468,7 +468,7 @@ class VoiceLlmNode(Node):
             )
         context["child_memory"] = memory_context
 
-    def _get_memory_store(self) -> RdfChildMemoryStore | None:
+    def get_memory_store(self) -> RdfChildMemoryStore | None:
         if self._memory_store is not None:
             return self._memory_store
 
@@ -499,33 +499,33 @@ class VoiceLlmNode(Node):
             self._memory_store = None
         return self._memory_store
 
-    def _current_system_prompt(self) -> str:
+    def current_system_prompt(self) -> str:
         with self._mode_lock:
             mode = self._mode
             context = dict(self._child_activity_context)
         if mode == _MODE_CHILD_ACTIVITY:
             activity_type = str(context.get("activity_type", "generic_child_activity"))
             base = build_child_activity_system_prompt(activity_type, context)
-            return base + self._get_emotion_context()
+            return base + self.get_emotion_context()
         return str(self.get_parameter("system_prompt").value)
 
-    def _publish(self, publisher, text: str) -> None:
+    def publish(self, publisher, text: str) -> None:
         message = String()
         message.data = text
         publisher.publish(message)
 
-    def _publish_state(self, state: str) -> None:
-        self._publish(self.state_publisher, state)
+    def publish_state(self, state: str) -> None:
+        self.publish(self.state_publisher, state)
         self.get_logger().info(f"Dialog state: {state}")
 
-    def _read_user_text(self) -> str:
+    def read_user_text(self) -> str:
         if str(self.get_parameter("input_mode").value) == "text":
-            self._publish_state("waiting_for_text")
+            self.publish_state("waiting_for_text")
             return read_terminal("You (or /quit): ").strip()
-        self._publish_state("waiting_for_push_to_talk")
+        self.publish_state("waiting_for_push_to_talk")
         return self.stt.transcribe_push_to_talk()
 
-    def _read_child_text(self) -> str:
+    def read_child_text(self) -> str:
         """Listen for child input. Uses auto-VAD in voice mode if enabled."""
         if (
             str(self.get_parameter("input_mode").value) == "voice"
@@ -537,21 +537,21 @@ class VoiceLlmNode(Node):
                 silence_duration_sec=float(self.get_parameter("stt_vad_silence_sec").value),
                 max_duration_sec=float(self.get_parameter("stt_vad_max_duration_sec").value),
             )
-        return self._read_user_text()
+        return self.read_user_text()
 
-    def _messages(self, user_text: str) -> List[Dict[str, str]]:
+    def messages(self, user_text: str) -> List[Dict[str, str]]:
         return [
-            {"role": "system", "content": self._current_system_prompt()},
+            {"role": "system", "content": self.current_system_prompt()},
             *list(self.history),
             {"role": "user", "content": user_text},
         ]
 
-    def _handle_utterance(self, user_text: str) -> None:
-        self._publish(self.user_publisher, user_text)
+    def handle_utterance(self, user_text: str) -> None:
+        self.publish(self.user_publisher, user_text)
         self.get_logger().info(f"User: {user_text}")
-        self._publish_state("thinking")
+        self.publish_state("thinking")
         response = self.llm.chat(
-            messages=self._messages(user_text),
+            messages=self.messages(user_text),
             temperature=float(self.get_parameter("temperature").value),
             max_response_tokens=int(
                 self.get_parameter("max_response_tokens").value
@@ -564,19 +564,19 @@ class VoiceLlmNode(Node):
         if in_child_activity:
             self._session_transcript.append({"role": "child", "content": user_text})
             self._session_transcript.append({"role": "assistant", "content": response})
-        self._publish(self.robot_publisher, response)
+        self.publish(self.robot_publisher, response)
         self.get_logger().info(f"TIAGo: {response}")
-        self._publish_state("speaking")
+        self.publish_state("speaking")
         backend = self.tts.speak(response)
         self.get_logger().info(f"Response played with TTS '{backend}'.")
 
-    def _run_therapist_turn(self) -> bool:
+    def run_therapist_turn(self) -> bool:
         """One STT/LLM/TTS cycle in therapist command mode. Returns False to stop the loop."""
-        if not self._can_read_therapist_input():
+        if not self.can_read_therapist_input():
             time.sleep(0.1)
             return True
         try:
-            user_text = self._read_user_text()
+            user_text = self.read_user_text()
             if user_text.lower() in {"/quit", "/exit", "quit", "exit"}:
                 self.get_logger().info("Shutdown requested from terminal input.")
                 return False
@@ -584,37 +584,37 @@ class VoiceLlmNode(Node):
                 self.get_logger().warning("No text detected; please try again.")
                 return True
             if bool(self.get_parameter("therapist_llm_replies").value):
-                self._handle_utterance(user_text)
+                self.handle_utterance(user_text)
             else:
-                self._publish(self.user_publisher, user_text)
+                self.publish(self.user_publisher, user_text)
                 self.get_logger().info(
                     f"Published therapist utterance without LLM reply: {user_text}"
                 )
             self._last_therapist_input_state = self._mission_state
-            self._publish_state("ready")
+            self.publish_state("ready")
         except EOFError:
             self.get_logger().info("Terminal input closed.")
             return False
         except KeyboardInterrupt:
             return False
         except (LlmError, SpeechToTextError, TextToSpeechError) as exc:
-            self._publish_state("error")
+            self.publish_state("error")
             self.get_logger().error(str(exc))
         except Exception as exc:
-            self._publish_state("error")
+            self.publish_state("error")
             self.get_logger().error(
                 f"Unexpected error in the HRI loop: {type(exc).__name__}: {exc}"
             )
         return True
 
-    def _can_read_therapist_input(self) -> bool:
+    def can_read_therapist_input(self) -> bool:
         if not bool(self.get_parameter("follow_mission_state_for_therapist_input").value):
             return True
         if self._mission_state not in {"WAIT_TASK", "WAIT_ACTIVITY", "WAIT_CHILD_NAME"}:
             return False
         return self._mission_state != self._last_therapist_input_state
 
-    def _create_attention_llm(self):
+    def create_attention_llm(self):
         provider = str(self.get_parameter("llm_provider").value)
         if provider == "mock":
             return MockLlmClient()
@@ -628,7 +628,7 @@ class VoiceLlmNode(Node):
             )
         return None
 
-    def _attention_alert_callback(self, msg: String) -> None:
+    def attention_alert_callback(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -636,7 +636,7 @@ class VoiceLlmNode(Node):
         with self._attention_alert_lock:
             self._pending_attention_alert = payload
 
-    def _load_emotion_prompt_hints(self) -> Dict[str, str]:
+    def load_emotion_prompt_hints(self) -> Dict[str, str]:
         hints: Dict[str, str] = {}
         for emotion in _EMOTION_HINT_EMOTIONS:
             param_name = f"emotion_prompt_hints.{emotion}"
@@ -646,7 +646,7 @@ class VoiceLlmNode(Node):
                 hints[emotion] = _DEFAULT_EMOTION_PROMPT_HINTS.get(emotion, "")
         return hints
 
-    def _emotion_status_callback(self, msg: String) -> None:
+    def emotion_status_callback(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -655,7 +655,7 @@ class VoiceLlmNode(Node):
             self._last_emotion = payload.get("emotion")
             self._last_emotion_ts = float(payload.get("timestamp", 0.0))
 
-    def _get_emotion_context(self) -> str:
+    def get_emotion_context(self) -> str:
         with self._emotion_lock:
             emotion = self._last_emotion
             emotion_ts = self._last_emotion_ts
@@ -675,7 +675,7 @@ class VoiceLlmNode(Node):
         )
         return f"\nNote: the child currently {hint}"
 
-    def _handle_attention_recall(self) -> None:
+    def handle_attention_recall(self) -> None:
         with self._attention_alert_lock:
             alert = self._pending_attention_alert
             self._pending_attention_alert = None
@@ -715,7 +715,7 @@ class VoiceLlmNode(Node):
             )
 
         self.get_logger().info(f"[ATTENTION_RECALL] TIAGo: {recall_text}")
-        self._publish(self.robot_publisher, recall_text)
+        self.publish(self.robot_publisher, recall_text)
         with self._mode_lock:
             in_child_activity = self._mode == _MODE_CHILD_ACTIVITY
         if in_child_activity:
@@ -723,12 +723,12 @@ class VoiceLlmNode(Node):
                 {"role": "assistant", "content": recall_text}
             )
         try:
-            self._publish_state("speaking")
+            self.publish_state("speaking")
             self.tts.speak(recall_text)
         except TextToSpeechError as exc:
             self.get_logger().error(f"[ATTENTION_RECALL] TTS failed: {exc}")
 
-    def _run_child_activity_session(self) -> None:
+    def run_child_activity_session(self) -> None:
         
         with self._mode_lock:
             context = dict(self._child_activity_context)
@@ -736,7 +736,7 @@ class VoiceLlmNode(Node):
         self.get_logger().info(
             f"Starting child activity with child. activity_type={activity_type}"
         )
-        self._publish_state("child_activity_active")
+        self.publish_state("child_activity_active")
 
         # The robot opens the activity without waiting for child input.
         try:
@@ -744,9 +744,9 @@ class VoiceLlmNode(Node):
             self.history.append({"role": "user", "content": "[START_ACTIVITY]"})
             self.history.append({"role": "assistant", "content": opening})
             self._session_transcript.append({"role": "assistant", "content": opening})
-            self._publish(self.robot_publisher, opening)
+            self.publish(self.robot_publisher, opening)
             self.get_logger().info(f"TIAGo (activity opening): {opening}")
-            self._publish_state("speaking")
+            self.publish_state("speaking")
             self.tts.speak(opening)
         except (LlmError, TextToSpeechError) as exc:
             self.get_logger().error(f"Child activity opening failed: {exc}")
@@ -762,25 +762,25 @@ class VoiceLlmNode(Node):
             and (max_turns <= 0 or turns < max_turns)
         ):
             try:
-                child_text = self._read_child_text()
+                child_text = self.read_child_text()
                 if child_text.lower() in {"/quit", "/exit", "quit", "exit"}:
                     break
                 if not child_text:
                     # VAD: no speech detected within max_duration
                     continue
-                self._handle_utterance(child_text)
-                self._handle_attention_recall()
+                self.handle_utterance(child_text)
+                self.handle_attention_recall()
                 turns += 1
-                self._publish_state("ready")
+                self.publish_state("ready")
             except EOFError:
                 break
             except KeyboardInterrupt:
                 break
             except (LlmError, SpeechToTextError, TextToSpeechError) as exc:
-                self._publish_state("error")
+                self.publish_state("error")
                 self.get_logger().error(f"Child activity turn {turns} error: {exc}")
             except Exception as exc:
-                self._publish_state("error")
+                self.publish_state("error")
                 self.get_logger().error(
                     f"Unexpected error in child activity turn {turns}: "
                     f"{type(exc).__name__}: {exc}"
@@ -790,13 +790,13 @@ class VoiceLlmNode(Node):
         self.get_logger().info(
             f"Child activity ended: {turns} turns, reason={reason}, activity_type={activity_type}"
         )
-        memory_report_path = self._generate_memory_report(
+        memory_report_path = self.generate_memory_report(
             context=context,
             activity_type=activity_type,
             turns=turns,
             reason=reason,
         )
-        self._publish(
+        self.publish(
             self.dialog_complete_pub,
             json.dumps(
                 {
@@ -808,11 +808,11 @@ class VoiceLlmNode(Node):
                 }
             ),
         )
-        self._publish_state("ready")
+        self.publish_state("ready")
         with self._mode_lock:
             self._mode = _MODE_THERAPIST
 
-    def _generate_memory_report(
+    def generate_memory_report(
         self,
         *,
         context: Dict[str, Any],
@@ -853,23 +853,23 @@ class VoiceLlmNode(Node):
         self.get_logger().info(f"Child memory report written to: {report_path}")
         return report_path
 
-    def _interaction_loop(self) -> None:
+    def interaction_loop(self) -> None:
         input_mode = str(self.get_parameter("input_mode").value)
         self.get_logger().info(
             f"Local HRI ready: input={input_mode}, "
             f"LLM={self.get_parameter('llm_provider').value}, "
             f"TTS={self.get_parameter('tts_provider').value}."
         )
-        self._publish_state("ready")
+        self.publish_state("ready")
         while rclpy.ok() and not self._stop_event.is_set():
             with self._mode_lock:
                 current_mode = self._mode
             if current_mode == _MODE_CHILD_ACTIVITY:
-                self._run_child_activity_session()
+                self.run_child_activity_session()
             else:
-                if not self._run_therapist_turn():
+                if not self.run_therapist_turn():
                     break
-        self._publish_state("stopped")
+        self.publish_state("stopped")
         self._stop_event.set()
         if rclpy.ok():
             rclpy.shutdown()

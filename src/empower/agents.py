@@ -12,9 +12,9 @@ class Agents:
         self.encoded_image = self.encoded_images[0] if self.encoded_images else ""
         self.task_description = task_description
         self.child_context = child_context or ""
-        self.visual_task_description = self._visual_only_task_description()
+        self.visual_task_description = self.visual_only_task_description()
 
-    def _image_prompt_prefix(self):
+    def image_prompt_prefix(self):
         if len(self.encoded_images) <= 1:
             return ""
         return (
@@ -24,7 +24,7 @@ class Agents:
             "before answering.\n"
         )
 
-    def _image_content(self):
+    def image_content(self):
         content = []
         multiple = len(self.encoded_images) > 1
         for index, encoded_image in enumerate(self.encoded_images):
@@ -40,7 +40,7 @@ class Agents:
             )
         return content
 
-    def _non_visual_context_prompt(self):
+    def non_visual_context_prompt(self):
         if not self.child_context.strip():
             return ""
         return (
@@ -53,8 +53,8 @@ class Agents:
             "dropping it at the current destination.\n"
         )
 
-    def _visual_only_task_description(self):
-        if not self._mentions_child(self.task_description):
+    def visual_only_task_description(self):
+        if not self.mentions_child(self.task_description):
             return self.task_description
 
         child_pattern = r"(?:the\s+)?(?:child|kid)"
@@ -64,7 +64,7 @@ class Agents:
             cleaned = part.strip()
             if not cleaned:
                 continue
-            if self._mentions_child(cleaned):
+            if self.mentions_child(cleaned):
                 cleaned = re.sub(
                     rf"\s+(?:to|towards|near|at|for)\s+{child_pattern}\b",
                     "",
@@ -73,7 +73,7 @@ class Agents:
                 ).strip()
                 if re.fullmatch(r"(?:go|navigate|move|walk|give\s+it|bring\s+it)", cleaned, flags=re.IGNORECASE):
                     continue
-            if cleaned and not self._mentions_child(cleaned):
+            if cleaned and not self.mentions_child(cleaned):
                 kept_parts.append(cleaned)
 
         visual_task = ", ".join(kept_parts).strip()
@@ -88,7 +88,7 @@ class Agents:
         ).strip()
         return visual_task or "identify the visible objects needed for the task"
 
-    def _mentions_child(self, text):
+    def mentions_child(self, text):
         normalized = str(text).lower()
         return re.search(r"\b(?:the\s+)?(?:child|kid)\b", normalized) is not None
     
@@ -101,7 +101,7 @@ class Agents:
                 "content": [
                     {
                     "type": "text",
-                       "text": self._image_prompt_prefix() + "You are a mobile robot with a base allow you to move around the environment.\n\
+                       "text": self.image_prompt_prefix() + "You are a mobile robot with a base allow you to move around the environment.\n\
                             You have a robotic arm with a gripper that allows you to pick up and place one object at time.\n\
                             You are also very capable in describing a scene provided an image in input.\n\
                             From the image, you need to produce in the output a set of relations in the in the form of a triple (subject, relation, object). \n\
@@ -124,14 +124,14 @@ class Agents:
                             DROP : for the action of placing an object, either at the current destination after navigation, for example 'DROP book', or specifying where with respect to another object, for example 'DROP bottle left to mug' or 'DROP mug right to bottle' or 'DROP pen into bag'\n\
                             PULL : for the action of pulling an object with the gripper,\n\
                             PUSH: for the action of pushing an object on the ground with the base to free its trajectory if necessary.\n\
-                            " + self._non_visual_context_prompt() + "\
+                            " + self.non_visual_context_prompt() + "\
                             Write only the actions for the plan and nothing else\n\
                             The output should be in this format:\n\
                             '***RELATIONS***\n\
                             set of relations obtained\n\
                             ***PLAN***\n\
                             set of steps to achieve the task\n'"},
-                    *self._image_content(),
+                    *self.image_content(),
                 ],
                 }
             ],
@@ -152,7 +152,7 @@ class Agents:
                 "content": [
                     {
                     "type": "text",
-                        "text": self._image_prompt_prefix() + "You are an assistent which is able to accurately describe the content of the provided image or images. \n\
+                        "text": self.image_prompt_prefix() + "You are an assistent which is able to accurately describe the content of the provided image or images. \n\
                         In particular, you are able to capture the main objects present \
                         across all views and to provide all the relations that exist between them. \n\
                         These relations are described in the form of a triple (subject, relation, object) \
@@ -167,7 +167,7 @@ class Agents:
                         2) (book, on, table) \n\
                         3) (pen, on, table) \n\
                         4) (pen, right to, book."},
-                    *self._image_content(),
+                    *self.image_content(),
                 ],
                 }
             ],
@@ -188,7 +188,7 @@ class Agents:
                 "content": [
                     {
                     "type": "text",
-                        "text": self._image_prompt_prefix() + "You are an assistent which is able to accurately describe the content of the provided image or images. \n\
+                        "text": self.image_prompt_prefix() + "You are an assistent which is able to accurately describe the content of the provided image or images. \n\
                             In particular, you are able to accurately describe the content of the image to make one understand \
                             all the details of the scene without seeing it. \n\
                             Use the name in the following relations : " + enviroment_info +" and nothing else without adding adjectives for the objects.\n\
@@ -196,7 +196,7 @@ class Agents:
                             the following visible part of the task : " + self.visual_task_description+". Try to minimize the steps required and find the best plan to solve\n\
                             If the task contains ambiguity in the solution of the task, for example many objects of the same type,\
                             specify the position of the object in the image or in relation to other objects.\n"},
-                    *self._image_content(),
+                    *self.image_content(),
                 ],
                 }
             ],
@@ -224,7 +224,7 @@ class Agents:
             Use univocal name given in the relations of the environment to specify the object.\n\
             Work as a Markovian agent, so you can only see the last action and the current state of the environment.\n\
             After each step, update the state of the environment to elaborate the next step execuable in the updated enviroment."
-            + self._non_visual_context_prompt()
+            + self.non_visual_context_prompt()
             },
         {"role": "user", "content": 
             "The task is " + self.task_description+"\n\
@@ -250,7 +250,7 @@ class Agents:
             "You have a robotic arm with a gripper that allows you to pick up and place one object at a time.\n"
             "You are given a deduplicated global scene description from a multi-view RGB-D scan.\n"
             "Use object ids and aliases from the global scene when selecting visual targets.\n"
-            + self._non_visual_context_prompt()
+            + self.non_visual_context_prompt()
             },
         {"role": "user", "content":
             "The task is " + self.task_description + "\n\n"

@@ -6,11 +6,11 @@ from urllib import error, request
 
 
 class LlmError(RuntimeError):
-    """Readable error raised by a local LLM provider."""
+    pass
 
 
 class OllamaClient:
-    """Small dependency-free client for Ollama's local HTTP API."""
+    #Small dependency-free client for Ollama's local HTTP API
 
     def __init__(
         self,
@@ -26,7 +26,7 @@ class OllamaClient:
         self.timeout = timeout
         self.logger = logger
 
-    def _request_json(self, path: str, payload: Optional[Dict] = None) -> Dict:
+    def request_json(self, path: str, payload: Optional[Dict] = None) -> Dict:
         data = None
         headers = {"Accept": "application/json"}
         method = "GET"
@@ -64,8 +64,8 @@ class OllamaClient:
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise LlmError("Ollama returned an invalid response.") from exc
 
-    def _available_models(self) -> List[str]:
-        response = self._request_json("/api/tags")
+    def available_models(self) -> List[str]:
+        response = self.request_json("/api/tags")
         return [
             item.get("name", "")
             for item in response.get("models", [])
@@ -73,7 +73,7 @@ class OllamaClient:
         ]
 
     @staticmethod
-    def _matches_model(configured: str, available: str) -> bool:
+    def matches_model(configured: str, available: str) -> bool:
         if configured == available:
             return True
         if ":" not in configured and available == f"{configured}:latest":
@@ -82,13 +82,13 @@ class OllamaClient:
             return True
         return False
 
-    def _select_model(self) -> str:
-        available = self._available_models()
-        if any(self._matches_model(self.model, item) for item in available):
+    def select_model(self) -> str:
+        available = self.available_models()
+        if any(self.matches_model(self.model, item) for item in available):
             return self.model
 
         if self.fallback_model and any(
-            self._matches_model(self.fallback_model, item) for item in available
+            self.matches_model(self.fallback_model, item) for item in available
         ):
             if self.logger is not None:
                 self.logger.warning(
@@ -109,11 +109,11 @@ class OllamaClient:
         max_response_tokens: int,
     ) -> str:
         """Generate one non-streaming response from the local model."""
-        selected_model = self._select_model()
+        selected_model = self.select_model()
         options = {"temperature": temperature}
         if max_response_tokens > 0:
             options["num_predict"] = max_response_tokens
-        response = self._request_json(
+        response = self.request_json(
             "/api/chat",
             {
                 "model": selected_model,

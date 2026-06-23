@@ -31,15 +31,15 @@ class TextToSpeech:
         self.timeout = timeout
         self.logger = logger
 
-    def _info(self, message: str) -> None:
+    def info(self, message: str) -> None:
         if self.logger is not None:
             self.logger.info(message)
 
-    def _warn(self, message: str) -> None:
+    def warn(self, message: str) -> None:
         if self.logger is not None:
             self.logger.warning(message)
 
-    def _speak_piper(self, text: str) -> None:
+    def speak_piper(self, text: str) -> None:
         executable = shutil.which("piper")
         if executable is None:
             raise TextToSpeechError("The 'piper' command is not installed.")
@@ -72,7 +72,7 @@ class TextToSpeech:
                 stderr=subprocess.PIPE,
                 timeout=self.timeout,
             )
-            self._play_wav(wav_path)
+            self.play_wav(wav_path)
         except subprocess.TimeoutExpired as exc:
             raise TextToSpeechError(
                 f"Piper did not finish within {self.timeout:.0f} seconds."
@@ -84,7 +84,7 @@ class TextToSpeech:
             if wav_path and os.path.exists(wav_path):
                 os.unlink(wav_path)
 
-    def _play_wav(self, wav_path: str) -> None:
+    def play_wav(self, wav_path: str) -> None:
         players = [
             ("paplay", "paplay", ["paplay", wav_path]),
             ("aplay pulse", "aplay", ["aplay", "-q", "-D", "pulse", wav_path]),
@@ -111,16 +111,16 @@ class TextToSpeech:
                 return
             except subprocess.TimeoutExpired as exc:
                 failures.append(f"{label}: timed out after {self.timeout:.0f}s")
-                self._warn(f"Audio player '{label}' timed out: {exc}")
+                self.warn(f"Audio player '{label}' timed out: {exc}")
             except subprocess.CalledProcessError as exc:
                 detail = (exc.stderr or b"").decode(errors="replace").strip()
                 if not detail:
                     detail = f"exit code {exc.returncode}"
                 failures.append(f"{label}: {detail}")
-                self._warn(f"Audio player '{label}' failed: {detail}")
+                self.warn(f"Audio player '{label}' failed: {detail}")
             except OSError as exc:
                 failures.append(f"{label}: {exc}")
-                self._warn(f"Audio player '{label}' failed: {exc}")
+                self.warn(f"Audio player '{label}' failed: {exc}")
         if available_player:
             raise TextToSpeechError(
                 "Piper created the WAV, but playback failed: "
@@ -130,7 +130,7 @@ class TextToSpeech:
             "Piper created the WAV, but no player is available (aplay, paplay, or ffplay)."
         )
 
-    def _speak_pyttsx3(self, text: str) -> None:
+    def speak_pyttsx3(self, text: str) -> None:
         try:
             import pyttsx3
         except ImportError as exc:
@@ -163,11 +163,11 @@ class TextToSpeech:
         except Exception as exc:
             raise TextToSpeechError(f"pyttsx3 cannot play audio: {exc}") from exc
 
-    def _speak_system(self, text: str) -> None:
+    def speak_system(self, text: str) -> None:
         for executable in ("espeak-ng", "espeak"):
             executable_path = shutil.which(executable)
             if executable_path:
-                self._info(f"TTS system: using '{executable}'.")
+                self.info(f"TTS system: using '{executable}'.")
                 try:
                     subprocess.run(
                         [executable_path, "-v", self.language, text],
@@ -183,7 +183,7 @@ class TextToSpeech:
                         f"{self.timeout:.0f} seconds."
                     ) from exc
         if shutil.which("spd-say"):
-            self._info("TTS system: using 'spd-say'.")
+            self.info("TTS system: using 'spd-say'.")
             try:
                 subprocess.run(
                     ["spd-say", "-l", self.language, "--wait", text],
@@ -200,7 +200,7 @@ class TextToSpeech:
         )
 
     @staticmethod
-    def _speak_mock(text: str) -> None:
+    def speak_mock(text: str) -> None:
         print(f"TIAGo: {text}", flush=True)
 
     def speak(self, text: str) -> str:
@@ -208,24 +208,24 @@ class TextToSpeech:
         providers: List[tuple[str, Callable[[str], None]]]
         if self.provider == "piper":
             providers = [
-                ("piper", self._speak_piper),
-                ("pyttsx3", self._speak_pyttsx3),
-                ("system", self._speak_system),
-                ("mock", self._speak_mock),
+                ("piper", self.speak_piper),
+                ("pyttsx3", self.speak_pyttsx3),
+                ("system", self.speak_system),
+                ("mock", self.speak_mock),
             ]
         elif self.provider == "pyttsx3":
             providers = [
-                ("pyttsx3", self._speak_pyttsx3),
-                ("system", self._speak_system),
-                ("mock", self._speak_mock),
+                ("pyttsx3", self.speak_pyttsx3),
+                ("system", self.speak_system),
+                ("mock", self.speak_mock),
             ]
         elif self.provider == "system":
             providers = [
-                ("system", self._speak_system),
-                ("mock", self._speak_mock),
+                ("system", self.speak_system),
+                ("mock", self.speak_mock),
             ]
         elif self.provider == "mock":
-            providers = [("mock", self._speak_mock)]
+            providers = [("mock", self.speak_mock)]
         else:
             raise TextToSpeechError(
                 f"Unsupported TTS provider: '{self.provider}'. "
@@ -238,11 +238,11 @@ class TextToSpeech:
                 t0 = time.monotonic()
                 speak_function(text)
                 elapsed = time.monotonic() - t0
-                self._info(f"TTS playback took {elapsed:.1f}s (backend='{name}')")
+                self.info(f"TTS playback took {elapsed:.1f}s (backend='{name}')")
                 if name != self.provider:
-                    self._warn(f"TTS fallback active: using '{name}'.")
+                    self.warn(f"TTS fallback active: using '{name}'.")
                 return name
             except (TextToSpeechError, subprocess.SubprocessError, OSError) as exc:
                 failures.append(f"{name}: {exc}")
-                self._warn(f"TTS '{name}' unavailable: {exc}")
+                self.warn(f"TTS '{name}' unavailable: {exc}")
         raise TextToSpeechError("; ".join(failures))

@@ -309,9 +309,9 @@ class MultiViewAggregatorNode(Node):
         self.declare_parameter("multi_view.merge.large_object_distance_m", 0.60)
         self.declare_parameter("multi_view.merge.z_threshold_m", 0.25)
         self.declare_parameter("multi_view.merge.min_detection_confidence", 0.15)
-        self._run()
+        self.run()
 
-    def _run(self):
+    def run(self):
         merge_config = {
             "default_distance_m": float(self.get_parameter("multi_view.merge.default_distance_m").value),
             "small_object_distance_m": float(self.get_parameter("multi_view.merge.small_object_distance_m").value),

@@ -5,14 +5,14 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
-def _parse_int(value, fallback):
+def parse_int(value, fallback):
     try:
         return int(value)
     except (TypeError, ValueError):
         return fallback
 
 
-def _launch_setup(context, *args, **kwargs):
+def launch_setup(context, *args, **kwargs):
     gaze_params = LaunchConfiguration("gaze_params_file").perform(context)
     monitor_params = LaunchConfiguration("monitor_params_file").perform(context)
     camera_index = LaunchConfiguration("camera_index").perform(context)
@@ -22,7 +22,7 @@ def _launch_setup(context, *args, **kwargs):
 
     gaze_overrides = {}
     if camera_index != "":
-        gaze_overrides["camera_index"] = _parse_int(camera_index, 0)
+        gaze_overrides["camera_index"] = parse_int(camera_index, 0)
     if device != "":
         gaze_overrides["device"] = device
     if target_classes != "":
@@ -64,6 +64,6 @@ def generate_launch_description():
             DeclareLaunchArgument("device", default_value=""),
             DeclareLaunchArgument("target_classes", default_value=""),
             DeclareLaunchArgument("show_window", default_value=""),
-            OpaqueFunction(function=_launch_setup),
+            OpaqueFunction(function=launch_setup),
         ]
     )

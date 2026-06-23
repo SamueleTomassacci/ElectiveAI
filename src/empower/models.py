@@ -23,7 +23,7 @@ class VitSam():
     def __call__(self, img, bboxes):
         raw_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         origin_image_size = raw_img.shape[:2]
-        img = self._preprocess(raw_img, img_size=512)
+        img = self.preprocess(raw_img, img_size=512)
         img_embeddings = self.encoder(img)
         boxes = np.array(bboxes, dtype=np.float32)
         masks, _, _ = self.decoder.run(
@@ -34,7 +34,7 @@ class VitSam():
 
         return masks, boxes
 
-    def _preprocess(self, x, img_size=512):
+    def preprocess(self, x, img_size=512):
         pixel_mean = [123.675 / 255, 116.28 / 255, 103.53 / 255]
         pixel_std = [58.395 / 255, 57.12 / 255, 57.375 / 255]
 

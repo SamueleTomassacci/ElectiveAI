@@ -103,31 +103,31 @@ class MultiViewCaptureNode(Node):
         self.create_subscription(
             Image,
             self.get_parameter("rgb_topic").value,
-            self._rgb_callback,
+            self.rgb_callback,
             qos_profile_sensor_data,
         )
         self.create_subscription(
             Image,
             self.get_parameter("depth_topic").value,
-            self._depth_callback,
+            self.depth_callback,
             qos_profile_sensor_data,
         )
         self.create_subscription(
             CameraInfo,
             self.get_parameter("camera_info_topic").value,
-            self._camera_info_callback,
+            self.camera_info_callback,
             qos_profile_sensor_data,
         )
 
-    def _rgb_callback(self, msg):
+    def rgb_callback(self, msg):
         self.rgb_msg = msg
         self.rgb_seq += 1
 
-    def _depth_callback(self, msg):
+    def depth_callback(self, msg):
         self.depth_msg = msg
         self.depth_seq += 1
 
-    def _camera_info_callback(self, msg):
+    def camera_info_callback(self, msg):
         self.camera_info_msg = msg
         self.camera_info_seq += 1
 
@@ -141,9 +141,9 @@ class MultiViewCaptureNode(Node):
             raise ValueError("Only multi_view.rotation_mode=nav2 is supported in this MVP")
 
         self.get_logger().info("[MultiViewCapture] Waiting for RGB, depth and camera info")
-        self._wait_for_messages()
+        self.wait_for_messages()
         camera_info = self.camera_info_msg
-        hfov, n_views, actual_yaw_step, overlap = self._compute_view_schedule(camera_info)
+        hfov, n_views, actual_yaw_step, overlap = self.compute_view_schedule(camera_info)
         self.get_logger().info(
             f"[MultiViewCapture] Camera HFOV: {hfov:.3f} rad / {math.degrees(hfov):.1f} deg"
         )
@@ -153,9 +153,9 @@ class MultiViewCaptureNode(Node):
             f"[MultiViewCapture] Actual yaw step: {math.degrees(actual_yaw_step):.1f} deg"
         )
 
-        initial_pose = self._current_robot_pose()
+        initial_pose = self.current_robot_pose()
         initial_yaw = yaw_from_quaternion(initial_pose.pose.orientation)
-        dump_dir, views_dir = self._prepare_output_dirs()
+        dump_dir, views_dir = self.prepare_output_dirs()
         manifest = {
             "hfov_rad": hfov,
             "overlap_ratio_requested": overlap,
@@ -175,11 +175,11 @@ class MultiViewCaptureNode(Node):
                 f"{target_yaw:.3f} rad ({math.degrees(target_yaw):.1f} deg)"
             )
             if view_id > 0:
-                self._rotate_in_place(initial_pose, target_yaw)
+                self.rotate_in_place(initial_pose, target_yaw)
             time.sleep(float(self.get_parameter("multi_view.settle_time_sec").value))
             rgb_seq, depth_seq, info_seq = self.rgb_seq, self.depth_seq, self.camera_info_seq
-            self._wait_for_fresh_messages(rgb_seq, depth_seq, info_seq)
-            view_record = self._save_view(
+            self.wait_for_fresh_messages(rgb_seq, depth_seq, info_seq)
+            view_record = self.save_view(
                 view_id,
                 relative_yaw,
                 target_yaw,
@@ -194,14 +194,14 @@ class MultiViewCaptureNode(Node):
             json.dump(manifest, manifest_file, indent=2)
         self.get_logger().info(f"[MultiViewCapture] Saved views manifest: {manifest_path}")
 
-    def _wait_for_messages(self):
+    def wait_for_messages(self):
         while rclpy.ok():
             if self.rgb_msg is not None and self.depth_msg is not None and self.camera_info_msg is not None:
                 return
             rclpy.spin_once(self, timeout_sec=0.1)
         raise RuntimeError("ROS shutdown while waiting for camera messages")
 
-    def _wait_for_fresh_messages(self, rgb_seq, depth_seq, info_seq):
+    def wait_for_fresh_messages(self, rgb_seq, depth_seq, info_seq):
         deadline = time.monotonic() + 5.0
         while rclpy.ok() and time.monotonic() < deadline:
             if self.rgb_seq > rgb_seq and self.depth_seq > depth_seq and self.camera_info_seq > info_seq:
@@ -209,7 +209,7 @@ class MultiViewCaptureNode(Node):
             rclpy.spin_once(self, timeout_sec=0.1)
         self.get_logger().warn("[MultiViewCapture] Timed out waiting for fresh camera messages; using latest")
 
-    def _compute_view_schedule(self, camera_info):
+    def compute_view_schedule(self, camera_info):
         width = float(camera_info.width)
         fx = float(camera_info.k[0])
         if width <= 0.0 or fx <= 0.0:
@@ -228,10 +228,10 @@ class MultiViewCaptureNode(Node):
         actual_yaw_step = coverage / float(n_views)
         return hfov, n_views, actual_yaw_step, overlap
 
-    def _current_robot_pose(self):
+    def current_robot_pose(self):
         map_frame = self.get_parameter("map_frame").value
         base_frame = self.get_parameter("base_frame").value
-        transform = self._lookup_transform_with_retry(map_frame, base_frame)
+        transform = self.lookup_transform_with_retry(map_frame, base_frame)
         pose = PoseStamped()
         pose.header.frame_id = map_frame
         pose.header.stamp = self.get_clock().now().to_msg()
@@ -241,7 +241,7 @@ class MultiViewCaptureNode(Node):
         pose.pose.orientation = transform.transform.rotation
         return pose
 
-    def _rotate_in_place(self, initial_pose, target_yaw):
+    def rotate_in_place(self, initial_pose, target_yaw):
         goal = PoseStamped()
         goal.header.frame_id = initial_pose.header.frame_id
         goal.header.stamp = self.get_clock().now().to_msg()
@@ -259,7 +259,7 @@ class MultiViewCaptureNode(Node):
         if not ok:
             raise RuntimeError(f"Nav2 failed while rotating to yaw {target_yaw:.3f}")
 
-    def _prepare_output_dirs(self):
+    def prepare_output_dirs(self):
         use_case = self.get_parameter("use_case").value
         output_root = self.get_parameter("output_root").value
         dump_dir = os.path.join(output_root, "empower_output", use_case)
@@ -267,7 +267,7 @@ class MultiViewCaptureNode(Node):
         os.makedirs(views_dir, exist_ok=True)
         return dump_dir, views_dir
 
-    def _save_view(self, view_id, relative_yaw, target_yaw, view_dir, dump_dir, write_legacy=False):
+    def save_view(self, view_id, relative_yaw, target_yaw, view_dir, dump_dir, write_legacy=False):
         os.makedirs(view_dir, exist_ok=True)
         rgb = self.bridge.imgmsg_to_cv2(self.rgb_msg, desired_encoding="bgr8")
         depth_msg = self.depth_msg
@@ -292,18 +292,18 @@ class MultiViewCaptureNode(Node):
         cv2.imwrite(rgb_path, rgb)
         np.save(depth_path, depth_mm)
 
-        camera_info = self._camera_info_dict(self.camera_info_msg)
+        camera_info = self.camera_info_dict(self.camera_info_msg)
         with open(camera_info_pkl_path, "wb") as camera_file:
             pickle.dump(camera_info, camera_file, protocol=2)
         with open(camera_info_json_path, "w", encoding="utf-8") as camera_file:
             json.dump(camera_info, camera_file, indent=2)
 
-        camera_pose = self._lookup_camera_pose(camera_info["frame_id"])
+        camera_pose = self.lookup_camera_pose(camera_info["frame_id"])
         with open(pose_path, "w", encoding="utf-8") as pose_file:
             json.dump(camera_pose, pose_file, indent=2)
 
         if write_legacy:
-            self._write_legacy_outputs(rgb, depth_mm, camera_info, dump_dir)
+            self.write_legacy_outputs(rgb, depth_mm, camera_info, dump_dir)
 
         return {
             "view_id": view_id,
@@ -316,7 +316,7 @@ class MultiViewCaptureNode(Node):
             "camera_pose_map_path": pose_path,
         }
 
-    def _camera_info_dict(self, msg):
+    def camera_info_dict(self, msg):
         return {
             "k": list(msg.k),
             "width": msg.width,
@@ -324,11 +324,11 @@ class MultiViewCaptureNode(Node):
             "frame_id": msg.header.frame_id,
         }
 
-    def _lookup_camera_pose(self, camera_info_frame):
+    def lookup_camera_pose(self, camera_info_frame):
         map_frame = self.get_parameter("map_frame").value
         configured_camera_frame = str(self.get_parameter("camera_frame").value).strip()
         camera_frame = configured_camera_frame or camera_info_frame
-        transform = self._lookup_transform_with_retry(map_frame, camera_frame)
+        transform = self.lookup_transform_with_retry(map_frame, camera_frame)
         t = transform.transform.translation
         q = transform.transform.rotation
         rotation = quaternion_to_matrix(q)
@@ -344,7 +344,7 @@ class MultiViewCaptureNode(Node):
             "matrix": matrix.tolist(),
         }
 
-    def _lookup_transform_with_retry(self, target_frame, source_frame):
+    def lookup_transform_with_retry(self, target_frame, source_frame):
         startup_timeout = float(self.get_parameter("tf_startup_timeout_sec").value)
         deadline = time.monotonic() + startup_timeout
         last_exc = None
@@ -370,7 +370,7 @@ class MultiViewCaptureNode(Node):
             f"{startup_timeout:.1f}s: {last_exc}"
         )
 
-    def _write_legacy_outputs(self, rgb, depth_mm, camera_info, dump_dir):
+    def write_legacy_outputs(self, rgb, depth_mm, camera_info, dump_dir):
         cv2.imwrite(os.path.join(dump_dir, "scan.jpg"), rgb)
         np.save(os.path.join(dump_dir, "depth.npy"), depth_mm)
         with open(os.path.join(dump_dir, "camera_info.pkl"), "wb") as camera_file:

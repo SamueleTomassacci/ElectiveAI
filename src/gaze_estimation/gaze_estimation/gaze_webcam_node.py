@@ -30,8 +30,8 @@ _EMOTION_CLASS_MAP = {
 class GazeWebcamNode(Node):
     def __init__(self):
         super().__init__("gaze_estimation")
-        self._declare_parameters()
-        self.params = self._read_parameters()
+        self.declare_node_parameters()
+        self.params = self.read_parameters()
         self.device = select_device(self.params["device"], warn=self.get_logger().warning)
         self.last_status = None
         self._last_heartbeat = 0.0
@@ -40,10 +40,10 @@ class GazeWebcamNode(Node):
         self.node_status_pub = self.create_publisher(String, "/gaze/node_status", 10)
         self.emotion_pub = self.create_publisher(String, "/child/emotion_status", 10)
         self.create_subscription(
-            String, "/hri/dialog_command", self._dialog_command_callback, 10,
+            String, "/hri/dialog_command", self.dialog_command_callback, 10,
         )
         self._initial_target_classes = list(self.params["target_classes"])
-        self._activity_detection_map = self._load_activity_detection_map()
+        self._activity_detection_map = self.load_activity_detection_map()
 
         if self.params["print_debug"]:
             self.get_logger().info(f"Selected device: {self.device}")
@@ -55,7 +55,7 @@ class GazeWebcamNode(Node):
         self.emotion_recognizer = None
         self._emotion_frame_count = 0
 
-    def _declare_parameters(self):
+    def declare_node_parameters(self):
         self.declare_parameter("camera_index", 0)
         self.declare_parameter("device", "auto")
         self.declare_parameter("target_classes", ["book"])
@@ -86,7 +86,7 @@ class GazeWebcamNode(Node):
             ["laptop", "computer"],
         )
 
-    def _read_parameters(self):
+    def read_parameters(self):
         return {
             "camera_index": int(self.get_parameter("camera_index").value),
             "device": str(self.get_parameter("device").value),
@@ -113,7 +113,7 @@ class GazeWebcamNode(Node):
             "emotion_model_name": str(self.get_parameter("emotion_model_name").value),
         }
 
-    def _load_activity_detection_map(self) -> dict[str, list[str]]:
+    def load_activity_detection_map(self) -> dict[str, list[str]]:
         mapping: dict[str, list[str]] = {}
         for activity in ("storytelling", "mood_check_teddy", "computer_emotion_recognition"):
             param_name = f"activity_detection_classes.{activity}"
@@ -125,7 +125,7 @@ class GazeWebcamNode(Node):
                 mapping[activity] = list(value)
         return mapping
 
-    def _dialog_command_callback(self, msg: String) -> None:
+    def dialog_command_callback(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -154,7 +154,7 @@ class GazeWebcamNode(Node):
                 f"{', '.join(self._initial_target_classes)}"
             )
 
-    def _publish_node_status(self, state: str, message: str = "") -> None:
+    def publish_node_status(self, state: str, message: str = "") -> None:
         payload: dict = {"state": state}
         if message:
             payload["message"] = message
@@ -162,7 +162,7 @@ class GazeWebcamNode(Node):
         msg.data = json.dumps(payload)
         self.node_status_pub.publish(msg)
 
-    def _publish_gaze_status(self, status: str, target_class: str | None = None) -> None:
+    def publish_gaze_status(self, status: str, target_class: str | None = None) -> None:
         msg = String()
         msg.data = json.dumps({
             "status": status,
@@ -172,7 +172,7 @@ class GazeWebcamNode(Node):
         self.gaze_status_pub.publish(msg)
         now = time.monotonic()
         if now - self._last_heartbeat >= 2.0:
-            self._publish_node_status("READY")
+            self.publish_node_status("READY")
             self._last_heartbeat = now
 
     def initialize(self) -> bool:
@@ -188,7 +188,7 @@ class GazeWebcamNode(Node):
             )
         except FileNotFoundError as exc:
             self.get_logger().error(str(exc))
-            self._publish_node_status("ERROR", str(exc))
+            self.publish_node_status("ERROR", str(exc))
             return False
 
         try:
@@ -206,7 +206,7 @@ class GazeWebcamNode(Node):
             )
         except Exception as exc:
             self.get_logger().error(f"Failed to initialize models: {exc}")
-            self._publish_node_status("ERROR", f"Model init failed: {exc}")
+            self.publish_node_status("ERROR", f"Model init failed: {exc}")
             return False
 
         try:
@@ -230,9 +230,9 @@ class GazeWebcamNode(Node):
         if not self.capture.isOpened():
             error_msg = f"Could not open webcam camera_index={self.params['camera_index']}"
             self.get_logger().error(error_msg)
-            self._publish_node_status("ERROR", error_msg)
+            self.publish_node_status("ERROR", error_msg)
             return False
-        self._publish_node_status("READY")
+        self.publish_node_status("READY")
         self._last_heartbeat = time.monotonic()
         return True
 
@@ -246,14 +246,14 @@ class GazeWebcamNode(Node):
             while rclpy.ok():
                 ok, frame_bgr = self.capture.read()
                 if not ok or frame_bgr is None:
-                    self._set_status("NO_FRAME")
+                    self.set_status("NO_FRAME")
                     rclpy.spin_once(self, timeout_sec=0.01)
                     continue
 
-                frame_bgr = self._resize_frame(frame_bgr)
+                frame_bgr = self.resize_frame(frame_bgr)
                 frame_count += 1
                 if frame_count % self.params["process_every_n_frames"] == 0:
-                    overlay = self._process_frame(frame_bgr)
+                    overlay = self.process_frame(frame_bgr)
 
                 display_frame = overlay if overlay is not None else frame_bgr
                 if self.params["show_window"]:
@@ -265,7 +265,7 @@ class GazeWebcamNode(Node):
         finally:
             self.shutdown()
 
-    def _resize_frame(self, frame_bgr):
+    def resize_frame(self, frame_bgr):
         resize_width = self.params["resize_width"]
         if resize_width <= 0 or frame_bgr.shape[1] == resize_width:
             return frame_bgr
@@ -273,7 +273,7 @@ class GazeWebcamNode(Node):
         resize_height = int(round(frame_bgr.shape[0] * scale))
         return cv2.resize(frame_bgr, (resize_width, resize_height), interpolation=cv2.INTER_AREA)
 
-    def _process_frame(self, frame_bgr):
+    def process_frame(self, frame_bgr):
         rgb_image = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         gaze_results = self.gazelle.estimate(rgb_image)
         object_detections = self.yolo.predict(frame_bgr)
@@ -284,15 +284,15 @@ class GazeWebcamNode(Node):
             if face_index is not None:
                 gaze_result = gaze_results[face_index]
 
-        self._process_emotion(rgb_image, gaze_result)
+        self.process_emotion(rgb_image, gaze_result)
 
         if gaze_result is None:
-            self._set_status("NO_FACE")
+            self.set_status("NO_FACE")
             return draw_debug_overlay(frame_bgr, object_detections=object_detections, status="NO_FACE")
 
         inout_score = gaze_result.get("inout_score")
         if inout_score is not None and inout_score < self.params["gaze_inout_threshold"]:
-            self._set_status("GAZE_OUT_OF_FRAME")
+            self.set_status("GAZE_OUT_OF_FRAME")
             return draw_debug_overlay(
                 frame_bgr,
                 gaze_result=gaze_result,
@@ -301,7 +301,7 @@ class GazeWebcamNode(Node):
             )
 
         if not object_detections:
-            self._set_status("NO_TARGET_OBJECT")
+            self.set_status("NO_TARGET_OBJECT")
             return draw_debug_overlay(
                 frame_bgr,
                 gaze_result=gaze_result,
@@ -325,10 +325,10 @@ class GazeWebcamNode(Node):
 
         if matched_object is not None:
             status = f"LOOKING_AT_OBJECT: {matched_object['class_name']}"
-            self._set_status("LOOKING_AT_OBJECT", matched_object["class_name"])
+            self.set_status("LOOKING_AT_OBJECT", matched_object["class_name"])
         else:
             status = "LOOKING_ELSEWHERE"
-            self._set_status("LOOKING_ELSEWHERE")
+            self.set_status("LOOKING_ELSEWHERE")
         return draw_debug_overlay(
             frame_bgr,
             gaze_result=gaze_result,
@@ -337,17 +337,17 @@ class GazeWebcamNode(Node):
             matched_object=matched_object,
         )
 
-    def _process_emotion(self, rgb_image, gaze_result):
+    def process_emotion(self, rgb_image, gaze_result):
         self._emotion_frame_count += 1
         if self._emotion_frame_count % self.params["emotion_process_every_n_frames"] != 0:
             return
 
         if self.emotion_recognizer is None:
-            self._publish_emotion_status("unavailable", error="EmotiEffLib not loaded")
+            self.publish_emotion_status("unavailable", error="EmotiEffLib not loaded")
             return
 
         if gaze_result is None:
-            self._publish_emotion_status("no_face")
+            self.publish_emotion_status("no_face")
             return
 
         try:
@@ -357,7 +357,7 @@ class GazeWebcamNode(Node):
             x2, y2 = min(w, x2), min(h, y2)
             face_crop = rgb_image[y1:y2, x1:x2]
             if face_crop.size == 0:
-                self._publish_emotion_status("no_face")
+                self.publish_emotion_status("no_face")
                 return
 
             _, scores = self.emotion_recognizer.predict_emotions(face_crop, logits=False)
@@ -368,14 +368,14 @@ class GazeWebcamNode(Node):
                 all_scores[mapped] = all_scores.get(mapped, 0.0) + float(score_values[idx])
 
             emotion = max(all_scores, key=all_scores.get)
-            self._publish_emotion_status(
+            self.publish_emotion_status(
                 emotion, confidence=all_scores[emotion], all_scores=all_scores,
             )
         except Exception as exc:
             self.get_logger().warning(f"Emotion inference error: {exc}")
-            self._publish_emotion_status("unavailable", error=str(exc))
+            self.publish_emotion_status("unavailable", error=str(exc))
 
-    def _publish_emotion_status(
+    def publish_emotion_status(
         self,
         emotion: str,
         confidence: float = 0.0,
@@ -393,11 +393,11 @@ class GazeWebcamNode(Node):
         msg.data = json.dumps(payload)
         self.emotion_pub.publish(msg)
 
-    def _set_status(self, status: str, target_class: str | None = None):
+    def set_status(self, status: str, target_class: str | None = None):
         if self.params["print_debug"] and status != self.last_status:
             self.get_logger().info(status)
         self.last_status = status
-        self._publish_gaze_status(status, target_class)
+        self.publish_gaze_status(status, target_class)
 
     def shutdown(self):
         if self.capture is not None:

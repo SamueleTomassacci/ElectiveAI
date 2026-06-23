@@ -38,7 +38,7 @@ class AttentionMonitorNode(Node):
         self._cooldown_sec = float(
             self.get_parameter("attention_cooldown_sec").value
         )
-        self._activity_target_map = self._load_activity_target_map()
+        self._activity_target_map = self.load_activity_target_map()
         self._emotion_window_sec = float(
             self.get_parameter("emotion_smoothing_window_sec").value
         )
@@ -48,10 +48,10 @@ class AttentionMonitorNode(Node):
             String, "/child/emotion_status_smoothed", 10,
         )
 
-        self.create_subscription(String, "/gaze/status", self._gaze_callback, 10)
-        self.create_subscription(String, "/hri/dialog_state", self._dialog_state_callback, 10)
-        self.create_subscription(String, "/hri/dialog_command", self._dialog_command_callback, 10)
-        self.create_subscription(String, "/child/emotion_status", self._emotion_callback, 10)
+        self.create_subscription(String, "/gaze/status", self.gaze_callback, 10)
+        self.create_subscription(String, "/hri/dialog_state", self.dialog_state_callback, 10)
+        self.create_subscription(String, "/hri/dialog_command", self.dialog_command_callback, 10)
+        self.create_subscription(String, "/child/emotion_status", self.emotion_callback, 10)
 
         self._activity_type = ""
         self._valid_targets: list[str] = []
@@ -72,7 +72,7 @@ class AttentionMonitorNode(Node):
             f"emotion_window={self._emotion_window_sec}s)"
         )
 
-    def _load_activity_target_map(self) -> dict[str, list[str]]:
+    def load_activity_target_map(self) -> dict[str, list[str]]:
         mapping: dict[str, list[str]] = {}
         for activity in (
             "storytelling",
@@ -84,7 +84,7 @@ class AttentionMonitorNode(Node):
             mapping[activity] = list(self.get_parameter(param_name).value)
         return mapping
 
-    def _dialog_command_callback(self, msg: String) -> None:
+    def dialog_command_callback(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -97,15 +97,15 @@ class AttentionMonitorNode(Node):
                 self._activity_type,
                 self._activity_target_map.get("generic_child_activity", ["robot"]),
             )
-            self._reset_tracking()
+            self.reset_tracking()
             self.get_logger().info(
                 f"Activity started: {self._activity_type}, "
                 f"valid targets: {self._valid_targets}"
             )
         elif command == "stop":
-            self._disarm()
+            self.disarm()
 
-    def _dialog_state_callback(self, msg: String) -> None:
+    def dialog_state_callback(self, msg: String) -> None:
         state = msg.data.strip()
         if state == "speaking":
             if self._activity_type and not self._armed:
@@ -119,7 +119,7 @@ class AttentionMonitorNode(Node):
                 self._half_threshold_logged = False
                 self.get_logger().info(f"Disarmed: dialog_state={state}")
 
-    def _gaze_callback(self, msg: String) -> None:
+    def gaze_callback(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -171,15 +171,15 @@ class AttentionMonitorNode(Node):
             self._half_threshold_logged = True
 
         if elapsed >= self._threshold_sec and now >= self._cooldown_until:
-            self._publish_alert(elapsed)
+            self.publish_alert(elapsed)
             self._cooldown_until = now + self._cooldown_sec
             self._loss_start = None
             self._half_threshold_logged = False
 
-    def _publish_alert(self, elapsed: float) -> None:
+    def publish_alert(self, elapsed: float) -> None:
         expected = self._valid_targets[0] if self._valid_targets else "robot"
         alert = {
-            "reason": self._alert_reason(),
+            "reason": self.alert_reason(),
             "elapsed_sec": round(elapsed, 2),
             "activity_type": self._activity_type,
             "expected_target": expected,
@@ -189,14 +189,14 @@ class AttentionMonitorNode(Node):
         self.alert_pub.publish(msg)
         self.get_logger().info(f"Attention alert: {alert}")
 
-    def _alert_reason(self) -> str:
+    def alert_reason(self) -> str:
         if self._last_gaze_status == "NO_FACE":
             return "no_face"
         if self._last_gaze_status == "GAZE_OUT_OF_FRAME":
             return "out_of_frame"
         return "looking_elsewhere"
 
-    def _emotion_callback(self, msg: String) -> None:
+    def emotion_callback(self, msg: String) -> None:
         if not self._activity_type:
             return
         try:
@@ -207,9 +207,9 @@ class AttentionMonitorNode(Node):
         confidence = float(payload.get("confidence", 0.0))
         ts = float(payload.get("timestamp", time.time()))
         self._emotion_window.append((ts, emotion, confidence))
-        self._compute_smoothed_emotion()
+        self.compute_smoothed_emotion()
 
-    def _compute_smoothed_emotion(self) -> None:
+    def compute_smoothed_emotion(self) -> None:
         now = time.time()
         self._emotion_window = [
             entry for entry in self._emotion_window
@@ -245,15 +245,15 @@ class AttentionMonitorNode(Node):
         })
         self.emotion_smoothed_pub.publish(msg)
 
-    def _reset_tracking(self) -> None:
+    def reset_tracking(self) -> None:
         self._loss_start = None
         self._cooldown_until = 0.0
         self._armed = False
 
-    def _disarm(self) -> None:
+    def disarm(self) -> None:
         self._activity_type = ""
         self._valid_targets = []
-        self._reset_tracking()
+        self.reset_tracking()
         self.get_logger().info("Attention monitor disarmed")
 
 

@@ -87,12 +87,12 @@ def navigate(node, action_client, goal_pose, action_server_timeout_sec, result_t
         node.get_logger().info("NAVIGATE succeeded")
         return True
 
-    status_name = _goal_status_name(result.status)
+    status_name = goal_status_name(result.status)
     node.get_logger().error(f"NAVIGATE failed with status {status_name}")
     return False
 
 
-def _goal_status_name(status):
+def goal_status_name(status):
     names = {
         GoalStatus.STATUS_UNKNOWN: "UNKNOWN",
         GoalStatus.STATUS_ACCEPTED: "ACCEPTED",

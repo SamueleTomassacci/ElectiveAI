@@ -21,7 +21,7 @@ def bbox_area(bbox) -> float:
     return max(0.0, x2 - x1) * max(0.0, y2 - y1)
 
 
-def _extract_bbox(candidate: Any):
+def extract_bbox(candidate: Any):
     if isinstance(candidate, dict):
         return candidate.get("bbox") or candidate.get("face_bbox") or candidate.get("face")
     return candidate
@@ -34,7 +34,7 @@ def select_largest_face(results) -> int | None:
     best_index = None
     best_area = 0.0
     for index, candidate in enumerate(results):
-        area = bbox_area(_extract_bbox(candidate))
+        area = bbox_area(extract_bbox(candidate))
         if area > best_area:
             best_area = area
             best_index = index

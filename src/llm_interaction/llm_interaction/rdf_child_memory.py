@@ -39,16 +39,16 @@ SESSION = Namespace("http://example.org/session/")
 CONCEPT = Namespace("http://example.org/concept/")
 
 
-def _slug(text: str) -> str:
+def slug(text: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
     return slug or "unknown"
 
 
-def _safe_filename_part(text: str) -> str:
-    return _slug(text).replace("_", "-")
+def safe_filename_part(text: str) -> str:
+    return slug(text).replace("_", "-")
 
 
-def _unique_preserve_order(values: Iterable[str]) -> List[str]:
+def unique_preserve_order(values: Iterable[str]) -> List[str]:
     seen = set()
     result = []
     for value in values:
@@ -84,16 +84,16 @@ class RdfChildMemoryStore:
         self.rdf_path = Path(rdf_path)
         self.seed_if_missing = seed_if_missing
         self.graph = Graph()
-        self._bind_namespaces()
+        self.bind_namespaces()
 
         if self.rdf_path.exists():
             self.graph.parse(self.rdf_path, format="turtle")
         elif seed_if_missing:
             self.rdf_path.parent.mkdir(parents=True, exist_ok=True)
-            self._seed_graph()
+            self.seed_graph()
             self.save()
 
-    def _bind_namespaces(self) -> None:
+    def bind_namespaces(self) -> None:
         self.graph.bind("hri", HRI)
         self.graph.bind("child", CHILD)
         self.graph.bind("session", SESSION)
@@ -104,7 +104,7 @@ class RdfChildMemoryStore:
         self.rdf_path.parent.mkdir(parents=True, exist_ok=True)
         self.graph.serialize(destination=str(self.rdf_path), format="turtle")
 
-    def _seed_graph(self) -> None:
+    def seed_graph(self) -> None:
         for rdf_class in (
             HRI.Child,
             HRI.StoryTheme,
@@ -118,7 +118,7 @@ class RdfChildMemoryStore:
         ):
             self.graph.add((rdf_class, RDF.type, RDFS.Class))
 
-        self._add_child(
+        self.add_child(
             "Luca",
             story_themes=["dinosaurs", "space", "robots"],
             story_characters=["friendly robot", "small dinosaur"],
@@ -130,7 +130,7 @@ class RdfChildMemoryStore:
             recognition_stimuli=["clear face pictures", "cartoon faces"],
             activity_types=["storytelling"],
         )
-        self._add_child(
+        self.add_child(
             "Sofia",
             story_themes=["animals", "magic forest", "teddy bear adventures"],
             story_characters=["teddy bear", "cat", "fairy"],
@@ -143,13 +143,13 @@ class RdfChildMemoryStore:
             activity_types=["mood_check_teddy"],
         )
 
-    def _concept(self, label: str, rdf_class: URIRef) -> URIRef:
-        uri = CONCEPT[_slug(label)]
+    def concept(self, label: str, rdf_class: URIRef) -> URIRef:
+        uri = CONCEPT[slug(label)]
         self.graph.add((uri, RDF.type, rdf_class))
         self.graph.add((uri, RDFS.label, Literal(label)))
         return uri
 
-    def _add_values(
+    def add_values(
         self,
         child_uri: URIRef,
         predicate: URIRef,
@@ -157,9 +157,9 @@ class RdfChildMemoryStore:
         rdf_class: URIRef,
     ) -> None:
         for value in values:
-            self.graph.add((child_uri, predicate, self._concept(value, rdf_class)))
+            self.graph.add((child_uri, predicate, self.concept(value, rdf_class)))
 
-    def _add_child(
+    def add_child(
         self,
         display_name: str,
         *,
@@ -173,29 +173,29 @@ class RdfChildMemoryStore:
         recognition_stimuli: Iterable[str],
         activity_types: Iterable[str],
     ) -> None:
-        child_uri = CHILD[_slug(display_name)]
+        child_uri = CHILD[slug(display_name)]
         self.graph.add((child_uri, RDF.type, HRI.Child))
         self.graph.add((child_uri, HRI.displayName, Literal(display_name)))
         self.graph.add((child_uri, RDFS.label, Literal(display_name)))
-        self._add_values(child_uri, HRI.likesStoryTheme, story_themes, HRI.StoryTheme)
-        self._add_values(
+        self.add_values(child_uri, HRI.likesStoryTheme, story_themes, HRI.StoryTheme)
+        self.add_values(
             child_uri,
             HRI.likesStoryCharacter,
             story_characters,
             HRI.StoryCharacter,
         )
-        self._add_values(child_uri, HRI.likesStorySetting, story_settings, HRI.StorySetting)
-        self._add_values(child_uri, HRI.prefersStoryEnding, story_endings, HRI.StoryEnding)
-        self._add_values(child_uri, HRI.likesEmotionTopic, emotion_topics, HRI.Emotion)
-        self._add_values(child_uri, HRI.recognizesEmotionWell, recognizes_well, HRI.Emotion)
-        self._add_values(child_uri, HRI.needsSupportWithEmotion, needs_support, HRI.Emotion)
-        self._add_values(
+        self.add_values(child_uri, HRI.likesStorySetting, story_settings, HRI.StorySetting)
+        self.add_values(child_uri, HRI.prefersStoryEnding, story_endings, HRI.StoryEnding)
+        self.add_values(child_uri, HRI.likesEmotionTopic, emotion_topics, HRI.Emotion)
+        self.add_values(child_uri, HRI.recognizesEmotionWell, recognizes_well, HRI.Emotion)
+        self.add_values(child_uri, HRI.needsSupportWithEmotion, needs_support, HRI.Emotion)
+        self.add_values(
             child_uri,
             HRI.likesEmotionRecognitionStimulus,
             recognition_stimuli,
             HRI.EmotionRecognitionStimulus,
         )
-        self._add_values(child_uri, HRI.prefersActivityType, activity_types, HRI.ActivityType)
+        self.add_values(child_uri, HRI.prefersActivityType, activity_types, HRI.ActivityType)
 
     def get_child_memory_context(
         self,
@@ -271,29 +271,29 @@ class RdfChildMemoryStore:
             bucket = self._PREDICATE_TO_BUCKET.get(str(row.predicate))
             if not bucket:
                 continue
-            label = str(row.label) if row.label is not None else self._label_from_uri(row.value)
+            label = str(row.label) if row.label is not None else self.label_from_uri(row.value)
             if bucket in {"recognizes_well", "needs_support_with", "preferred_stimuli"}:
                 memory["emotion_recognition"][bucket].append(label)
             else:
                 memory[bucket].append(label)
 
-        memory["story_preferences"] = _unique_preserve_order(memory["story_preferences"])
-        memory["emotion_preferences"] = _unique_preserve_order(memory["emotion_preferences"])
-        memory["preferred_activity_types"] = _unique_preserve_order(
+        memory["story_preferences"] = unique_preserve_order(memory["story_preferences"])
+        memory["emotion_preferences"] = unique_preserve_order(memory["emotion_preferences"])
+        memory["preferred_activity_types"] = unique_preserve_order(
             memory["preferred_activity_types"]
         )
         for key, values in memory["emotion_recognition"].items():
-            memory["emotion_recognition"][key] = _unique_preserve_order(values)
+            memory["emotion_recognition"][key] = unique_preserve_order(values)
 
-        memory["prompt_text"] = self._build_prompt_text(memory, activity_type, max_facts)
+        memory["prompt_text"] = self.build_prompt_text(memory, activity_type, max_facts)
         return memory
 
     @staticmethod
-    def _label_from_uri(value: Any) -> str:
+    def label_from_uri(value: Any) -> str:
         text = str(value).rstrip("/#").split("/")[-1].split("#")[-1]
         return text.replace("_", " ")
 
-    def _build_prompt_text(
+    def build_prompt_text(
         self,
         memory: Mapping[str, Any],
         activity_type: str,
@@ -330,15 +330,15 @@ class RdfChildMemoryStore:
             if emotion_values:
                 lines.append(f"- likes talking about {', '.join(emotion_values)}")
             if recognizes_well:
-                lines.append(f"- recognizes {self._join_words(recognizes_well)} well")
+                lines.append(f"- recognizes {self.join_words(recognizes_well)} well")
             if needs_support:
                 lines.append(
-                    f"- may need support with {self._join_words(needs_support)}"
+                    f"- may need support with {self.join_words(needs_support)}"
                 )
             if preferred_stimuli:
                 lines.append(
                     "- likes "
-                    f"{self._join_words(preferred_stimuli)} for emotion recognition"
+                    f"{self.join_words(preferred_stimuli)} for emotion recognition"
                 )
 
         activity_guidance = {
@@ -375,7 +375,7 @@ class RdfChildMemoryStore:
         return "\n".join(lines)
 
     @staticmethod
-    def _join_words(values: Iterable[str]) -> str:
+    def join_words(values: Iterable[str]) -> str:
         words = list(values)
         if not words:
             return ""
@@ -411,17 +411,17 @@ def generate_child_memory_report(
     activity_type = str(context.get("activity_type", "generic_child_activity"))
     filename = (
         f"{now.strftime('%Y%m%d_%H%M%S')}_"
-        f"{_safe_filename_part(child_name)}_{_safe_filename_part(activity_type)}_"
+        f"{safe_filename_part(child_name)}_{safe_filename_part(activity_type)}_"
         "memory_report.md"
     )
     output_dir = Path(report_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     report_path = output_dir / filename
 
-    summary = _deterministic_session_summary(transcript)
+    summary = deterministic_session_summary(transcript)
     llm_notes = ""
     if llm_client is not None and transcript:
-        llm_notes = _try_generate_report_notes(
+        llm_notes = try_generate_report_notes(
             llm_client=llm_client,
             context=context,
             transcript=transcript,
@@ -432,8 +432,8 @@ def generate_child_memory_report(
         if llm_notes:
             summary = llm_notes
 
-    transcript_text = _compact_transcript(transcript)
-    candidate_updates = _candidate_updates(transcript, memory_context)
+    transcript_text = compact_transcript(transcript)
+    candidate_memory_updates = candidate_updates(transcript, memory_context)
     body = f"""# Child Memory Session Report
 
 Child name: {child_name}
@@ -467,7 +467,7 @@ Completion reason: {completion_reason}
 
 ## Candidate memory updates for future therapist validation
 These are suggestions only. They were NOT written to the RDF memory.
-{candidate_updates}
+{candidate_memory_updates}
 
 ## Compact transcript
 {transcript_text}
@@ -476,7 +476,7 @@ These are suggestions only. They were NOT written to the RDF memory.
     return str(report_path)
 
 
-def _try_generate_report_notes(
+def try_generate_report_notes(
     *,
     llm_client: Any,
     context: Mapping[str, Any],
@@ -494,7 +494,7 @@ def _try_generate_report_notes(
         "Create a concise session summary and candidate memory observations.\n\n"
         f"Context: {dict(context)}\n\n"
         f"Memory used: {format_memory_for_report(memory_context)}\n\n"
-        f"Transcript:\n{_compact_transcript(transcript, max_items=18)}"
+        f"Transcript:\n{compact_transcript(transcript, max_items=18)}"
     )
     try:
         return llm_client.chat(
@@ -509,7 +509,7 @@ def _try_generate_report_notes(
         return ""
 
 
-def _deterministic_session_summary(transcript: List[Mapping[str, str]]) -> str:
+def deterministic_session_summary(transcript: List[Mapping[str, str]]) -> str:
     if not transcript:
         return "No child activity transcript was captured."
     child_turns = sum(1 for item in transcript if item.get("role") == "child")
@@ -520,7 +520,7 @@ def _deterministic_session_summary(transcript: List[Mapping[str, str]]) -> str:
     )
 
 
-def _compact_transcript(
+def compact_transcript(
     transcript: List[Mapping[str, str]],
     max_items: int = 24,
     max_chars: int = 240,
@@ -537,7 +537,7 @@ def _compact_transcript(
     return "\n".join(lines)
 
 
-def _candidate_updates(
+def candidate_updates(
     transcript: List[Mapping[str, str]],
     memory_context: Mapping[str, Any],
 ) -> str:

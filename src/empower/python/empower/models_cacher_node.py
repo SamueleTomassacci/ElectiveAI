@@ -56,7 +56,7 @@ class ModelsCacherNode(Node):
         )
         output_root = self.get_parameter("output_root").value
         self.task_description = self.get_parameter("task_description").value
-        self._load_openai_api_key()
+        self.load_openai_api_key()
 
         self.get_logger().info("Loading empower models: YOLO-World, EfficientViT-SAM, spaCy and word2vec")
         self.loader = EmpowerLoader(
@@ -68,21 +68,21 @@ class ModelsCacherNode(Node):
             decoder_path=self.get_parameter("decoder_path").value or None,
             spacy_model=self.get_parameter("spacy_model").value,
             word2vec_model=self.get_parameter("word2vec_model").value,
-            child_planner_context=self._child_planner_context(),
+            child_planner_context=self.child_planner_context(),
             child_aliases=list(self.get_parameter("child_context.aliases").value),
             multi_view_enabled=bool(self.get_parameter("multi_view.enabled").value),
-            multi_view_config=self._multi_view_config(),
-            object_aliases=self._object_aliases(),
+            multi_view_config=self.multi_view_config(),
+            object_aliases=self.object_aliases(),
         )
         if self.loader.child_planner_context:
             self.get_logger().info("Child planner context is enabled for EMPOWER planning")
         if self.loader.multi_view_enabled:
             self.get_logger().info("Multi-view EMPOWER detection/aggregation is enabled")
-        self.server_thread = threading.Thread(target=self._serve, daemon=True)
+        self.server_thread = threading.Thread(target=self.serve, daemon=True)
         self.server_thread.start()
         self.get_logger().info("Model cacher ready")
 
-    def _child_planner_context(self):
+    def child_planner_context(self):
         if not bool(self.get_parameter("child_context.enabled").value):
             return ""
         description = str(self.get_parameter("child_context.planner_description").value).strip()
@@ -96,7 +96,7 @@ class ModelsCacherNode(Node):
             description = f"{description}\nChild aliases: {alias_text}".strip()
         return description
 
-    def _multi_view_config(self):
+    def multi_view_config(self):
         return {
             "merge": {
                 "default_distance_m": float(
@@ -117,7 +117,7 @@ class ModelsCacherNode(Node):
             }
         }
 
-    def _object_aliases(self):
+    def object_aliases(self):
         aliases = {}
         for name in ("book", "computer", "peluche"):
             aliases[name] = list(
@@ -125,7 +125,7 @@ class ModelsCacherNode(Node):
             )
         return aliases
 
-    def _load_openai_api_key(self):
+    def load_openai_api_key(self):
         if os.environ.get("OPENAI_API_KEY"):
             return
         key_path = self.get_parameter("openai_api_key_file").value
@@ -144,7 +144,7 @@ class ModelsCacherNode(Node):
         os.environ["OPENAI_API_KEY"] = api_key
         self.get_logger().info(f"Loaded OpenAI API key from {key_path}")
 
-    def _serve(self):
+    def serve(self):
         host = self.get_parameter("server_host").value
         port = int(self.get_parameter("server_port").value)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -159,13 +159,13 @@ class ModelsCacherNode(Node):
                     if not message:
                         continue
                     try:
-                        self._handle_message(message)
+                        self.handle_message(message)
                         connection.sendall(b"ok")
                     except Exception as exc:
                         self.get_logger().error(f"EMPOWER detection trigger failed: {exc}\n{traceback.format_exc()}")
                         connection.sendall(f"error: {exc}".encode())
 
-    def _handle_message(self, message):
+    def handle_message(self, message):
         task_description = self.task_description
         command = message
         try:

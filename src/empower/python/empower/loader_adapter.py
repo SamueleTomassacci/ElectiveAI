@@ -48,9 +48,9 @@ class EmpowerLoader:
 
         os.makedirs(self._DUMP_DIR, exist_ok=True)
 
-        self._check_file(os.path.join(self._YOLOW_PATH, "yolow.pth"), "YOLO-World checkpoint")
-        self._check_file(self._ENCODER_PATH, "EfficientViT-SAM encoder ONNX")
-        self._check_file(self._DECODER_PATH, "EfficientViT-SAM decoder ONNX")
+        self.check_file(os.path.join(self._YOLOW_PATH, "yolow.pth"), "YOLO-World checkpoint")
+        self.check_file(self._ENCODER_PATH, "EfficientViT-SAM encoder ONNX")
+        self.check_file(self._DECODER_PATH, "EfficientViT-SAM decoder ONNX")
 
         self._yolow_model = YOLOW(self._YOLOW_PATH)
         self._vit_sam_model = VitSam(self._ENCODER_PATH, self._DECODER_PATH)
@@ -58,7 +58,7 @@ class EmpowerLoader:
         self._wv = gensim_api.load(word2vec_model)
 
     @staticmethod
-    def _check_file(path, label):
+    def check_file(path, label):
         if not os.path.exists(path):
             raise FileNotFoundError(f"{label} not found: {path}")
 

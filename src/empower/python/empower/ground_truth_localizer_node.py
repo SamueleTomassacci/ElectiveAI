@@ -40,19 +40,19 @@ class GroundTruthLocalizerNode(Node):
         self.create_subscription(
             Odometry,
             self.get_parameter("ground_truth_topic").value,
-            self._ground_truth_callback,
+            self.ground_truth_callback,
             10,
         )
         period = 1.0 / float(self.get_parameter("publish_rate_hz").value)
-        self.create_timer(period, self._publish_transform)
+        self.create_timer(period, self.publish_transform)
         self.get_logger().info(
             "Using Gazebo ground truth as localization source for map->odom"
         )
 
-    def _ground_truth_callback(self, msg):
+    def ground_truth_callback(self, msg):
         self.latest_ground_truth = msg
 
-    def _publish_transform(self):
+    def publish_transform(self):
         if self.latest_ground_truth is None:
             return
 

@@ -31,7 +31,7 @@ class Detection:
     
     def run_experiment(self):
         use_case = self.loader_instance.use_case
-        image_paths = self._planning_image_paths()
+        image_paths = self.planning_image_paths()
         encoded_images = []
         for image_path in image_paths:
             with open(image_path, "rb") as im_file:
@@ -68,20 +68,20 @@ class Detection:
     def set_loader(self,loader_instance):
         self.loader_instance = loader_instance
         self.run_experiment()
-        if self._multi_view_enabled() and os.path.exists(self._views_manifest_path()):
+        if self.multi_view_enabled() and os.path.exists(self.views_manifest_path()):
             self.run_multi_view_images()
         else:
             self.run_image(image_path=self.loader_instance.SCAN_DIR+"scan.jpg")
 
-    def _multi_view_enabled(self):
+    def multi_view_enabled(self):
         return bool(getattr(self.loader_instance, "multi_view_enabled", False))
 
-    def _views_manifest_path(self):
+    def views_manifest_path(self):
         return os.path.join(self.loader_instance.DUMP_DIR, "views_manifest.json")
 
-    def _planning_image_paths(self):
-        if self._multi_view_enabled() and os.path.exists(self._views_manifest_path()):
-            with open(self._views_manifest_path(), "r", encoding="utf-8") as manifest_file:
+    def planning_image_paths(self):
+        if self.multi_view_enabled() and os.path.exists(self.views_manifest_path()):
+            with open(self.views_manifest_path(), "r", encoding="utf-8") as manifest_file:
                 manifest = json.load(manifest_file)
             view_paths = [
                 view.get("rgb_path")
@@ -91,13 +91,13 @@ class Detection:
             if view_paths:
                 return view_paths
             print("Multi-view manifest found, but no RGB view paths were readable; using primary image")
-        return [self._primary_image_path()]
+        return [self.primary_image_path()]
 
-    def _primary_image_path(self):
+    def primary_image_path(self):
         legacy_scan = self.loader_instance.SCAN_DIR+"scan.jpg"
         if os.path.exists(legacy_scan):
             return legacy_scan
-        manifest_path = self._views_manifest_path()
+        manifest_path = self.views_manifest_path()
         if os.path.exists(manifest_path):
             with open(manifest_path, "r", encoding="utf-8") as manifest_file:
                 manifest = json.load(manifest_file)
@@ -168,46 +168,46 @@ class Detection:
                 list_objects += ","
         return list_objects[:-1]
 
-    def _child_aliases(self):
+    def child_aliases(self):
         return getattr(self.loader_instance, "child_aliases", ["child", "the child", "kid"])
 
-    def _normalize_child_label(self, label):
+    def normalize_child_label(self, label):
         label = str(label).lower().strip()
         label = re.sub(r"[^a-z0-9 ]+", " ", label)
         label = re.sub(r"\s+", " ", label).strip()
         return re.sub(r"^the\s+", "", label)
 
-    def _is_child_label(self, label):
-        normalized = self._normalize_child_label(label)
+    def is_child_label(self, label):
+        normalized = self.normalize_child_label(label)
         return normalized in {
-            self._normalize_child_label(alias)
-            for alias in self._child_aliases()
+            self.normalize_child_label(alias)
+            for alias in self.child_aliases()
         }
 
-    def _relation_parts(self, relation):
+    def relation_parts(self, relation):
         relation = re.sub(r"^\s*\d+[\).:-]\s*", "", relation.strip())
         match = re.match(r"^\((.*?),\s*(.*?),\s*(.*?)\)\s*$", relation)
         if not match:
             return None
         return [part.strip() for part in match.groups()]
 
-    def _filter_child_relations(self, object_relations):
+    def filter_child_relations(self, object_relations):
         filtered = []
         for relation in object_relations:
-            parts = self._relation_parts(relation)
-            if parts and (self._is_child_label(parts[0]) or self._is_child_label(parts[2])):
+            parts = self.relation_parts(relation)
+            if parts and (self.is_child_label(parts[0]) or self.is_child_label(parts[2])):
                 print(f"Skipping non-visual child relation during visual grounding: {relation}")
                 continue
             filtered.append(relation)
         return filtered
 
-    def _filter_child_detection_labels(self, labels):
+    def filter_child_detection_labels(self, labels):
         kept = []
         for label in labels.split(","):
             label = label.strip()
             if not label:
                 continue
-            if self._is_child_label(label):
+            if self.is_child_label(label):
                 print(f"Skipping non-visual child label for YOLO-World: {label}")
                 continue
             kept.append(label)
@@ -218,12 +218,12 @@ class Detection:
 
         for relation in object_relations:
 
-            parts = self._relation_parts(relation)
+            parts = self.relation_parts(relation)
             if not parts:
                 continue
             relation_object_first = parts[0]
             relation_object_second = parts[2]
-            if self._is_child_label(relation_object_first) or self._is_child_label(relation_object_second):
+            if self.is_child_label(relation_object_first) or self.is_child_label(relation_object_second):
                 continue
             word_1 = self.split_word(relation_object_first)
             word_2 = self.split_word(relation_object_second)
@@ -341,12 +341,12 @@ class Detection:
         output_dir = output_dir or self.loader_instance.DUMP_DIR
         os.makedirs(output_dir, exist_ok=True)
         object_relations = self.results_multi['environment_agent_info'].split('\n')
-        object_relations = self._filter_child_relations(object_relations)
+        object_relations = self.filter_child_relations(object_relations)
 
         # print("Time")
         # start = time.time()
         labels = self.get_classes(object_relations)
-        labels = self._filter_child_detection_labels(labels)
+        labels = self.filter_child_detection_labels(labels)
 
         # print("end vocabulary : " + str(time.time() -start))
 
@@ -397,7 +397,7 @@ class Detection:
         self.data_reordered = self.dict_detections.copy()
         # start = time.time()
         for relation in object_relations:
-                parts = self._relation_parts(relation)
+                parts = self.relation_parts(relation)
                 if not parts:
                     continue
                 relation_object_first = parts[0]
@@ -417,17 +417,17 @@ class Detection:
             pickle.dump(self.data_reordered, f, protocol=2)
 
         with open(os.path.join(output_dir, "detections.json"), "w", encoding="utf-8") as f:
-            json.dump(self._detections_json(self.data_reordered), f, indent=2)
+            json.dump(self.detections_json(self.data_reordered), f, indent=2)
 
         cv2.imwrite(os.path.join(output_dir, "scan_with_bb.jpg"), image_with_bbox)
         os.system(f'rm -rf {self.loader_instance.YOLOW_PATH}/logs/')
 
-    def _detections_json(self, detections):
+    def detections_json(self, detections):
         serializable = {}
         for key, detection in detections.items():
             item = {
                 "label": detection.get("label"),
-                "bbox": self._json_ready(detection.get("bbox")),
+                "bbox": self.json_ready(detection.get("bbox")),
                 "score": float(detection.get("score", 0.0)),
             }
             mask = detection.get("mask")
@@ -437,23 +437,23 @@ class Detection:
             serializable[str(key)] = item
         return serializable
 
-    def _json_ready(self, value):
+    def json_ready(self, value):
         if hasattr(value, "tolist"):
             return value.tolist()
         if isinstance(value, (list, tuple)):
-            return [self._json_ready(item) for item in value]
+            return [self.json_ready(item) for item in value]
         return value
 
     def run_multi_view_images(self):
         print("Running multi-view detection")
-        with open(self._views_manifest_path(), "r", encoding="utf-8") as manifest_file:
+        with open(self.views_manifest_path(), "r", encoding="utf-8") as manifest_file:
             manifest = json.load(manifest_file)
         for view in manifest.get("views", []):
             output_dir = os.path.dirname(view["rgb_path"])
             self.run_image(image_path=view["rgb_path"], output_dir=output_dir)
-        self._aggregate_multi_view_results()
+        self.aggregate_multi_view_results()
 
-    def _aggregate_multi_view_results(self):
+    def aggregate_multi_view_results(self):
         try:
             from empower.multi_view_aggregator import run_aggregation
         except ImportError as exc:
@@ -468,9 +468,9 @@ class Detection:
             extra_aliases=getattr(self.loader_instance, "object_aliases", {}),
             log=print,
         )
-        self._rewrite_plan_from_global_scene(result)
+        self.rewrite_plan_from_global_scene(result)
 
-    def _rewrite_plan_from_global_scene(self, result):
+    def rewrite_plan_from_global_scene(self, result):
         scene_path = os.path.join(self.loader_instance.DUMP_DIR, "global_scene_description.txt")
         if not os.path.exists(scene_path):
             return
@@ -479,7 +479,7 @@ class Detection:
         if not global_scene.strip() or not result.get("objects"):
             print("Multi-view aggregation produced no objects; keeping original plan")
             return
-        image_path = self._primary_image_path()
+        image_path = self.primary_image_path()
         with open(image_path, "rb") as im_file:
             encoded_image = base64.b64encode(im_file.read()).decode("utf-8")
         agents = Agents(

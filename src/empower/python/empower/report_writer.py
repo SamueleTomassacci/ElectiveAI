@@ -22,13 +22,13 @@ def parse_relations(relations_text):
     return relations
 
 
-def _json_ready(value):
+def json_ready(value):
     if hasattr(value, "tolist"):
         return value.tolist()
     if isinstance(value, dict):
-        return {str(key): _json_ready(item) for key, item in value.items()}
+        return {str(key): json_ready(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_json_ready(item) for item in value]
+        return [json_ready(item) for item in value]
     return value
 
 
@@ -69,7 +69,7 @@ def write_readable_reports(dump_dir):
     for key, detection in detections.items():
         item = {
             "label": detection.get("label"),
-            "bbox": _json_ready(detection.get("bbox")),
+            "bbox": json_ready(detection.get("bbox")),
         }
         if "mask" in detection:
             mask = detection["mask"]

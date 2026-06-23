@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 
-def _as_int_point(point):
+def as_int_point(point):
     return int(round(point[0])), int(round(point[1]))
 
 
@@ -46,7 +46,7 @@ def draw_debug_overlay(
         if face_bbox is not None and gaze_point is not None:
             x1, y1, x2, y2 = face_bbox
             start = (int(round((x1 + x2) / 2.0)), int(round((y1 + y2) / 2.0)))
-            end = _as_int_point(gaze_point)
+            end = as_int_point(gaze_point)
             cv2.arrowedLine(image, start, end, (0, 255, 0), 2, tipLength=0.18)
             cv2.circle(image, end, 5, (0, 255, 0), -1)
 

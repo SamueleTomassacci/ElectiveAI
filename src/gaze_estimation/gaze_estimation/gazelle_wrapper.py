@@ -56,7 +56,7 @@ class GazelleEstimator:
                         "confidence": float(box.conf[0]),
                     }
                 )
-        detections.sort(key=lambda item: self._area(item["bbox_px"]), reverse=True)
+        detections.sort(key=lambda item: self.area(item["bbox_px"]), reverse=True)
         return detections
 
     def estimate(self, rgb_image):
@@ -101,6 +101,6 @@ class GazelleEstimator:
         return results
 
     @staticmethod
-    def _area(bbox):
+    def area(bbox):
         x1, y1, x2, y2 = bbox
         return max(0.0, x2 - x1) * max(0.0, y2 - y1)
