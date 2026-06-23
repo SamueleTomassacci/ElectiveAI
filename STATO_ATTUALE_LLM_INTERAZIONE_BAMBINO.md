@@ -10,9 +10,9 @@ configurazioni e i limiti gia' presenti.
 
 La repo simula TIAGo in Gazebo Classic con tre blocchi principali:
 
-1. EMPOWER (`empower_ros2`): percezione, planning simbolico, navigazione e
+1. EMPOWER (`empower`): percezione, planning simbolico, navigazione e
    simulazione di alcune azioni sugli oggetti.
-2. HRI/LLM (`empower_hri`): raccolta input da terapista/bambino, chiamata a
+2. HRI/LLM (`llm_interaction`): raccolta input da terapista/bambino, chiamata a
    un LLM locale via Ollama, output vocale via TTS e coordinamento del dialogo.
 3. Gaze/emotion (`gaze_estimation`): stima attenzione visiva del bambino verso
    target dell'attivita' e riconoscimento/smoothing dell'emozione del bambino.
@@ -27,13 +27,13 @@ Il blocco HRI/LLM ha due ruoli distinti:
 Il package centrale per questa parte e':
 
 ```text
-src/empower_hri
+src/llm_interaction
 ```
 
 Il nodo principale e':
 
 ```text
-src/empower_hri/empower_hri/voice_llm_node.py
+src/llm_interaction/llm_interaction/voice_llm_node.py
 ```
 
 ## Runtime previsto
@@ -73,41 +73,41 @@ ollama pull qwen2.5:1.5b
 Comando tipico per il solo dialogo HRI inglese:
 
 ```bash
-ros2 launch empower_hri hri_voice_llm_english.launch.py
+ros2 launch llm_interaction hri_voice_llm_english.launch.py
 ```
 
 Comando tipico per la missione completa HRI + EMPOWER:
 
 ```bash
-ros2 launch empower_ros2 hri_empower_mission.launch.py \
-  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+ros2 launch empower hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
   hri_input_mode:=voice
 ```
 
-## Package `empower_hri`
+## Package `llm_interaction`
 
 File principali:
 
 ```text
-src/empower_hri/empower_hri/voice_llm_node.py
-src/empower_hri/empower_hri/ollama_client.py
-src/empower_hri/empower_hri/speech_to_text.py
-src/empower_hri/empower_hri/text_to_speech.py
-src/empower_hri/empower_hri/terminal_io.py
-src/empower_hri/config/hri_cpu_english.yaml
-src/empower_hri/config/hri_cpu_local.yaml
-src/empower_hri/launch/hri_voice_llm_english.launch.py
-src/empower_hri/launch/hri_voice_llm_cpu.launch.py
+src/llm_interaction/llm_interaction/voice_llm_node.py
+src/llm_interaction/llm_interaction/ollama_client.py
+src/llm_interaction/llm_interaction/speech_to_text.py
+src/llm_interaction/llm_interaction/text_to_speech.py
+src/llm_interaction/llm_interaction/terminal_io.py
+src/llm_interaction/config/llm_config.yaml
+src/llm_interaction/config/hri_cpu_local.yaml
+src/llm_interaction/launch/hri_voice_llm_english.launch.py
+src/llm_interaction/launch/hri_voice_llm_cpu.launch.py
 ```
 
 Entry point ROS 2:
 
 ```text
-voice_llm_node = empower_hri.voice_llm_node:main
+voice_llm_node = llm_interaction.voice_llm_node:main
 ```
 
 Il package e' `ament_python` e viene installato da
-`src/empower_hri/setup.py`.
+`src/llm_interaction/setup.py`.
 
 ## Nodo `voice_llm_node`
 
@@ -237,7 +237,7 @@ stt_vad_max_duration_sec: 30.0
 Il file:
 
 ```text
-src/empower_hri/empower_hri/ollama_client.py
+src/llm_interaction/llm_interaction/ollama_client.py
 ```
 
 contiene `OllamaClient`, un client HTTP minimale senza dipendenze esterne.
@@ -274,7 +274,7 @@ dipendere da Ollama.
 Il file:
 
 ```text
-src/empower_hri/empower_hri/text_to_speech.py
+src/llm_interaction/llm_interaction/text_to_speech.py
 ```
 
 implementa `TextToSpeech` con provider:
@@ -427,7 +427,7 @@ system prompt del turno corrente.
 Il nodo:
 
 ```text
-src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py
+src/empower/python/empower/mission_orchestrator_node.py
 ```
 
 e' il ponte tra HRI, Nav2, EMPOWER e child activity.
@@ -435,13 +435,13 @@ e' il ponte tra HRI, Nav2, EMPOWER e child activity.
 Launch integrato:
 
 ```text
-src/empower_ros2/launch/hri_empower_mission.launch.py
+src/empower/launch/hri_empower_mission.launch.py
 ```
 
 Config missione:
 
 ```text
-src/empower_ros2/config/hri_empower_mission.yaml
+src/empower/config/task_config.yaml
 ```
 
 Stati missione:
@@ -927,7 +927,7 @@ nella history.
 Profilo principale inglese:
 
 ```text
-src/empower_hri/config/hri_cpu_english.yaml
+src/llm_interaction/config/llm_config.yaml
 ```
 
 Valori principali:
@@ -962,7 +962,7 @@ stt_vad_max_duration_sec: 30.0
 Profilo locale/CPU:
 
 ```text
-src/empower_hri/config/hri_cpu_local.yaml
+src/llm_interaction/config/hri_cpu_local.yaml
 ```
 
 E' simile, ma di default:
@@ -1003,8 +1003,8 @@ o rimangono in campi runtime dell'orchestratore/nodo HRI.
 Per la parte EMPOWER vengono persistiti molti output sotto:
 
 ```text
-empower_data/output/person_table_child_task
-empower_data/images/person_table_child_task
+output/empower_output/therapy_task
+output/empower_output/therapy_task
 ```
 
 Per la parte HRI/LLM, invece, non risulta implementata una persistenza dedicata
@@ -1028,8 +1028,8 @@ activity.
 Test del package HRI:
 
 ```text
-src/empower_hri/test/test_ollama_client.py
-src/empower_hri/test/test_text_to_speech.py
+src/llm_interaction/test/test_ollama_client.py
+src/llm_interaction/test/test_text_to_speech.py
 ```
 
 Coprono:

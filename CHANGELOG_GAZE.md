@@ -52,7 +52,7 @@ Script di utilita' per pubblicare il comando di stop gaze su
 
 - Aggiunto entry point `attention_monitor`
 
-### `src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py`
+### `src/empower/python/empower/mission_orchestrator_node.py`
 
 - Sottoscrive `/mission/gaze_command` per stop gaze manuale
 - Sottoscrive `/gaze/node_status` per verificare startup gaze
@@ -65,11 +65,11 @@ Script di utilita' per pubblicare il comando di stop gaze su
   `gaze_estimation.device`, `gaze_estimation.show_window`,
   `gaze_estimation.startup_timeout_sec`
 
-### `src/empower_ros2/config/hri_empower_mission.yaml`
+### `src/empower/config/task_config.yaml`
 
 - Aggiunta sezione `gaze_estimation` con parametri di configurazione
 
-### `src/empower_hri/empower_hri/voice_llm_node.py`
+### `src/llm_interaction/llm_interaction/voice_llm_node.py`
 
 - Sottoscrive `/hri/attention_alert`
 - Crea un secondo `OllamaClient` con timeout breve (4s) per la frase di
@@ -133,14 +133,14 @@ File: `src/gaze_estimation/gaze_estimation/attention_monitor_node.py`
 
 ### Problema 2 — Timeout startup gaze troppo corto
 
-File: `src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py`
+File: `src/empower/python/empower/mission_orchestrator_node.py`
 
 - Default di `gaze_estimation.startup_timeout_sec` portato da 8.0 a 30.0
   nel codice Python (il YAML resta a 120.0 per il setup corrente)
 
 ### Problema 3 — Fail-fast su fallimento gaze all'avvio
 
-File: `src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py`
+File: `src/empower/python/empower/mission_orchestrator_node.py`
 
 - Aggiunto stato `MISSION_FAILED` alla macchina a stati `MissionState`
 - Se gaze non diventa READY entro il timeout, la missione transiziona a
@@ -185,7 +185,7 @@ puramente infrastrutturale.
   (`~/.config/pulse/cookie:/root/.config/pulse/cookie:ro`) nei
   PULSE_ARGS, necessario per autenticazione verso il server PA dell'host
 
-#### `src/empower_hri/empower_hri/text_to_speech.py`
+#### `src/llm_interaction/llm_interaction/text_to_speech.py`
 
 - Aggiunto log della durata reale della riproduzione TTS:
   `"TTS playback took X.Xs (backend='system')"`
@@ -320,7 +320,7 @@ mai la missione.
 - Log INFO quando l'emozione smoothed cambia
 - Nuovo parametro: `emotion_smoothing_window_sec` (default 7.0)
 
-#### `src/empower_hri/empower_hri/voice_llm_node.py`
+#### `src/llm_interaction/llm_interaction/voice_llm_node.py`
 
 - Sottoscrizione a `/child/emotion_status_smoothed`
 - Metodo `_get_emotion_context()`: costruisce la nota di tono basata
@@ -342,7 +342,7 @@ mai la missione.
 - `gaze_webcam.yaml`: aggiunti `emotion_process_every_n_frames`,
   `emotion_model_name`
 - `attention_monitor.yaml`: aggiunto `emotion_smoothing_window_sec`
-- `hri_cpu_english.yaml`: aggiunti `emotion_staleness_threshold_sec`,
+- `llm_config.yaml`: aggiunti `emotion_staleness_threshold_sec`,
   `emotion_prompt_hints.*`
 
 ### Nuovi topic ROS 2

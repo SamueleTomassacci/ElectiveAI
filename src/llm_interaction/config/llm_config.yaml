@@ -1,0 +1,45 @@
+voice_llm_node:
+  ros__parameters:
+    input_mode: "voice"
+    llm_provider: "ollama"
+    llm_base_url: "http://localhost:11434"
+    llm_model: "gemma3:12b" #"qwen2.5:1.5b"
+    llm_fallback_model: "llama3.2:1b"
+    llm_timeout: 600.0
+    temperature: 0.4
+    max_response_tokens: 0
+    max_history_turns: 4
+    stt_provider: "faster_whisper"
+    stt_model: "base"
+    stt_device: "cpu"
+    stt_compute_type: "int8"
+    stt_device_index: 8
+    language: "en"
+    record_seconds: 5.0
+    sample_rate: 16000
+    tts_provider: "piper"
+    tts_timeout: 60.0
+    storytelling_max_turns: 10
+    storytelling_auto_listen: true
+    stt_vad_energy_threshold: 0.01
+    stt_vad_silence_sec: 1.5
+    stt_vad_max_duration_sec: 30.0
+    piper_model_path: "/root/exchange/models/piper/en_GB-jenny_dioco-medium.onnx"
+    piper_config_path: "/root/exchange/models/piper/en_GB-jenny_dioco-medium.onnx.json"
+    system_prompt: "You are TIAGo, a social robot in a Gazebo simulation. At this stage, you can only speak with the user. You cannot move, grasp objects, recognize people, or perform physical actions from this module. Always answer in English in a short, clear, kind, and child-friendly manner suitable for children and therapists. If the user asks you to perform a physical action, explain that you are currently testing voice dialogue only. Do not claim robotic capabilities that have not been implemented."
+    memory_enabled: true
+    memory_rdf_path: "/root/exchange/output/interaction_output/children_memory.ttl"
+    memory_report_dir: "/root/exchange/output/interaction_output/reports"
+    memory_max_prompt_facts: 12
+    memory_seed_if_missing: true
+    memory_update_enabled: false
+    emotion_staleness_threshold_sec: 15.0
+    emotion_prompt_hints:
+      sad: "seems a bit sad or down. Keep a warm, gentle, reassuring tone. Avoid sad, scary, or negative-outcome content in stories or topics."
+      angry: "seems frustrated or upset. Stay calm, patient, and validating. Avoid pushing or rushing them."
+      fear: "seems a bit scared or anxious. Be extra gentle and reassuring. Avoid scary or suspenseful content."
+      happy: "seems happy and engaged. Feel free to keep the energy light and playful."
+      surprise: "seems surprised or very engaged. You can build on their curiosity."
+      disgust: "seems uncomfortable with something. Consider gently changing the topic if it persists."
+      neutral: ""
+      unknown: ""

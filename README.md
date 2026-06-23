@@ -3,9 +3,9 @@
 Questa repo contiene una sola scena Gazebo supportata:
 
 ```text
-exchange/person_table_child.world
-exchange/maps/person_table_child_static.yaml
-src/empower_ros2/config/empower_person_table_child.yaml
+exchange/scene.world
+exchange/maps/scene.yaml
+src/empower/config/empower_config.yaml
 ```
 
 La scena mette TIAGo al centro della stanza, una persona sul lato `-Y`, un bambino sul lato `+Y` e il tavolo con il libro sul lato `+X`. Per catturare tavolo e libro con la camera frontale, TIAGo deve partire all'origine guardando verso `+X`, cioe' con yaw `0`.
@@ -48,9 +48,9 @@ source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
-PARAMS=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
-MAP=/root/exchange/exchange/maps/person_table_child_static.yaml
-WORLD=/root/exchange/exchange/person_table_child.world
+PARAMS=/root/exchange/src/empower/config/empower_config.yaml
+MAP=/root/exchange/exchange/maps/scene.yaml
+WORLD=/root/exchange/exchange/scene.world
 ```
 
 Se hai modificato codice Python o launch file, rebuilda il package ROS2:
@@ -59,8 +59,8 @@ Se hai modificato codice Python o launch file, rebuilda il package ROS2:
 cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
-rm -rf build/empower_ros2 install/empower_ros2
-colcon build --symlink-install --packages-select empower_ros2
+rm -rf build/empower install/empower
+colcon build --symlink-install --packages-select empower
 source /root/exchange/install/setup.bash
 ```
 
@@ -74,7 +74,7 @@ source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
-WORLD=/root/exchange/exchange/person_table_child.world
+WORLD=/root/exchange/exchange/scene.world
 
 ros2 launch tiago_gazebo tiago_gazebo.launch.py \
   is_public_sim:=True \
@@ -91,9 +91,9 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
-MAP=/root/exchange/exchange/maps/person_table_child_static.yaml
+MAP=/root/exchange/exchange/maps/scene.yaml
 
-ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
+ros2 launch empower tiago_nav2_ground_truth.launch.py \
   map:=$MAP
 ```
 
@@ -105,8 +105,7 @@ Prima di rigenerare EMPOWER sulla scena aggiornata, rimuovi gli output precedent
 
 ```bash
 cd /root/exchange
-rm -rf empower_data/images/person_table_child_task
-rm -rf empower_data/output/person_table_child_task
+rm -rf output/empower_output/therapy_task
 ```
 
 ## 7. Terminale 3: Capture RGB-D
@@ -118,19 +117,19 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
-PARAMS=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+PARAMS=/root/exchange/src/empower/config/empower_config.yaml
 
-ros2 launch empower_ros2 empower_capture.launch.py \
+ros2 launch empower empower_capture.launch.py \
   params_file:=$PARAMS
 ```
 
 Output principali:
 
 ```text
-empower_data/images/person_table_child_task/scan.jpg
-empower_data/output/person_table_child_task/depth.npy
-empower_data/output/person_table_child_task/depth_pointcloud.pcd
-empower_data/output/person_table_child_task/camera_info.json
+output/empower_output/therapy_task/scan.jpg
+output/empower_output/therapy_task/depth.npy
+output/empower_output/therapy_task/depth_pointcloud.pcd
+output/empower_output/therapy_task/camera_info.json
 ```
 
 ## 8. Terminale 4: Model Cacher
@@ -142,9 +141,9 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
-PARAMS=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+PARAMS=/root/exchange/src/empower/config/empower_config.yaml
 
-ros2 launch empower_ros2 empower_models_cacher.launch.py \
+ros2 launch empower empower_models_cacher.launch.py \
   params_file:=$PARAMS
 ```
 
@@ -162,26 +161,26 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
-PARAMS=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+PARAMS=/root/exchange/src/empower/config/empower_config.yaml
 
-ros2 launch empower_ros2 empower_plan.launch.py \
+ros2 launch empower empower_plan.launch.py \
   params_file:=$PARAMS
 ```
 
 Output principali:
 
 ```text
-empower_data/output/person_table_child_task/detection.pkl
-empower_data/output/person_table_child_task/detections.json
-empower_data/output/person_table_child_task/colors_dict.pkl
-empower_data/output/person_table_child_task/relations.txt
-empower_data/output/person_table_child_task/relations.json
-empower_data/output/person_table_child_task/scene_description.txt
-empower_data/output/person_table_child_task/planning.txt
-empower_data/output/person_table_child_task/planning.json
-empower_data/output/person_table_child_task/planning.pkl
-empower_data/output/person_table_child_task/symbolic_plan.txt
-empower_data/output/person_table_child_task/empower_report.txt
+output/empower_output/therapy_task/detection.pkl
+output/empower_output/therapy_task/detections.json
+output/empower_output/therapy_task/colors_dict.pkl
+output/empower_output/therapy_task/relations.txt
+output/empower_output/therapy_task/relations.json
+output/empower_output/therapy_task/scene_description.txt
+output/empower_output/therapy_task/planning.txt
+output/empower_output/therapy_task/planning.json
+output/empower_output/therapy_task/planning.pkl
+output/empower_output/therapy_task/symbolic_plan.txt
+output/empower_output/therapy_task/empower_report.txt
 ```
 
 ## 10. Terminale 6: Visualizzazione RViz
@@ -193,9 +192,9 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
-PARAMS=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+PARAMS=/root/exchange/src/empower/config/empower_config.yaml
 
-ros2 launch empower_ros2 empower_visualization.launch.py \
+ros2 launch empower empower_visualization.launch.py \
   params_file:=$PARAMS
 ```
 
@@ -239,7 +238,7 @@ Prerequisiti:
 - Gazebo aperto.
 - Nav2 ground truth aperto.
 - `empower_models_cacher` aperto se vuoi anche visualizzare/ricaricare i marker.
-- Output di capture e planning gia' generati per `person_table_child_task`.
+- Output di capture e planning gia' generati per `therapy_task`.
 - Robot nella stessa posa usata durante la capture, se stai riusando output salvati.
 
 Esecuzione:
@@ -249,9 +248,9 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
-PARAMS=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+PARAMS=/root/exchange/src/empower/config/empower_config.yaml
 
-ros2 launch empower_ros2 empower_execute.launch.py \
+ros2 launch empower empower_execute.launch.py \
   params_file:=$PARAMS
 ```
 
@@ -272,9 +271,9 @@ source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 
-ros2 run empower_ros2 export_reports \
+ros2 run empower export_reports \
   --ros-args \
-  --params-file /root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+  --params-file /root/exchange/src/empower/config/empower_config.yaml
 ```
 
 ## 13. Config Principale
@@ -282,7 +281,7 @@ ros2 run empower_ros2 export_reports \
 La configurazione del task e':
 
 ```text
-src/empower_ros2/config/empower_person_table_child.yaml
+src/empower/config/empower_config.yaml
 ```
 
 Valori principali:
@@ -290,9 +289,9 @@ Valori principali:
 ```yaml
 /**:
   ros__parameters:
-    use_case: person_table_child_task
+    use_case: therapy_task
     task_description: "Take the book from the table"
-    output_root: /root/exchange/empower_data
+    output_root: /root/exchange/output
     rgb_topic: /head_front_camera/rgb/image_raw
     depth_topic: /head_front_camera/depth/image_raw
     camera_info_topic: /head_front_camera/depth/camera_info
@@ -314,7 +313,7 @@ Valori principali:
 - Ogni nuovo terminale `docker exec` deve fare i `source` dell'ambiente.
 - Se cambi `task_description`, rilancia almeno model cacher e planning.
 - Se cambi `standoff_distance`, rilancia execution.
-- Se cambi codice Python o launch file, rebuilda `empower_ros2`.
+- Se cambi codice Python o launch file, rebuilda `empower`.
 - Se cambi la world o la mappa, riavvia Gazebo e Nav2.
 
 ## 15. Missione Completa HRI + EMPOWER
@@ -328,7 +327,7 @@ TIAGo -> terapista -> task vocale HRI -> spawn -> EMPOWER -> bambino -> child_re
 Il launch principale e':
 
 ```bash
-ros2 launch empower_ros2 hri_empower_mission.launch.py
+ros2 launch empower hri_empower_mission.launch.py
 ```
 
 ma per usare microfono, Qwen e speaker serve avviare il container con audio.
@@ -459,7 +458,7 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 
-colcon build --symlink-install --packages-select empower_ros2 empower_hri
+colcon build --symlink-install --packages-select empower llm_interaction
 
 source /root/exchange/install/setup.bash
 ```
@@ -470,7 +469,7 @@ Se modifichi codice Python o launch file, riesegui almeno:
 cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
-colcon build --symlink-install --packages-select empower_ros2 empower_hri
+colcon build --symlink-install --packages-select empower llm_interaction
 source /root/exchange/install/setup.bash
 ```
 
@@ -492,7 +491,7 @@ source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 
 export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
-WORLD=/root/exchange/exchange/person_table_child.world
+WORLD=/root/exchange/exchange/scene.world
 
 ros2 launch tiago_gazebo tiago_gazebo.launch.py \
   is_public_sim:=True \
@@ -513,9 +512,9 @@ source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 
-MAP=/root/exchange/exchange/maps/person_table_child_static.yaml
+MAP=/root/exchange/exchange/maps/scene.yaml
 
-ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
+ros2 launch empower tiago_nav2_ground_truth.launch.py \
   map:=$MAP
 ```
 
@@ -532,11 +531,10 @@ source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 
-rm -rf /root/exchange/empower_data/images/person_table_child_task
-rm -rf /root/exchange/empower_data/output/person_table_child_task
+rm -rf /root/exchange/output/empower_output/therapy_task
 
-ros2 launch empower_ros2 hri_empower_mission.launch.py \
-  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+ros2 launch empower hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
   hri_input_mode:=voice
 ```
 
@@ -627,11 +625,10 @@ source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 
-rm -rf /root/exchange/empower_data/images/person_table_child_task
-rm -rf /root/exchange/empower_data/output/person_table_child_task
+rm -rf /root/exchange/output/empower_output/therapy_task
 
-ros2 launch empower_ros2 hri_empower_mission.launch.py \
-  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+ros2 launch empower hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
   hri_input_mode:=text
 ```
 
@@ -666,5 +663,5 @@ ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Ask the c
 - L'attivita' sociale e' il secondo testo utile ricevuto da `/hri/user_utterance` e determina il comando `start_child_activity`.
 - Dopo l'avvio della child activity, l'orchestratore ignora le nuove utterance su `/hri/user_utterance`.
 - Le azioni EMPOWER diverse da `NAVIGATE`, come `GRAB` e `DROP`, restano simboliche/loggate.
-- Se Nav2 fallisce nel ritorno allo spawn con `Failed to make progress`, ferma solo la missione, resetta/sposta TIAGo o correggi le pose in `src/empower_ros2/config/hri_empower_mission.yaml`, poi rilancia la missione.
+- Se Nav2 fallisce nel ritorno allo spawn con `Failed to make progress`, ferma solo la missione, resetta/sposta TIAGo o correggi le pose in `src/empower/config/task_config.yaml`, poi rilancia la missione.
 - Se cambi le pose in YAML non serve rebuildare; se cambi Python o launch file serve rebuildare.

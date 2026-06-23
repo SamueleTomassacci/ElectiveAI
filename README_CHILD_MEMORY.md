@@ -2,7 +2,7 @@
 
 This repo now includes a first persistent child-memory step for the HRI child
 activity flow. The memory is stored as RDF Turtle and queried with SPARQL through
-`empower_hri.rdf_child_memory.RdfChildMemoryStore`.
+`llm_interaction.rdf_child_memory.RdfChildMemoryStore`.
 
 ## Mission Flow
 
@@ -30,10 +30,10 @@ The mission orchestrator publishes the child activity command with:
 ## RDF File
 
 The default Turtle file is configured in
-`src/empower_hri/config/hri_cpu_english.yaml`:
+`src/llm_interaction/config/llm_config.yaml`:
 
 ```yaml
-memory_rdf_path: "/root/exchange/empower_data/hri_memory/children_memory.ttl"
+memory_rdf_path: "/root/exchange/output/interaction_output/children_memory.ttl"
 ```
 
 If the file is missing and `memory_seed_if_missing: true`, the HRI node creates
@@ -66,7 +66,7 @@ At the end of a child activity with memory enabled, the node writes a Markdown
 report to:
 
 ```yaml
-memory_report_dir: "/root/exchange/empower_data/hri_memory/reports"
+memory_report_dir: "/root/exchange/output/interaction_output/reports"
 ```
 
 Report filenames follow:

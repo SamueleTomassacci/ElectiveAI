@@ -9,7 +9,7 @@ Flusso inglese:
 microfono -> Whisper base -> Qwen -> espeak-ng -> speaker
 ```
 
-Il modulo ROS2 usato e' `empower_hri`. Il modello LLM e' servito da Ollama
+Il modulo ROS2 usato e' `llm_interaction`. Il modello LLM e' servito da Ollama
 sull'host, mentre ROS2, microfono, trascrizione e TTS girano dentro il
 container `hrai_sim`.
 
@@ -129,7 +129,7 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 
-colcon build --symlink-install --packages-select empower_hri
+colcon build --symlink-install --packages-select llm_interaction
 
 source /root/exchange/install/setup.bash
 ```
@@ -137,7 +137,8 @@ source /root/exchange/install/setup.bash
 ## 7. Container: pipeline completa inglese
 
 ```bash
-ros2 launch empower_hri hri_voice_llm_english.launch.py
+ros2 run llm_interaction voice_llm_node --ros-args \
+  --params-file /root/exchange/src/llm_interaction/config/llm_config.yaml
 ```
 
 Quando compare il prompt, premi INVIO e parla in inglese durante i cinque
@@ -152,14 +153,15 @@ Per terminare:
 ## 8. Container: pipeline italiana
 
 ```bash
-ros2 launch empower_hri hri_voice_llm_cpu.launch.py \
-  input_mode:=voice \
-  stt_provider:=faster_whisper \
-  stt_model:=tiny \
-  language:=it \
-  llm_provider:=ollama \
-  llm_model:=qwen2.5:1.5b \
-  tts_provider:=system
+ros2 run llm_interaction voice_llm_node --ros-args \
+  --params-file /root/exchange/src/llm_interaction/config/llm_config.yaml \
+  -p input_mode:=voice \
+  -p stt_provider:=faster_whisper \
+  -p stt_model:=tiny \
+  -p language:=it \
+  -p llm_provider:=ollama \
+  -p llm_model:=qwen2.5:1.5b \
+  -p tts_provider:=system
 ```
 
 Per terminare:

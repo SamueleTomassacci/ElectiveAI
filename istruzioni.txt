@@ -5,7 +5,7 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 
-colcon build --symlink-install --packages-select empower_ros2 empower_hri
+colcon build --symlink-install --packages-select empower llm_interaction
 
 source /root/exchange/install/setup.bash
 
@@ -19,7 +19,7 @@ DENTRO AL CONTAINER
   source /opt/ros/humble/setup.bash
   source /root/tiago_public_ws/install/setup.bash
   source /root/exchange/install/setup.bash
-  colcon build --symlink-install --packages-select empower_ros2 empower_hri gaze_estimation
+  colcon build --symlink-install --packages-select empower llm_interaction gaze_estimation
 
 
 Terminale 1: Gazebo
@@ -34,7 +34,7 @@ source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 
 export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
-WORLD=/root/exchange/exchange/person_table_child.world
+WORLD=/root/exchange/exchange/scene.world
 
 ros2 launch tiago_gazebo tiago_gazebo.launch.py \
   is_public_sim:=True \
@@ -56,9 +56,9 @@ source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 
-MAP=/root/exchange/exchange/maps/person_table_child_static.yaml
+MAP=/root/exchange/exchange/maps/scene.yaml
 
-ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
+ros2 launch empower tiago_nav2_ground_truth.launch.py \
   map:=$MAP
   
 
@@ -77,11 +77,10 @@ source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 source /root/exchange/install/setup.bash
 
-rm -rf /root/exchange/empower_data/images/person_table_child_task
-rm -rf /root/exchange/empower_data/output/person_table_child_task
+rm -rf /root/exchange/output/empower_output/therapy_task
 
-ros2 launch empower_ros2 hri_empower_mission.launch.py \
-  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+ros2 launch empower hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
   hri_input_mode:=voice
   
 

@@ -12,16 +12,16 @@ La repo contiene il codice necessario per eseguire una simulazione del robot
 TIAGo in Gazebo Classic, con ROS 2 Humble, Nav2 e una pipeline di task planning
 basata su EMPOWER. La scena supportata e' una scena custom:
 
-- world: `exchange/person_table_child.world`
-- mappa statica Nav2: `exchange/maps/person_table_child_static.yaml`
-- configurazione EMPOWER: `src/empower_ros2/config/empower_person_table_child.yaml`
+- world: `exchange/scene.world`
+- mappa statica Nav2: `exchange/maps/scene.yaml`
+- configurazione EMPOWER: `src/empower/config/empower_config.yaml`
 
 La repo e' organizzata intorno a tre componenti principali:
 
-1. `empower_ros2`: adapter ROS 2 della pipeline EMPOWER, piu orchestrazione
+1. `empower`: adapter ROS 2 della pipeline EMPOWER, piu orchestrazione
    missione, Nav2, capture RGB-D (single-view e multi-view), planning,
    grounding, aggregazione multi-vista, visualizzazione ed esecuzione low-level.
-2. `empower_hri`: componente di interazione vocale/testuale. Usa STT,
+2. `llm_interaction`: componente di interazione vocale/testuale. Usa STT,
    LLM locale via Ollama e TTS per raccogliere istruzioni dal terapista e
    dialogare con il bambino. Include richiamo attenzione basato su gaze.
 3. `gaze_estimation`: componente per stimare se una persona guarda un oggetto
@@ -69,10 +69,10 @@ scaricati in `/opt/empower_models/config`, dipendenze HRI audio/STT/TTS e
 
 ## Scena Gazebo e navigazione
 
-La scena principale e' `exchange/person_table_child.world`, con world name:
+La scena principale e' `exchange/scene.world`, con world name:
 
 ```text
-person_table_child_room
+scene
 ```
 
 Oggetti e posizioni rilevanti:
@@ -88,7 +88,7 @@ Oggetti e posizioni rilevanti:
   - `laptop_computer_on_right_table`
   - `teddy_bear_on_right_table`
 
-La mappa Nav2 e' `exchange/maps/person_table_child_static.yaml`:
+La mappa Nav2 e' `exchange/maps/scene.yaml`:
 
 ```yaml
 resolution: 0.05
@@ -99,8 +99,8 @@ mode: trinary
 Il bringup Nav2 custom e':
 
 ```bash
-ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
-  map:=/root/exchange/exchange/maps/person_table_child_static.yaml
+ros2 launch empower tiago_nav2_ground_truth.launch.py \
+  map:=/root/exchange/exchange/maps/scene.yaml
 ```
 
 Questo launch avvia:
@@ -114,9 +114,9 @@ La localizzazione non usa AMCL: viene pubblicata da
 `ground_truth_localizer_node` a partire da `/ground_truth_odom`, per mantenere
 semplice e stabile la simulazione.
 
-## Package `empower_ros2`: ruolo e struttura
+## Package `empower`: ruolo e struttura
 
-`empower_ros2` e' il package centrale. E' un package `ament_python` che espone
+`empower` e' il package centrale. E' un package `ament_python` che espone
 questi console script:
 
 - `scene_capture_node`
@@ -133,30 +133,30 @@ questi console script:
 
 Il package contiene due livelli di codice:
 
-- moduli EMPOWER stile upstream in `src/empower_ros2/python/*.py`
+- moduli EMPOWER stile upstream in `src/empower/python/*.py`
   (`agents.py`, `detection.py`, `models.py`, `loader.py`, `paths.py`);
-- adapter ROS 2 in `src/empower_ros2/python/empower_ros2/*.py`.
+- adapter ROS 2 in `src/empower/python/empower/*.py`.
 
 I file `agents.py`, `detection.py`, `models.py`, `loader.py`, `paths.py` sono
-presenti anche direttamente in `src/empower_ros2/` e risultano identici alle
-copie sotto `src/empower_ros2/python/`. La configurazione `setup.py` installa
+presenti anche direttamente in `src/empower/` e risultano identici alle
+copie sotto `src/empower/python/`. La configurazione `setup.py` installa
 questi file come `py_modules`, mentre il package ROS 2 vero e proprio sta in
-`python/empower_ros2`.
+`python/empower`.
 
 ## Configurazione principale EMPOWER
 
 Il file corrente e':
 
 ```text
-src/empower_ros2/config/empower_person_table_child.yaml
+src/empower/config/empower_config.yaml
 ```
 
 Parametri chiave:
 
 ```yaml
-use_case: person_table_child_task
+use_case: therapy_task
 task_description: "Take the peluche, go to the child and drop the peluche"
-output_root: /root/exchange/empower_data
+output_root: /root/exchange/output
 rgb_topic: /head_front_camera/rgb/image_raw
 depth_topic: /head_front_camera/depth/image_raw
 camera_info_topic: /head_front_camera/depth/camera_info
@@ -263,7 +263,7 @@ object_simulation:
   hidden_y: 0.0
   hidden_z: -10.0
   gz_command: gz
-  gz_world_name: person_table_child_room
+  gz_world_name: scene
   objects:
     book:
       aliases: ["book"]
@@ -296,13 +296,13 @@ hardcoded.
 
 ### Multi-view capture (`multi_view_capture_node`)
 
-File: `src/empower_ros2/python/empower_ros2/multi_view_capture_node.py`
+File: `src/empower/python/empower/multi_view_capture_node.py`
 
 Launch:
 
 ```bash
-ros2 launch empower_ros2 empower_multiview_capture.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_multiview_capture.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 ```
 
 Il nodo:
@@ -322,18 +322,18 @@ Il nodo:
 Output strutturato:
 
 ```text
-empower_data/output/person_table_child_task/views_manifest.json
-empower_data/output/person_table_child_task/views/view_000/rgb.jpg
-empower_data/output/person_table_child_task/views/view_000/depth.npy
-empower_data/output/person_table_child_task/views/view_000/camera_info.pkl
-empower_data/output/person_table_child_task/views/view_000/camera_pose_map.json
+output/empower_output/therapy_task/views_manifest.json
+output/empower_output/therapy_task/views/view_000/rgb.jpg
+output/empower_output/therapy_task/views/view_000/depth.npy
+output/empower_output/therapy_task/views/view_000/camera_info.pkl
+output/empower_output/therapy_task/views/view_000/camera_pose_map.json
 ...
-empower_data/output/person_table_child_task/views/view_NNN/...
+output/empower_output/therapy_task/views/view_NNN/...
 ```
 
 ### Multi-view aggregation (`multi_view_aggregator`)
 
-File: `src/empower_ros2/python/empower_ros2/multi_view_aggregator.py`
+File: `src/empower/python/empower/multi_view_aggregator.py`
 
 Dopo che EMPOWER ha eseguito detection su ogni singola vista, l'aggregatore:
 
@@ -377,7 +377,7 @@ Quando `multi_view.enabled` e' true, `low_level_execution_node` carica
 ### Model cacher con supporto multi-view
 
 `models_cacher_node` riceve i parametri `multi_view.enabled` e
-`multi_view.merge.*`, e li passa al `EmpowerRos2Loader`. Il loader supporta
+`multi_view.merge.*`, e li passa al `EmpowerLoader`. Il loader supporta
 la pipeline di detection per-vista e l'aggregazione successiva. Anche gli
 alias degli oggetti (`object_simulation.objects.*.aliases`) vengono passati
 al loader per normalizzare le label in fase di aggregazione.
@@ -392,21 +392,21 @@ Il flusso manuale tipico richiede terminali separati.
 ros2 launch tiago_gazebo tiago_gazebo.launch.py \
   is_public_sim:=True \
   gazebo_version:=classic \
-  world_name:=/root/exchange/exchange/person_table_child.world
+  world_name:=/root/exchange/exchange/scene.world
 ```
 
 ### 2. Nav2 con ground truth
 
 ```bash
-ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
-  map:=/root/exchange/exchange/maps/person_table_child_static.yaml
+ros2 launch empower tiago_nav2_ground_truth.launch.py \
+  map:=/root/exchange/exchange/maps/scene.yaml
 ```
 
 ### 3. Capture RGB-D (single-view)
 
 ```bash
-ros2 launch empower_ros2 empower_capture.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_capture.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 ```
 
 Nodo coinvolto: `scene_capture_node`.
@@ -414,8 +414,8 @@ Nodo coinvolto: `scene_capture_node`.
 ### 4. Model cacher
 
 ```bash
-ros2 launch empower_ros2 empower_models_cacher.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_models_cacher.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 ```
 
 Nodo coinvolto: `models_cacher_node`.
@@ -428,7 +428,7 @@ Ruolo:
   - spaCy `en_core_web_sm`;
   - word2vec `word2vec-google-news-300`;
 - legge `OPENAI_API_KEY` oppure `openai_api_key.txt`;
-- crea un `EmpowerRos2Loader`, compatibile con il codice EMPOWER upstream;
+- crea un `EmpowerLoader`, compatibile con il codice EMPOWER upstream;
 - apre un socket TCP su `127.0.0.1:10000`;
 - aspetta un messaggio JSON con `command: "detection"`;
 - esegue detection, grounding e planning.
@@ -436,8 +436,8 @@ Ruolo:
 ### 5. Planning EMPOWER
 
 ```bash
-ros2 launch empower_ros2 empower_plan.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_plan.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 ```
 
 Nodo coinvolto: `plan_generator_node`.
@@ -445,8 +445,8 @@ Nodo coinvolto: `plan_generator_node`.
 ### 6. Visualizzazione EMPOWER
 
 ```bash
-ros2 launch empower_ros2 empower_visualization.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_visualization.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 ```
 
 Nodi coinvolti: `color_pcl_node`, `marker_centroids_node`.
@@ -454,8 +454,8 @@ Nodi coinvolti: `color_pcl_node`, `marker_centroids_node`.
 ### 7. Esecuzione low-level
 
 ```bash
-ros2 launch empower_ros2 empower_execute.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_execute.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 ```
 
 Azioni supportate:
@@ -470,21 +470,21 @@ Azioni supportate:
 Il launch integrato e':
 
 ```bash
-ros2 launch empower_ros2 hri_empower_mission.launch.py \
-  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+ros2 launch empower hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
   hri_input_mode:=voice
 ```
 
 Questo launch avvia:
 
 - `models_cacher_node` di EMPOWER;
-- `voice_llm_node` di `empower_hri`;
+- `voice_llm_node` di `llm_interaction`;
 - `mission_orchestrator_node`.
 
 La configurazione missione e':
 
 ```text
-src/empower_ros2/config/hri_empower_mission.yaml
+src/empower/config/task_config.yaml
 ```
 
 Pose correnti:
@@ -655,9 +655,9 @@ activity_target_map:
 
 #### Integrazione gaze nel mission orchestrator
 
-File: `src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py`
+File: `src/empower/python/empower/mission_orchestrator_node.py`
 
-Parametri gaze nella configurazione missione (`hri_empower_mission.yaml`):
+Parametri gaze nella configurazione missione (`task_config.yaml`):
 
 ```yaml
 gaze_estimation:
@@ -683,7 +683,7 @@ L'orchestratore:
 
 #### Integrazione gaze nel voice_llm_node (richiamo attenzione)
 
-File: `src/empower_hri/empower_hri/voice_llm_node.py`
+File: `src/llm_interaction/llm_interaction/voice_llm_node.py`
 
 Il nodo HRI e' stato esteso per consumare gli alert di disattenzione:
 
@@ -741,12 +741,12 @@ Il nodo HRI e' stato esteso per consumare gli alert di disattenzione:
 | `/hri/dialog_state` | `std_msgs/String` | `voice_llm_node` | `"speaking"`, `"listening"`, ecc. |
 | `/hri/dialog_command` | `std_msgs/String` | `mission_orchestrator_node` | JSON con command |
 
-## Package `empower_hri`
+## Package `llm_interaction`
 
-`empower_hri` implementa il dialogo locale. Console script:
+`llm_interaction` implementa il dialogo locale. Console script:
 
 ```text
-voice_llm_node = empower_hri.voice_llm_node:main
+voice_llm_node = llm_interaction.voice_llm_node:main
 ```
 
 Launch:
@@ -756,8 +756,8 @@ Launch:
 
 Config principali:
 
-- `src/empower_hri/config/hri_cpu_english.yaml`
-- `src/empower_hri/config/hri_cpu_local.yaml`
+- `src/llm_interaction/config/llm_config.yaml`
+- `src/llm_interaction/config/hri_cpu_local.yaml`
 
 Pipeline inglese tipica:
 
@@ -802,7 +802,7 @@ keyword nella frase del terapista.
 
 ### Loader ROS 2 compatibile con EMPOWER
 
-`loader_adapter.py` definisce `EmpowerRos2Loader`, che espone gli attributi che
+`loader_adapter.py` definisce `EmpowerLoader`, che espone gli attributi che
 il codice EMPOWER originale si aspetta:
 
 - `SCAN_DIR`
@@ -902,7 +902,7 @@ Build dei package principali:
 cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
-colcon build --symlink-install --packages-select empower_ros2 empower_hri gaze_estimation
+colcon build --symlink-install --packages-select empower llm_interaction gaze_estimation
 source /root/exchange/install/setup.bash
 ```
 
@@ -913,37 +913,37 @@ export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
 ros2 launch tiago_gazebo tiago_gazebo.launch.py \
   is_public_sim:=True \
   gazebo_version:=classic \
-  world_name:=/root/exchange/exchange/person_table_child.world
+  world_name:=/root/exchange/exchange/scene.world
 ```
 
 Nav2:
 
 ```bash
-ros2 launch empower_ros2 tiago_nav2_ground_truth.launch.py \
-  map:=/root/exchange/exchange/maps/person_table_child_static.yaml
+ros2 launch empower tiago_nav2_ground_truth.launch.py \
+  map:=/root/exchange/exchange/maps/scene.yaml
 ```
 
 Multi-view capture manuale:
 
 ```bash
-ros2 launch empower_ros2 empower_multiview_capture.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_multiview_capture.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 ```
 
 Pipeline EMPOWER manuale (single-view legacy):
 
 ```bash
-ros2 launch empower_ros2 empower_capture.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_capture.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 
-ros2 launch empower_ros2 empower_models_cacher.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_models_cacher.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 
-ros2 launch empower_ros2 empower_plan.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_plan.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 
-ros2 launch empower_ros2 empower_execute.launch.py \
-  params_file:=/root/exchange/src/empower_ros2/config/empower_person_table_child.yaml
+ros2 launch empower empower_execute.launch.py \
+  params_file:=/root/exchange/src/empower/config/empower_config.yaml
 ```
 
 Gaze estimation standalone:
@@ -958,8 +958,8 @@ ros2 launch gaze_estimation gaze_with_attention.launch.py
 Missione integrata:
 
 ```bash
-ros2 launch empower_ros2 hri_empower_mission.launch.py \
-  hri_params_file:=/root/exchange/src/empower_hri/config/hri_cpu_english.yaml \
+ros2 launch empower hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
   hri_input_mode:=voice
 ```
 
@@ -996,29 +996,29 @@ Per cambiare il comportamento del sistema bisogna prima decidere quale
 livello modificare:
 
 1. Prompt/planning:
-   - modificare `src/empower_ros2/python/agents.py`;
+   - modificare `src/empower/python/agents.py`;
    - impatta relazioni, descrizione scena e piano simbolico.
 2. Detection/grounding:
-   - modificare `src/empower_ros2/python/detection.py`;
+   - modificare `src/empower/python/detection.py`;
    - impatta classi YOLO-World, matching relazioni-detection, label finali.
 3. Multi-view aggregazione:
-   - modificare `src/empower_ros2/python/empower_ros2/multi_view_aggregator.py`;
+   - modificare `src/empower/python/empower/multi_view_aggregator.py`;
    - impatta alias, merge soglie, centroidi globali.
 4. Multi-view capture:
-   - modificare `src/empower_ros2/python/empower_ros2/multi_view_capture_node.py`;
+   - modificare `src/empower/python/empower/multi_view_capture_node.py`;
    - impatta numero viste, rotazione, output.
 5. Parsing piano:
-   - modificare `src/empower_ros2/python/empower_ros2/plan_parser.py`;
+   - modificare `src/empower/python/empower/plan_parser.py`;
    - impatta `planning.json` e quindi l'esecuzione.
 6. Esecuzione low-level:
-   - modificare `src/empower_ros2/python/empower_ros2/low_level_execution_node.py`;
+   - modificare `src/empower/python/empower/low_level_execution_node.py`;
    - impatta Nav2, target non visuali, simulazione Gazebo, risoluzione
      target da global_detections.json.
 7. Configurazione scenario:
-   - modificare `src/empower_ros2/config/empower_person_table_child.yaml`;
+   - modificare `src/empower/config/empower_config.yaml`;
    - impatta task, topic, pose, alias, oggetti simulabili, multi-view config.
 8. Orchestrazione missione:
-   - modificare `src/empower_ros2/python/empower_ros2/mission_orchestrator_node.py`;
+   - modificare `src/empower/python/empower/mission_orchestrator_node.py`;
    - impatta quando viene lanciata EMPOWER, gaze estimation e come interagisce
      con HRI/Nav2.
 9. Gaze estimation:
@@ -1028,5 +1028,5 @@ livello modificare:
      per la logica di disattenzione;
    - modificare `src/gaze_estimation/config/*.yaml` per soglie e target.
 10. Interazione bambino (HRI):
-    - modificare `src/empower_hri/empower_hri/voice_llm_node.py`;
+    - modificare `src/llm_interaction/llm_interaction/voice_llm_node.py`;
     - impatta dialogo, richiamo attenzione, system prompt per attivita'.

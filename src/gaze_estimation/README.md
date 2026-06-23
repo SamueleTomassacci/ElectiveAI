@@ -4,7 +4,7 @@ Standalone ROS 2 package for webcam-based gaze target estimation.
 
 This package opens the computer RGB webcam with OpenCV, detects a face, estimates a Gazelle/Gaze-LLE gaze heatmap, detects target objects with YOLO-World, and reports whether the estimated gaze falls on one of the target object bounding boxes.
 
-It is intentionally independent from `empower_ros2`, `empower_hri`, EMPOWER, TIAGo, Gazebo, Nav2, HRI topics, `/hri/*`, `/empower/*`, and existing TCP sockets.
+It is intentionally independent from `empower`, `llm_interaction`, EMPOWER, TIAGo, Gazebo, Nav2, HRI topics, `/hri/*`, `/empower/*`, and existing TCP sockets.
 
 It does not use RealSense, `pyrealsense2`, `.bag` files, depth frames, point clouds, or saved images as mandatory input.
 
