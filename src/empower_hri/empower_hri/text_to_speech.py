@@ -86,14 +86,46 @@ class TextToSpeech:
 
     def _play_wav(self, wav_path: str) -> None:
         players = [
-            ("aplay", ["aplay", "-q", wav_path]),
-            ("paplay", ["paplay", wav_path]),
-            ("ffplay", ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", wav_path]),
+            ("paplay", "paplay", ["paplay", wav_path]),
+            ("aplay pulse", "aplay", ["aplay", "-q", "-D", "pulse", wav_path]),
+            ("aplay", "aplay", ["aplay", "-q", wav_path]),
+            (
+                "ffplay",
+                "ffplay",
+                ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", wav_path],
+            ),
         ]
-        for executable, command in players:
-            if shutil.which(executable):
-                subprocess.run(command, check=True, timeout=self.timeout)
+        failures = []
+        available_player = False
+        for label, executable, command in players:
+            if not shutil.which(executable):
+                continue
+            available_player = True
+            try:
+                subprocess.run(
+                    command,
+                    check=True,
+                    stderr=subprocess.PIPE,
+                    timeout=self.timeout,
+                )
                 return
+            except subprocess.TimeoutExpired as exc:
+                failures.append(f"{label}: timed out after {self.timeout:.0f}s")
+                self._warn(f"Audio player '{label}' timed out: {exc}")
+            except subprocess.CalledProcessError as exc:
+                detail = (exc.stderr or b"").decode(errors="replace").strip()
+                if not detail:
+                    detail = f"exit code {exc.returncode}"
+                failures.append(f"{label}: {detail}")
+                self._warn(f"Audio player '{label}' failed: {detail}")
+            except OSError as exc:
+                failures.append(f"{label}: {exc}")
+                self._warn(f"Audio player '{label}' failed: {exc}")
+        if available_player:
+            raise TextToSpeechError(
+                "Piper created the WAV, but playback failed: "
+                + "; ".join(failures)
+            )
         raise TextToSpeechError(
             "Piper created the WAV, but no player is available (aplay, paplay, or ffplay)."
         )

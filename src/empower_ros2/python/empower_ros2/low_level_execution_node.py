@@ -330,12 +330,19 @@ class LowLevelExecutionNode(Node):
 
         object_info = self.object_mapping[normalized]
         gazebo_entity = object_info["gazebo_entity"]
+        sdf_xml = self.object_sdf_xml.get(gazebo_entity)
+        if not sdf_xml:
+            self.get_logger().error(
+                f"Cannot GRAB {normalized}: no cached SDF XML for Gazebo entity "
+                f"'{gazebo_entity}'. Check object_simulation.world_sdf_path."
+            )
+            return False
         self.get_logger().info(f"GRAB {normalized}: resolved Gazebo entity '{gazebo_entity}'")
-        if not self._hide_with_gz_cli(gazebo_entity):
+        if not self._delete_with_gz_cli(gazebo_entity):
             return False
 
-        self.held_object = {**object_info}
-        self.get_logger().info(f"GRAB {normalized} -> hid Gazebo entity {gazebo_entity}")
+        self.held_object = {**object_info, "sdf_xml": sdf_xml}
+        self.get_logger().info(f"GRAB {normalized} -> deleted Gazebo entity {gazebo_entity}")
         self.get_logger().info(
             f"Current held object: {self.held_object['symbolic_name']} "
             f"({self.held_object['gazebo_entity']})"
@@ -370,13 +377,13 @@ class LowLevelExecutionNode(Node):
         if drop_pose is None:
             return False
 
-        if not self._set_entity_pose(self.held_object["gazebo_entity"], drop_pose):
+        if not self._spawn_with_gz_cli(self.held_object, drop_pose):
             return False
 
         dropped = self.held_object
         self.held_object = None
         self.get_logger().info(
-            f"DROP {normalized} -> moved {dropped['gazebo_entity']} in front of robot"
+            f"DROP {normalized} -> respawned {dropped['gazebo_entity']} at drop pose"
         )
         self.get_logger().info("Current held object: none")
         return True
@@ -495,15 +502,11 @@ class LowLevelExecutionNode(Node):
         yaw = self._yaw_from_quaternion(drop_pose.orientation)
         spawn_sdf_xml = self._sdf_xml_with_model_pose(
             held_object["sdf_xml"],
-            0.0,
-            0.0,
-            0.0,
-            0.0,
+            drop_pose.position.x,
+            drop_pose.position.y,
+            drop_pose.position.z,
+            yaw,
         )
-        # Fallback for setups without gazebo_ros factory services. Gazebo
-        # classic's `gz model -f` accepts the spawn pose as CLI arguments, but
-        # some worlds/plugins can ignore that factory pose for SDF snippets
-        # copied from the world file.
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(
@@ -523,14 +526,6 @@ class LowLevelExecutionNode(Node):
                     held_object["gazebo_entity"],
                     "-f",
                     temp_path,
-                    "-x",
-                    f"{drop_pose.position.x:.6f}",
-                    "-y",
-                    f"{drop_pose.position.y:.6f}",
-                    "-z",
-                    f"{drop_pose.position.z:.6f}",
-                    "-Y",
-                    f"{yaw:.6f}",
                 ]
             )
             self.get_logger().info(
@@ -538,7 +533,20 @@ class LowLevelExecutionNode(Node):
                 f"x={drop_pose.position.x:.3f}, y={drop_pose.position.y:.3f}, "
                 f"z={drop_pose.position.z:.3f}, yaw={yaw:.3f}"
             )
-            return self._run_gz_command(command, "SpawnEntity")
+            if not self._run_gz_command(command, "SpawnEntity"):
+                return False
+
+            time.sleep(0.2)
+            if not self._set_entity_pose(
+                held_object["gazebo_entity"],
+                drop_pose,
+                label="PlaceSpawnedEntity",
+            ):
+                self.get_logger().warn(
+                    f"Spawned {held_object['gazebo_entity']}, but final pose correction "
+                    "failed. Keeping the object spawned and continuing."
+                )
+            return True
         finally:
             if temp_path and os.path.exists(temp_path):
                 try:
