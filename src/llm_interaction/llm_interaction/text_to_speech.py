@@ -1,4 +1,4 @@
-"""Local text-to-speech providers with graceful fallbacks."""
+#Local text-to-speech providers"
 
 import os
 import shutil
@@ -9,11 +9,11 @@ from typing import Callable, List, Optional
 
 
 class TextToSpeechError(RuntimeError):
-    """Readable error raised when no requested TTS backend can speak."""
+    pass
 
 
 class TextToSpeech:
-    """Speak through Piper, pyttsx3, system tools, or terminal output."""
+
 
     def __init__(
         self,

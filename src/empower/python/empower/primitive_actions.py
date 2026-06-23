@@ -11,12 +11,7 @@ def quaternion_from_yaw(yaw):
 
 
 def make_nav_goal_pose(target_pose, robot_pose, standoff_distance):
-    """Build a Nav2 goal near the EMPOWER target centroid.
 
-    Upstream EMPOWER sends move_base to a small offset from the target marker.
-    For Nav2/TIAGo in Gazebo we keep that centroid-driven behavior, but choose
-    the offset along the robot-target line and face the robot toward the object.
-    """
     target_x = target_pose.pose.position.x
     target_y = target_pose.pose.position.y
     robot_x = robot_pose.pose.position.x if robot_pose is not None else target_x - 1.0
@@ -48,7 +43,7 @@ def make_nav_goal_pose(target_pose, robot_pose, standoff_distance):
 
 
 def navigate(node, action_client, goal_pose, action_server_timeout_sec, result_timeout_sec):
-    """ROS2/Nav2 equivalent of EMPOWER primitive_actions.navigate(...)."""
+    
     if not action_client.wait_for_server(timeout_sec=action_server_timeout_sec):
         action_name = getattr(action_client, "_action_name", "navigate_to_pose")
         node.get_logger().error(

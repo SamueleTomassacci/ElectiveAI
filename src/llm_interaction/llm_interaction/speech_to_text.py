@@ -1,4 +1,4 @@
-"""Push-to-talk recording and local speech transcription."""
+#Push-to-talk recording and local speech transcription
 
 import os
 import tempfile
@@ -10,7 +10,7 @@ from llm_interaction.terminal_io import read_terminal
 
 
 def _resample(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
-    """Simple linear-interpolation resample. Good enough for speech STT."""
+    
     if orig_sr == target_sr:
         return audio
     duration = len(audio) / orig_sr
@@ -20,7 +20,7 @@ def _resample(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
 
 
 def _get_device_samplerate(device_index, target_sr: int) -> int:
-    """Return a working sample rate for the device, preferring target_sr."""
+    
     try:
         import sounddevice as sd
         sd.check_input_settings(device=device_index, samplerate=target_sr)
@@ -36,11 +36,11 @@ def _get_device_samplerate(device_index, target_sr: int) -> int:
 
 
 class SpeechToTextError(RuntimeError):
-    """Readable error raised by recording or transcription."""
+    pass
 
 
 class MockSpeechToText:
-    """Manual transcription provider used when audio is unavailable."""
+    
 
     def transcribe_push_to_talk(self) -> str:
         return read_terminal("Simulated transcription (or /quit): ").strip()
@@ -50,7 +50,7 @@ class MockSpeechToText:
 
 
 class FasterWhisperSpeechToText:
-    """Record a short WAV and transcribe it locally on CPU."""
+    #Record a short WAV and transcribe it locally on CPU
 
     def __init__(
         self,
@@ -188,10 +188,7 @@ class FasterWhisperSpeechToText:
         max_duration_sec: float = 30.0,
         min_speech_sec: float = 0.3,
     ) -> str:
-        """Listen continuously and record when speech is detected via energy VAD.
-
-        Returns empty string if no speech was detected within max_duration_sec.
-        """
+        
         try:
             import sounddevice as sd
             import soundfile as sf

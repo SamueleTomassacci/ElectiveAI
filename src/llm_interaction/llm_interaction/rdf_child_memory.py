@@ -1,4 +1,4 @@
-"""RDF/SPARQL child personalization memory for HRI activities."""
+#RDF/SPARQL child personalization memory for HRI activities
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _unique_preserve_order(values: Iterable[str]) -> List[str]:
 
 
 class RdfChildMemoryStore:
-    """Persistent Turtle-backed child memory queried with SPARQL."""
+    #Persistent Turtle-backed child memory queried with SPARQL
 
     _PREDICATE_TO_BUCKET = {
         str(HRI.likesStoryTheme): "story_preferences",

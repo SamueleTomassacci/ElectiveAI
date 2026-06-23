@@ -7,7 +7,7 @@ from models import VitSam, YOLOW
 
 
 class EmpowerLoader:
-    """ROS2-side loader exposing the same attributes used by empower Detection."""
+    
 
     def __init__(
         self,

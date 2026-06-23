@@ -1,10 +1,10 @@
-"""Terminal input helpers that also work for nodes started by ros2 launch."""
+
 
 import sys
 
 
 def read_terminal(prompt: str) -> str:
-    """Read from the controlling terminal, falling back to standard input."""
+    #Read from the controlling terminal, falling back to standard input
     try:
         with open("/dev/tty", "r", encoding="utf-8") as terminal:
             print(prompt, end="", flush=True)

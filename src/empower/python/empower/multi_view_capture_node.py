@@ -57,7 +57,7 @@ def quaternion_to_matrix(q):
 
 
 class MultiViewCaptureNode(Node):
-    """Capture a fixed-position 360-degree RGB-D sweep for EMPOWER."""
+
 
     def __init__(self):
         super().__init__("empower_multi_view_capture")

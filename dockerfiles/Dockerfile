@@ -105,7 +105,7 @@ RUN python3 -m pip install --no-cache-dir \
     faster-whisper \
     pyttsx3
 
-# Gaze estimation dependencies (torch+cu117 from PyTorch index)
+# Gaze estimation dependencies 
 RUN python3 -m pip install --no-cache-dir \
     torch==2.0.1 torchvision==0.15.2 \
     --index-url https://download.pytorch.org/whl/cu117
@@ -115,13 +115,13 @@ RUN python3 -m pip install --no-cache-dir \
     ultralytics==8.4.71 \
     ftfy
 
-# Pre-download DINOv2 ViT-L/14 backbone so first gaze run doesn't stall
+# Pre-download DINOv2 ViT-L/14 backbone 
 RUN python3 -c "\
 import torch; \
 torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', pretrained=True); \
 print('DINOv2 ViT-L/14 cached')"
 
-# EmotiEffLib for facial emotion recognition (--no-deps: only torch backend needed, avoids pulling onnxruntime)
+# EmotiEffLib for facial emotion recognition
 RUN python3 -m pip install --no-cache-dir --no-deps emotiefflib
 
 # Pre-cache EmotiEffLib emotion model weights

@@ -1,4 +1,4 @@
-"""ROS2 node for a minimal local STT -> LLM -> TTS dialogue loop."""
+"""Node for a local STT -> LLM -> TTS dialogue loop."""
 
 import json
 import os
@@ -195,7 +195,7 @@ def child_activity_opening(activity_type: str, context: Dict[str, Any]) -> str:
 
 
 class VoiceLlmNode(Node):
-    """Coordinate terminal/audio input, a local LLM, and host audio output."""
+    
 
     def __init__(self):
         super().__init__("voice_llm_node")
@@ -729,7 +729,7 @@ class VoiceLlmNode(Node):
             self.get_logger().error(f"[ATTENTION_RECALL] TTS failed: {exc}")
 
     def _run_child_activity_session(self) -> None:
-        """Multi-turn interactive activity loop with the child."""
+        
         with self._mode_lock:
             context = dict(self._child_activity_context)
         activity_type = str(context.get("activity_type", "generic_child_activity"))
@@ -751,7 +751,7 @@ class VoiceLlmNode(Node):
         except (LlmError, TextToSpeechError) as exc:
             self.get_logger().error(f"Child activity opening failed: {exc}")
 
-        # Interactive turns: child speaks, robot reacts and continues the activity.
+        # Interactive turns: child speaks, robot reacts 
         max_turns = int(self.get_parameter("storytelling_max_turns").value)
         turns = 0
 
@@ -766,7 +766,7 @@ class VoiceLlmNode(Node):
                 if child_text.lower() in {"/quit", "/exit", "quit", "exit"}:
                     break
                 if not child_text:
-                    # VAD: no speech detected within max_duration; keep listening.
+                    # VAD: no speech detected within max_duration
                     continue
                 self._handle_utterance(child_text)
                 self._handle_attention_recall()

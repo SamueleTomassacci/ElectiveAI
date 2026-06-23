@@ -8,7 +8,7 @@ DOCKER_GPU_ARGS="--env DISPLAY \
   --env __GLX_VENDOR_LIBRARY_NAME=nvidia \
   --volume=/tmp/.X11-unix:/tmp/.X11-unix:rw"
 
-# PulseAudio: mount host socket so the container can record from the microphone
+
 PULSE_SOCKET="/run/user/$(id -u)/pulse/native"
 PULSE_COOKIE="$HOME/.config/pulse/cookie"
 if [ -S "$PULSE_SOCKET" ]; then

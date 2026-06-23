@@ -13,7 +13,7 @@ from empower.loader_adapter import EmpowerLoader
 
 
 class ModelsCacherNode(Node):
-    """ROS2 adapter for empower's models_cacher.py socket workflow."""
+    
 
     def __init__(self):
         super().__init__("empower_models_cacher")

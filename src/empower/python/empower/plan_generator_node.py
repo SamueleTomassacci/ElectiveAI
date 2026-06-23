@@ -12,7 +12,6 @@ from empower.report_writer import write_readable_reports
 
 
 class PlanGeneratorNode(Node):
-    """ROS2 adapter for empower's execute_task.py."""
 
     def __init__(self):
         super().__init__("empower_plan_generator")

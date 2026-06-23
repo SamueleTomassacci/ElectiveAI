@@ -1,4 +1,4 @@
-"""Local LLM clients used by the HRI node."""
+#Local LLM clients used by the HRI node
 
 import json
 from typing import Dict, List, Optional
@@ -129,7 +129,7 @@ class OllamaClient:
 
 
 class MockLlmClient:
-    """Deterministic local provider for tests without Ollama."""
+    #Deterministic local provider for tests without Ollama
 
     def chat(
         self,

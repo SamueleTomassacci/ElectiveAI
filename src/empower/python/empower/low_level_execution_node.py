@@ -30,7 +30,7 @@ SIMULATED_OBJECTS = ("book", "computer", "peluche")
 
 
 class LowLevelExecutionNode(Node):
-    """ROS2 port of EMPOWER low_level_execution.py for NAVIGATE-only execution."""
+    #Implementation of low level actions
 
     def __init__(self):
         super().__init__("empower_low_level_execution")

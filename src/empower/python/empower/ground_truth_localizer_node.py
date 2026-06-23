@@ -21,11 +21,7 @@ def quaternion_from_yaw(yaw):
 
 
 class GroundTruthLocalizerNode(Node):
-    """Publishes map->odom using Gazebo ground-truth odometry.
-
-    Nav2 expects the localization source to provide map->odom. In this
-    simulation we can replace AMCL with Gazebo's world->base_footprint pose.
-    """
+    
 
     def __init__(self):
         super().__init__("ground_truth_localizer")

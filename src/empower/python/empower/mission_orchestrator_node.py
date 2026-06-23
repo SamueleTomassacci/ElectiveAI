@@ -44,7 +44,7 @@ class MissionInteractionSpec:
 
 
 class MissionOrchestratorNode(Node):
-    """Hardcoded MVP bridge between HRI, Nav2 and the EMPOWER ROS2 pipeline."""
+    #Node which orchestrates the entire pipeline
 
     def __init__(self):
         super().__init__("mission_orchestrator_node")

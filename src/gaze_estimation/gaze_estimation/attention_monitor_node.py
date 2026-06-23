@@ -1,15 +1,4 @@
-"""ROS 2 node that monitors child gaze attention and emotion during HRI child activities.
 
-This node combines two parallel, independent monitoring functions:
-- **Attention monitoring**: armed only during the ``speaking`` dialog phase, tracks
-  gaze-based inattention and publishes alerts on ``/hri/attention_alert``.
-- **Emotion smoothing**: active whenever a child activity is running (regardless of
-  dialog phase), receives raw per-frame emotion from ``/child/emotion_status`` and
-  publishes a temporally smoothed result on ``/child/emotion_status_smoothed``.
-
-Both functions coexist here to reuse the existing dialog-command / dialog-state
-subscription infrastructure; they do not interfere with each other's logic.
-"""
 
 import json
 import time
