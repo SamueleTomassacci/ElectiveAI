@@ -50,6 +50,7 @@ setup(
             "ground_truth_localizer_node = empower.ground_truth_localizer_node:main",
             "low_level_execution_node = empower.low_level_execution_node:main",
             "mission_orchestrator_node = empower.mission_orchestrator_node:main",
+            "child_interaction_test_node = empower.child_interaction_test_node:main",
         ],
     },
 )
