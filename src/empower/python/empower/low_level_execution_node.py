@@ -382,8 +382,12 @@ class LowLevelExecutionNode(Node):
 
         dropped = self.held_object
         self.held_object = None
+        dropped_gazebo_entity = dropped.get(
+            "dropped_gazebo_entity",
+            dropped["gazebo_entity"],
+        )
         self.get_logger().info(
-            f"DROP {normalized} -> respawned {dropped['gazebo_entity']} at drop pose"
+            f"DROP {normalized} -> respawned {dropped_gazebo_entity} at drop pose"
         )
         self.get_logger().info("Current held object: none")
         return True
@@ -500,8 +504,10 @@ class LowLevelExecutionNode(Node):
 
     def spawn_with_gz_cli(self, held_object, drop_pose):
         yaw = self.yaw_from_quaternion(drop_pose.orientation)
-        spawn_sdf_xml = self.sdf_xml_with_model_pose(
+        dropped_name = self.dropped_entity_name(held_object["gazebo_entity"])
+        spawn_sdf_xml = self.sdf_xml_with_model_name_and_pose(
             held_object["sdf_xml"],
+            dropped_name,
             drop_pose.position.x,
             drop_pose.position.y,
             drop_pose.position.z,
@@ -523,29 +529,28 @@ class LowLevelExecutionNode(Node):
             command.extend(
                 [
                     "-m",
-                    held_object["gazebo_entity"],
+                    dropped_name,
                     "-f",
                     temp_path,
+                    "-x",
+                    f"{drop_pose.position.x:.6f}",
+                    "-y",
+                    f"{drop_pose.position.y:.6f}",
+                    "-z",
+                    f"{drop_pose.position.z:.6f}",
+                    "-Y",
+                    f"{yaw:.6f}",
                 ]
             )
             self.get_logger().info(
-                f"Spawning Gazebo model '{held_object['gazebo_entity']}' at "
+                f"Spawning Gazebo model '{dropped_name}' at "
                 f"x={drop_pose.position.x:.3f}, y={drop_pose.position.y:.3f}, "
                 f"z={drop_pose.position.z:.3f}, yaw={yaw:.3f}"
             )
             if not self.run_gz_command(command, "SpawnEntity"):
                 return False
 
-            time.sleep(0.2)
-            if not self.set_entity_pose(
-                held_object["gazebo_entity"],
-                drop_pose,
-                label="PlaceSpawnedEntity",
-            ):
-                self.get_logger().warn(
-                    f"Spawned {held_object['gazebo_entity']}, but final pose correction "
-                    "failed. Keeping the object spawned and continuing."
-                )
+            held_object["dropped_gazebo_entity"] = dropped_name
             return True
         finally:
             if temp_path and os.path.exists(temp_path):
@@ -554,12 +559,15 @@ class LowLevelExecutionNode(Node):
                 except OSError as exc:
                     self.get_logger().warn(f"Failed to remove temporary SDF {temp_path}: {exc}")
 
-    def sdf_xml_with_model_pose(self, sdf_xml, x, y, z, yaw):
+    def dropped_entity_name(self, gazebo_entity):
+        return f"{gazebo_entity}_dropped_{int(time.time() * 1000)}"
+
+    def sdf_xml_with_model_name_and_pose(self, sdf_xml, model_name, x, y, z, yaw):
         try:
             root = ET.fromstring(sdf_xml)
         except ET.ParseError as exc:
             self.get_logger().warn(
-                f"Failed to update spawn SDF pose, using cached SDF XML unchanged: {exc}"
+                f"Failed to update spawn SDF, using cached SDF XML unchanged: {exc}"
             )
             return sdf_xml
 
@@ -568,6 +576,7 @@ class LowLevelExecutionNode(Node):
             self.get_logger().warn("Spawn SDF has no <model>, using cached SDF XML unchanged")
             return sdf_xml
 
+        model.set("name", model_name)
         pose = model.find("pose")
         if pose is None:
             pose = ET.Element("pose")
