@@ -32,6 +32,7 @@
     centroids_topic: /pcl_centroids
     names_topic: /pcl_names
     map_frame: map
+    static_scene_graph_path: /root/exchange/src/empower/config/scenes/therapy_room_scene_graph.json
     base_frame: base_footprint
     nav_action_name: navigate_to_pose
     marker_timeout_sec: 30.0
@@ -49,32 +50,9 @@
         If the task asks to bring an object to the child, the plan must include
         NAVIGATE to the child before dropping the object.
       aliases: ["child", "the child", "kid"]
-    child_navigation:
-      enabled: true
-      frame_id: map
-      x: 0.0
-      y: 0.95
-      yaw: 1.5708
-      via_waypoint:
-        enabled: true
-        x: 3.0
-        y: 0.0
-        yaw: 3.14159
-      aliases: ["child", "the child", "kid"]
-    person_navigation:
-      enabled: true
-      frame_id: map
-      x: 0.0
-      y: 0.0
-      yaw: -1.5708
-      aliases: ["person", "the person", "adult", "the adult", "standing person", "adult person"]
     object_simulation:
       enabled: true
       drop_distance: 0.75
-      child_delivery_table_drop_x: 0.0
-      child_delivery_table_drop_y: 1.65
-      child_delivery_table_drop_z: 0.65
-      child_delivery_table_drop_yaw: 1.5708
       hidden_x: 0.0
       hidden_y: 0.0
       hidden_z: -10.0

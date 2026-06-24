@@ -6,11 +6,34 @@ Questa repo contiene una sola scena Gazebo supportata:
 exchange/scene.world
 exchange/maps/scene.yaml
 src/empower/config/empower_config.yaml
+src/empower/config/scenes/therapy_room_scene_graph.json
 ```
 
 La scena mette TIAGo al centro della stanza, una persona sul lato `-Y`, un bambino sul lato `+Y` e il tavolo con il libro sul lato `+X`. Per catturare tavolo e libro con la camera frontale, TIAGo deve partire all'origine guardando verso `+X`, cioe' con yaw `0`.
 
 La pipeline EMPOWER arriva fino a detection, grounding, pianificazione simbolica e navigazione mobile tramite Nav2. La parte low-level esegue fisicamente solo `NAVIGATE`; azioni come `GRAB`, `DROP`, `PUSH` e `PULL` vengono riconosciute e saltate, perche' manipolazione, MoveIt e gripper non sono implementati.
+
+## Scene Graph Statico
+
+Le pose manuali della stanza terapeutica sono centralizzate in:
+
+```text
+src/empower/config/scenes/therapy_room_scene_graph.json
+```
+
+Questo file JSON e' uno static semantic pose graph: descrive prior manuali in frame `map` per terapeuta, bambino, centro stanza, waypoint di approccio, superfici note e drop pose. Non esegue discovery autonoma delle pose e non sostituisce la perception EMPOWER.
+
+Resta separato da `global_scene_graph.json`: quel file viene generato runtime dalla pipeline EMPOWER multi-view insieme a `global_detections.json` e serve per oggetti osservati, detection e planning visuale. Non va modificato o fuso con il grafo statico.
+
+Per cambiare le pose principali, modifica i nodi del grafo statico:
+
+- terapeuta: `therapist_interaction_pose.pose`
+- bambino: `child_delivery_pose.pose`
+- centro stanza/capture origin: `zone_center.pose`
+- waypoint bambino: `child_approach_waypoint.pose`
+- drop vicino al bambino: `child_delivery_table.drop_pose`
+
+Il mission orchestrator usa il grafo statico per terapeuta, centro stanza e bambino. Il low-level executor lo usa per alias `child`/`kid` e `person`/`adult`/`therapist`, waypoint del bambino e drop pose vicino al bambino. La navigazione verso oggetti visuali continua invece a usare `global_detections.json`, `make_nav_goal_pose()` e lo standoff distance configurato.
 
 ## 1. Chiave OpenAI
 
@@ -663,5 +686,5 @@ ros2 topic pub --once /hri/user_utterance std_msgs/msg/String "{data: 'Ask the c
 - L'attivita' sociale e' il secondo testo utile ricevuto da `/hri/user_utterance` e determina il comando `start_child_activity`.
 - Dopo l'avvio della child activity, l'orchestratore ignora le nuove utterance su `/hri/user_utterance`.
 - Le azioni EMPOWER diverse da `NAVIGATE`, come `GRAB` e `DROP`, restano simboliche/loggate.
-- Se Nav2 fallisce nel ritorno allo spawn con `Failed to make progress`, ferma solo la missione, resetta/sposta TIAGo o correggi le pose in `src/empower/config/task_config.yaml`, poi rilancia la missione.
+- Se Nav2 fallisce nel ritorno allo spawn con `Failed to make progress`, ferma solo la missione, resetta/sposta TIAGo o correggi `zone_center.pose` in `src/empower/config/scenes/therapy_room_scene_graph.json`, poi rilancia la missione.
 - Se cambi le pose in YAML non serve rebuildare; se cambi Python o launch file serve rebuildare.

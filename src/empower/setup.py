@@ -35,7 +35,7 @@ setup(
         (f"share/{package_name}/launch", glob("launch/*.py")),
     ]
     + package_files("config"),
-    install_requires=["setuptools"],
+    install_requires=["setuptools", "PyYAML"],
     zip_safe=True,
     maintainer="HRAI",
     maintainer_email="student@example.com",

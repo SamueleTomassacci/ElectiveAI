@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 import rclpy
+import yaml
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
@@ -16,6 +17,8 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import String
+
+from empower.static_scene_graph import StaticSceneGraph, StaticSceneGraphError, default_scene_graph_path
 
 
 class MissionState(str, Enum):
@@ -85,6 +88,7 @@ class MissionOrchestratorNode(Node):
         self._gaze_process_label = "gaze estimation"
         self._gaze_ready_event = threading.Event()
         self._gaze_error_message = ""
+        self.static_scene_graph = self.load_static_scene_graph()
 
         if bool(self.get_parameter("auto_start").value):
             self._mission_thread = threading.Thread(
@@ -97,10 +101,8 @@ class MissionOrchestratorNode(Node):
             self.publish_feedback("Mission orchestrator ready; auto_start is disabled")
 
     def declare_node_parameters(self):
-        self.declare_parameter("therapist_pose", [0.0, -1.6, -1.5708])
-        self.declare_parameter("spawn_pose", [0.0, 0.0, 0.0])
-        self.declare_parameter("child_pose", [0.0, 1.6, 1.5708])
         self.declare_parameter("map_frame", "map")
+        self.declare_parameter("static_scene_graph_path", default_scene_graph_path())
         self.declare_parameter("nav_action_name", "navigate_to_pose")
         self.declare_parameter(
             "params_file",
@@ -208,7 +210,10 @@ class MissionOrchestratorNode(Node):
     def run_mission(self):
         try:
             self.transition(MissionState.GO_TO_THERAPIST)
-            if not self.navigate_to_pose("therapist", self.pose_parameter("therapist_pose")):
+            if not self.navigate_to_pose(
+                "therapist",
+                self.static_nav_pose("therapist", "receive_instruction"),
+            ):
                 return
 
             self.transition(MissionState.WAIT_TASK)
@@ -233,7 +238,10 @@ class MissionOrchestratorNode(Node):
             self.say(self.child_name_ack_text())
 
             self.transition(MissionState.GO_TO_SPAWN)
-            if not self.navigate_to_pose("spawn", self.pose_parameter("spawn_pose")):
+            if not self.navigate_to_pose(
+                "spawn",
+                self.static_nav_pose("center", "capture_origin"),
+            ):
                 return
 
             self.transition(MissionState.RUN_EMPOWER)
@@ -246,7 +254,10 @@ class MissionOrchestratorNode(Node):
                 )
             else:
                 self.transition(MissionState.GO_TO_CHILD)
-                if not self.navigate_to_pose("child", self.pose_parameter("child_pose")):
+                if not self.navigate_to_pose(
+                    "child",
+                    self.static_nav_pose("child", "deliver_object"),
+                ):
                     return
 
             self.transition(MissionState.CHILD_READY)
@@ -536,6 +547,40 @@ class MissionOrchestratorNode(Node):
         )
         return False
 
+    def load_static_scene_graph(self):
+        path = str(self.get_parameter("static_scene_graph_path").value).strip()
+        if not path:
+            message = "static_scene_graph_path is empty"
+            self.publish_feedback(message, log_level="error")
+            raise RuntimeError(message)
+        if not os.path.exists(path):
+            message = f"Static scene graph not found at {path}"
+            self.publish_feedback(message, log_level="error")
+            raise RuntimeError(message)
+        try:
+            graph = StaticSceneGraph.from_json(path)
+        except (OSError, StaticSceneGraphError, json.JSONDecodeError) as exc:
+            message = f"Cannot load static scene graph {path}: {exc}"
+            self.publish_feedback(message, log_level="error")
+            raise RuntimeError(message) from exc
+        if graph.frame_id != str(self.get_parameter("map_frame").value):
+            message = (
+                f"Static scene graph frame '{graph.frame_id}' differs from map_frame "
+                f"'{self.get_parameter('map_frame').value}'"
+            )
+            self.publish_feedback(message, log_level="error")
+            raise RuntimeError(message)
+        self.publish_feedback(f"Loaded static scene graph: {path}")
+        return graph
+
+    def static_nav_pose(self, target, role):
+        pose = self.static_scene_graph.resolve_nav_pose(target, role=role)
+        if pose is None:
+            raise RuntimeError(
+                f"Static scene graph has no nav pose for target '{target}' role '{role}'"
+            )
+        return [pose["x"], pose["y"], pose["yaw"]]
+
     def run_empower(self, task_description):
         params_file = str(self.get_parameter("params_file").value)
         if not params_file:
@@ -649,10 +694,6 @@ class MissionOrchestratorNode(Node):
 
     def empower_param(self, params_file, name, default):
         try:
-            import yaml
-        except ImportError:
-            return default
-        try:
             with open(params_file, "r", encoding="utf-8") as params_stream:
                 data = yaml.safe_load(params_stream) or {}
         except OSError:
@@ -695,6 +736,8 @@ class MissionOrchestratorNode(Node):
             params_file,
             "-p",
             f"use_sim_time:={self.use_sim_time_value()}",
+            "-p",
+            f"static_scene_graph_path:={self.get_parameter('static_scene_graph_path').value}",
         ]
         if self.multi_view_enabled(params_file):
             self.publish_feedback(
@@ -810,12 +853,6 @@ class MissionOrchestratorNode(Node):
                 return False
             time.sleep(0.05)
         return False
-
-    def pose_parameter(self, name):
-        values = list(self.get_parameter(name).value)
-        if len(values) != 3:
-            raise ValueError(f"{name} must contain exactly [x, y, yaw]")
-        return [float(values[0]), float(values[1]), float(values[2])]
 
     def make_pose_stamped(self, values):
         x, y, yaw = values

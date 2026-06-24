@@ -16,6 +16,12 @@ def generate_launch_description():
         "task_config.yaml",
     )
     empower_params = "/root/exchange/src/empower/config/empower_config.yaml"
+    static_scene_graph = os.path.join(
+        get_package_share_directory("empower"),
+        "config",
+        "scenes",
+        "therapy_room_scene_graph.json",
+    )
     hri_params = os.path.join(
         get_package_share_directory("llm_interaction"),
         "config",
@@ -34,6 +40,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("mission_params_file", default_value=mission_params),
             DeclareLaunchArgument("empower_params_file", default_value=empower_params),
+            DeclareLaunchArgument("static_scene_graph_path", default_value=static_scene_graph),
             DeclareLaunchArgument("hri_params_file", default_value=hri_params),
             DeclareLaunchArgument("start_hri", default_value="true"),
             DeclareLaunchArgument("start_models_cacher", default_value="true"),
@@ -77,6 +84,7 @@ def generate_launch_description():
                     LaunchConfiguration("mission_params_file"),
                     {
                         "params_file": LaunchConfiguration("empower_params_file"),
+                        "static_scene_graph_path": LaunchConfiguration("static_scene_graph_path"),
                         "use_sim_time": use_sim_time,
                     },
                 ],

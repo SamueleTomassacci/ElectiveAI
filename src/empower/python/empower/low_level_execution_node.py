@@ -20,6 +20,7 @@ from visualization_msgs.msg import MarkerArray
 
 from empower.plan_parser import parse_symbolic_plan
 from empower.primitive_actions import make_nav_goal_pose, navigate
+from empower.static_scene_graph import StaticSceneGraph, StaticSceneGraphError, default_scene_graph_path
 
 
 NAVIGATE = "NAVIGATE"
@@ -41,6 +42,7 @@ class LowLevelExecutionNode(Node):
         self.declare_parameter("centroids_topic", "/pcl_centroids")
         self.declare_parameter("names_topic", "/pcl_names")
         self.declare_parameter("map_frame", "map")
+        self.declare_parameter("static_scene_graph_path", default_scene_graph_path())
         self.declare_parameter("base_frame", "base_footprint")
         self.declare_parameter("nav_action_name", "navigate_to_pose")
         self.declare_parameter("marker_timeout_sec", 30.0)
@@ -49,31 +51,8 @@ class LowLevelExecutionNode(Node):
         self.declare_parameter("nav_result_timeout_sec", 300.0)
         self.declare_parameter("standoff_distance", 0.7)
         self.declare_parameter("continue_on_nav_failure", False)
-        self.declare_parameter("child_navigation.enabled", False)
-        self.declare_parameter("child_navigation.frame_id", "map")
-        self.declare_parameter("child_navigation.x", 0.0)
-        self.declare_parameter("child_navigation.y", 0.0)
-        self.declare_parameter("child_navigation.yaw", 0.0)
-        self.declare_parameter("child_navigation.via_waypoint.enabled", False)
-        self.declare_parameter("child_navigation.via_waypoint.x", 0.0)
-        self.declare_parameter("child_navigation.via_waypoint.y", 0.0)
-        self.declare_parameter("child_navigation.via_waypoint.yaw", 0.0)
-        self.declare_parameter("child_navigation.aliases", ["child", "the child", "kid"])
-        self.declare_parameter("person_navigation.enabled", False)
-        self.declare_parameter("person_navigation.frame_id", "map")
-        self.declare_parameter("person_navigation.x", 0.0)
-        self.declare_parameter("person_navigation.y", 0.0)
-        self.declare_parameter("person_navigation.yaw", 0.0)
-        self.declare_parameter(
-            "person_navigation.aliases",
-            ["person", "the person", "adult", "the adult", "standing person", "adult person"],
-        )
         self.declare_parameter("object_simulation.enabled", False)
         self.declare_parameter("object_simulation.drop_distance", 0.75)
-        self.declare_parameter("object_simulation.child_delivery_table_drop_x", 0.0)
-        self.declare_parameter("object_simulation.child_delivery_table_drop_y", 1.65)
-        self.declare_parameter("object_simulation.child_delivery_table_drop_z", 0.95)
-        self.declare_parameter("object_simulation.child_delivery_table_drop_yaw", 1.5708)
         self.declare_parameter("object_simulation.hidden_x", -3.8)
         self.declare_parameter("object_simulation.hidden_y", 2.4)
         self.declare_parameter("object_simulation.hidden_z", 0.02)
@@ -115,6 +94,7 @@ class LowLevelExecutionNode(Node):
 
         self._centroids = None
         self._names = None
+        self.static_scene_graph = self.load_static_scene_graph()
         self.held_object = None
         self.last_navigation_target_is_child = False
         self.object_simulation_enabled = bool(
@@ -156,6 +136,24 @@ class LowLevelExecutionNode(Node):
     def names_callback(self, msg):
         self._names = msg
 
+    def load_static_scene_graph(self):
+        path = str(self.get_parameter("static_scene_graph_path").value).strip()
+        if not path:
+            raise RuntimeError("static_scene_graph_path is empty")
+        if not os.path.exists(path):
+            raise RuntimeError(f"Static scene graph not found at {path}")
+        try:
+            graph = StaticSceneGraph.from_json(path)
+        except (OSError, StaticSceneGraphError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Cannot load static scene graph {path}: {exc}") from exc
+        if graph.frame_id != str(self.get_parameter("map_frame").value):
+            raise RuntimeError(
+                f"Static scene graph frame '{graph.frame_id}' differs from map_frame "
+                f"'{self.get_parameter('map_frame').value}'"
+            )
+        self.get_logger().info(f"Loaded static scene graph: {path}")
+        return graph
+
     def run(self):
         plan = self.load_plan()
         if not plan:
@@ -168,7 +166,7 @@ class LowLevelExecutionNode(Node):
             if str(step.get("action", "")).upper() == NAVIGATE
         ]
         if any(
-            not self.is_configured_navigation_step(step)
+            not self.is_static_scene_navigation_step(step)
             and not self.can_resolve_global_navigation_step(step)
             for step in nav_steps
         ):
@@ -588,7 +586,7 @@ class LowLevelExecutionNode(Node):
         fixed_pose = self.fixed_drop_pose(held_object)
         if fixed_pose is not None:
             return fixed_pose
-        child_table_pose = self.child_delivery_table_drop_pose(held_object)
+        child_table_pose = self.static_child_delivery_drop_pose(held_object)
         if child_table_pose is not None:
             return child_table_pose
 
@@ -606,7 +604,10 @@ class LowLevelExecutionNode(Node):
         drop_pose = Pose()
         drop_pose.position.x = robot_pose.pose.position.x + drop_distance * math.cos(yaw)
         drop_pose.position.y = robot_pose.pose.position.y + drop_distance * math.sin(yaw)
-        drop_pose.position.z = self.drop_z_for_current_destination(held_object)
+        z = self.drop_z_for_current_destination(held_object)
+        if z is None:
+            return None
+        drop_pose.position.z = z
         drop_pose.orientation = self.quaternion_from_yaw(yaw)
         self.get_logger().info(
             f"Computed DROP pose for {held_object['symbolic_name']}: "
@@ -618,18 +619,37 @@ class LowLevelExecutionNode(Node):
 
     def drop_z_for_current_destination(self, held_object):
         if self.last_navigation_target_is_child:
-            return float(self.get_parameter("object_simulation.child_delivery_table_drop_z").value)
+            drop_pose = self.static_scene_graph.resolve_drop_pose(role="child_delivery_drop")
+            if drop_pose is None:
+                self.get_logger().error(
+                    "Static scene graph has no drop pose with role 'child_delivery_drop'"
+                )
+                return None
+            return float(drop_pose["z"])
         return float(held_object["drop_z"])
 
-    def child_delivery_table_drop_pose(self, held_object):
+    def static_child_delivery_drop_pose(self, held_object):
         if not self.last_navigation_target_is_child:
             return None
 
-        yaw = float(self.get_parameter("object_simulation.child_delivery_table_drop_yaw").value)
+        graph_drop_pose = self.static_scene_graph.resolve_drop_pose(
+            role="child_delivery_drop",
+        )
+        if graph_drop_pose is None:
+            self.get_logger().error(
+                "Static scene graph has no drop pose with role 'child_delivery_drop'"
+            )
+            return None
+
+        yaw = float(graph_drop_pose["yaw"])
+        x = float(graph_drop_pose["x"])
+        y = float(graph_drop_pose["y"])
+        z = float(graph_drop_pose["z"])
+
         drop_pose = Pose()
-        drop_pose.position.x = float(self.get_parameter("object_simulation.child_delivery_table_drop_x").value)
-        drop_pose.position.y = float(self.get_parameter("object_simulation.child_delivery_table_drop_y").value)
-        drop_pose.position.z = float(self.get_parameter("object_simulation.child_delivery_table_drop_z").value)
+        drop_pose.position.x = x
+        drop_pose.position.y = y
+        drop_pose.position.z = z
         drop_pose.orientation = self.quaternion_from_yaw(yaw)
         self.get_logger().info(
             f"Using child delivery table DROP pose for {held_object['symbolic_name']}: "
@@ -644,6 +664,8 @@ class LowLevelExecutionNode(Node):
 
         configured_z = float(self.get_parameter("object_simulation.fixed_drop.z").value)
         z = configured_z if configured_z >= 0.0 else self.drop_z_for_current_destination(held_object)
+        if z is None:
+            return None
         yaw = float(self.get_parameter("object_simulation.fixed_drop.yaw").value)
         drop_pose = Pose()
         drop_pose.position.x = float(self.get_parameter("object_simulation.fixed_drop.x").value)
@@ -677,7 +699,7 @@ class LowLevelExecutionNode(Node):
                 continue
             if frame != preferred_frame:
                 self.get_logger().warn(
-                    f"Using fallback TF frame '{frame}' for DROP pose; assuming it is aligned "
+                    f"Using TF frame '{frame}' for DROP pose; assuming it is aligned "
                     f"with Gazebo frame '{preferred_frame}'"
                 )
             pose = PoseStamped()
@@ -757,15 +779,14 @@ class LowLevelExecutionNode(Node):
         return objects
 
     def execute_navigate(self, step):
-        if self.is_child_navigation_step(step):
-            nav_goal = self.child_navigation_pose()
+        if self.is_child_target_step(step):
+            nav_goal = self.child_static_nav_pose()
             if nav_goal is None:
                 return False
-            waypoint_goal = self.child_via_waypoint_pose()
-            if waypoint_goal is not None:
+            for waypoint_goal in self.child_via_waypoint_poses():
                 waypoint_goal.header.stamp = self.get_clock().now().to_msg()
                 self.get_logger().info(
-                    "Navigating to child via configured waypoint "
+                    "Navigating to child via static scene graph waypoint "
                     f"({waypoint_goal.pose.position.x:.3f}, "
                     f"{waypoint_goal.pose.position.y:.3f})"
                 )
@@ -779,7 +800,7 @@ class LowLevelExecutionNode(Node):
                     return False
             nav_goal.header.stamp = self.get_clock().now().to_msg()
             self.get_logger().info(
-                "Resolving NAVIGATE to child via configured non-visual child pose "
+                "Resolving NAVIGATE to child via static semantic pose graph "
                 f"({nav_goal.pose.position.x:.3f}, {nav_goal.pose.position.y:.3f})"
             )
             ok = navigate(
@@ -793,13 +814,13 @@ class LowLevelExecutionNode(Node):
                 self.last_navigation_target_is_child = True
             return ok
 
-        if self.is_person_navigation_step(step):
-            nav_goal = self.person_navigation_pose()
+        if self.is_person_target_step(step):
+            nav_goal = self.person_static_nav_pose()
             if nav_goal is None:
                 return False
             nav_goal.header.stamp = self.get_clock().now().to_msg()
             self.get_logger().info(
-                "Resolving NAVIGATE to person via configured desk-side pose "
+                "Resolving NAVIGATE to person/adult via static semantic pose graph "
                 f"({nav_goal.pose.position.x:.3f}, {nav_goal.pose.position.y:.3f})"
             )
             ok = navigate(
@@ -962,83 +983,57 @@ class LowLevelExecutionNode(Node):
                 return normalized_objects[normalized]
         return None, None
 
-    def is_child_navigation_step(self, step):
+    def is_child_target_step(self, step):
         return any(self.is_child_alias(candidate) for candidate in self.target_candidates(step))
 
-    def is_person_navigation_step(self, step):
+    def is_person_target_step(self, step):
         return any(self.is_person_alias(candidate) for candidate in self.target_candidates(step))
 
-    def is_configured_navigation_step(self, step):
-        return self.is_child_navigation_step(step) or self.is_person_navigation_step(step)
+    def is_static_scene_navigation_step(self, step):
+        return self.is_child_target_step(step) or self.is_person_target_step(step)
 
     def is_child_alias(self, label):
-        normalized = self.normalize_label(label)
-        aliases = {
-            self.normalize_label(alias)
-            for alias in self.get_parameter("child_navigation.aliases").value
-        }
-        return normalized in aliases
+        return self.static_scene_graph.is_alias_of(label, "child")
 
     def is_person_alias(self, label):
-        normalized = self.normalize_label(label)
-        aliases = {
-            self.normalize_label(alias)
-            for alias in self.get_parameter("person_navigation.aliases").value
-        }
-        return normalized in aliases
+        return self.static_scene_graph.is_alias_of(label, "therapist")
 
-    def child_navigation_pose(self):
-        if not bool(self.get_parameter("child_navigation.enabled").value):
+    def child_static_nav_pose(self):
+        pose = self.static_scene_graph.resolve_nav_pose("child", role="deliver_object")
+        if pose is None:
             self.get_logger().error(
-                "Cannot execute NAVIGATE to child: child_navigation.enabled is false"
+                "Static scene graph has no child nav pose with role 'deliver_object'"
             )
             return None
-        frame_id = str(self.get_parameter("child_navigation.frame_id").value).strip()
-        if not frame_id:
-            frame_id = str(self.get_parameter("map_frame").value)
-        yaw = float(self.get_parameter("child_navigation.yaw").value)
-        pose = PoseStamped()
-        pose.header.frame_id = frame_id
-        pose.header.stamp = self.get_clock().now().to_msg()
-        pose.pose.position.x = float(self.get_parameter("child_navigation.x").value)
-        pose.pose.position.y = float(self.get_parameter("child_navigation.y").value)
-        pose.pose.position.z = 0.0
-        pose.pose.orientation = self.quaternion_from_yaw(yaw)
-        return pose
+        return self.pose_stamped_from_graph_pose(pose)
 
-    def child_via_waypoint_pose(self):
-        if not bool(self.get_parameter("child_navigation.via_waypoint.enabled").value):
-            return None
-        frame_id = str(self.get_parameter("child_navigation.frame_id").value).strip()
-        if not frame_id:
-            frame_id = str(self.get_parameter("map_frame").value)
-        yaw = float(self.get_parameter("child_navigation.via_waypoint.yaw").value)
-        pose = PoseStamped()
-        pose.header.frame_id = frame_id
-        pose.header.stamp = self.get_clock().now().to_msg()
-        pose.pose.position.x = float(self.get_parameter("child_navigation.via_waypoint.x").value)
-        pose.pose.position.y = float(self.get_parameter("child_navigation.via_waypoint.y").value)
-        pose.pose.position.z = 0.0
-        pose.pose.orientation = self.quaternion_from_yaw(yaw)
-        return pose
+    def child_via_waypoint_poses(self):
+        waypoints = self.static_scene_graph.resolve_waypoints_for_nav_pose(
+            "child",
+            role="deliver_object",
+        )
+        return [self.pose_stamped_from_graph_pose(waypoint) for waypoint in waypoints]
 
-    def person_navigation_pose(self):
-        if not bool(self.get_parameter("person_navigation.enabled").value):
+    def person_static_nav_pose(self):
+        pose = self.static_scene_graph.resolve_nav_pose(
+            "therapist",
+            role="receive_instruction",
+        )
+        if pose is None:
             self.get_logger().error(
-                "Cannot execute NAVIGATE to person: person_navigation.enabled is false"
+                "Static scene graph has no therapist nav pose with role 'receive_instruction'"
             )
             return None
-        frame_id = str(self.get_parameter("person_navigation.frame_id").value).strip()
-        if not frame_id:
-            frame_id = str(self.get_parameter("map_frame").value)
-        yaw = float(self.get_parameter("person_navigation.yaw").value)
+        return self.pose_stamped_from_graph_pose(pose)
+
+    def pose_stamped_from_graph_pose(self, graph_pose):
         pose = PoseStamped()
-        pose.header.frame_id = frame_id
+        pose.header.frame_id = self.static_scene_graph.frame_id
         pose.header.stamp = self.get_clock().now().to_msg()
-        pose.pose.position.x = float(self.get_parameter("person_navigation.x").value)
-        pose.pose.position.y = float(self.get_parameter("person_navigation.y").value)
-        pose.pose.position.z = 0.0
-        pose.pose.orientation = self.quaternion_from_yaw(yaw)
+        pose.pose.position.x = float(graph_pose["x"])
+        pose.pose.position.y = float(graph_pose["y"])
+        pose.pose.position.z = float(graph_pose.get("z", 0.0))
+        pose.pose.orientation = self.quaternion_from_yaw(float(graph_pose["yaw"]))
         return pose
 
     def target_candidates(self, step):

@@ -1,0 +1,152 @@
+{
+  "scene": {
+    "id": "therapy_room_v1",
+    "frame_id": "map",
+    "map": "exchange/maps/scene.yaml",
+    "description": "Static semantic pose graph for TIAGo therapy-room navigation priors."
+  },
+  "nodes": {
+    "room_therapy": {
+      "type": "room",
+      "label": "therapy room",
+      "aliases": [
+        "therapy room",
+        "room"
+      ]
+    },
+    "zone_center": {
+      "type": "zone",
+      "label": "room center",
+      "pose": {
+        "x": 4.8,
+        "y": 0.0,
+        "yaw": 1.72
+      },
+      "roles": [
+        "capture_origin",
+        "mission_reset"
+      ],
+      "aliases": [
+        "center",
+        "room center",
+        "spawn",
+        "capture origin"
+      ]
+    },
+    "therapist": {
+      "type": "person",
+      "label": "therapist",
+      "aliases": [
+        "therapist",
+        "person",
+        "the person",
+        "adult",
+        "the adult",
+        "standing person",
+        "adult person"
+      ]
+    },
+    "therapist_interaction_pose": {
+      "type": "nav_pose",
+      "label": "therapist interaction pose",
+      "target": "therapist",
+      "pose": {
+        "x": 0.0,
+        "y": -1.3,
+        "yaw": -1.5708
+      },
+      "roles": [
+        "receive_instruction",
+        "ask_activity"
+      ]
+    },
+    "child": {
+      "type": "person",
+      "label": "child",
+      "aliases": [
+        "child",
+        "the child",
+        "kid"
+      ]
+    },
+    "child_delivery_pose": {
+      "type": "nav_pose",
+      "label": "child delivery pose",
+      "target": "child",
+      "pose": {
+        "x": 0.0,
+        "y": 0.95,
+        "yaw": 1.5708
+      },
+      "roles": [
+        "deliver_object",
+        "start_child_interaction"
+      ],
+      "via": [
+        "child_approach_waypoint"
+      ]
+    },
+    "child_approach_waypoint": {
+      "type": "waypoint",
+      "label": "child approach waypoint",
+      "pose": {
+        "x": 3.0,
+        "y": 0.0,
+        "yaw": 3.14159
+      },
+      "roles": [
+        "child_approach"
+      ]
+    },
+    "child_delivery_table": {
+      "type": "surface",
+      "label": "child delivery table",
+      "drop_pose": {
+        "x": 0.0,
+        "y": 1.65,
+        "z": 0.65,
+        "yaw": 1.5708
+      },
+      "roles": [
+        "child_delivery_drop"
+      ]
+    }
+  },
+  "edges": [
+    {
+      "subject": "therapist",
+      "predicate": "located_in",
+      "object": "room_therapy"
+    },
+    {
+      "subject": "child",
+      "predicate": "located_in",
+      "object": "room_therapy"
+    },
+    {
+      "subject": "zone_center",
+      "predicate": "located_in",
+      "object": "room_therapy"
+    },
+    {
+      "subject": "therapist_interaction_pose",
+      "predicate": "approaches",
+      "object": "therapist"
+    },
+    {
+      "subject": "child_delivery_pose",
+      "predicate": "approaches",
+      "object": "child"
+    },
+    {
+      "subject": "child_delivery_pose",
+      "predicate": "reachable_via",
+      "object": "child_approach_waypoint"
+    },
+    {
+      "subject": "child_delivery_table",
+      "predicate": "used_for",
+      "object": "child_delivery"
+    }
+  ]
+}
