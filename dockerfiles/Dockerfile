@@ -95,15 +95,21 @@ RUN . /opt/ros/humble/setup.sh && \
 # HRI audio/voice dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libportaudio2 \
+    portaudio19-dev \
+    libsndfile1 \
+    libasound2-plugins \
+    alsa-utils \
     espeak-ng \
     pulseaudio-utils \
+    python3-rdflib \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir \
     sounddevice \
     soundfile \
     faster-whisper \
-    pyttsx3
+    pyttsx3 \
+    piper-tts
 
 # Gaze estimation dependencies 
 RUN python3 -m pip install --no-cache-dir \
@@ -129,6 +135,31 @@ RUN python3 -c "\
 from emotiefflib.facial_analysis import EmotiEffLibRecognizer; \
 EmotiEffLibRecognizer(engine='torch', model_name='enet_b0_8_best_vgaf', device='cpu'); \
 print('EmotiEffLib enet_b0_8_best_vgaf cached')"
+
+# Pre-download gaze estimation model weights into the image.
+# At runtime /root/exchange is a volume mount, so the entrypoint
+# symlinks these into /root/exchange/models/ if they are not already there.
+ENV GAZE_MODELS_DIR=/opt/models/gaze_estimation
+RUN mkdir -p ${GAZE_MODELS_DIR} && \
+    curl -L --retry 5 --retry-delay 5 --progress-bar \
+      -o ${GAZE_MODELS_DIR}/gazelle_dinov2_vitl14_inout.pt \
+      https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitl14_inout.pt && \
+    curl -L --retry 5 --retry-delay 5 --progress-bar \
+      -o ${GAZE_MODELS_DIR}/yolov8x-worldv2.pt \
+      https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8x-worldv2.pt && \
+    curl -L --retry 5 --retry-delay 5 --progress-bar \
+      -o ${GAZE_MODELS_DIR}/yolov8n-face.pt \
+      https://github.com/lindevs/yolov8-face/releases/latest/download/yolov8n-face-lindevs.pt
+
+# Pre-download Piper TTS voice model
+ENV PIPER_MODELS_DIR=/opt/models/piper
+RUN mkdir -p ${PIPER_MODELS_DIR} && \
+    curl -L --retry 5 --retry-delay 5 --progress-bar \
+      -o ${PIPER_MODELS_DIR}/en_GB-jenny_dioco-medium.onnx \
+      https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx && \
+    curl -L --retry 5 --retry-delay 5 --progress-bar \
+      -o ${PIPER_MODELS_DIR}/en_GB-jenny_dioco-medium.onnx.json \
+      https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx.json
 
 RUN mkdir -p /app
 COPY dockerfiles/entrypoint_tiago.sh /app/entrypoint_tiago.sh
