@@ -89,11 +89,15 @@ class MissionOrchestratorNode(Node):
         self.create_subscription(String, "/mission/gaze_command", self.gaze_command_callback, 10)
         self.create_subscription(String, "/gaze/node_status", self.gaze_node_status_callback, 10)
 
-        self.nav_client = ActionClient(
-            self,
-            NavigateToPose,
-            str(self.get_parameter("nav_action_name").value),
-        )
+        self._skip_mode = bool(self.get_parameter("skip_to_child_activity").value)
+        if not self._skip_mode:
+            self.nav_client = ActionClient(
+                self,
+                NavigateToPose,
+                str(self.get_parameter("nav_action_name").value),
+            )
+        else:
+            self.nav_client = None
         self._state_lock = threading.Lock()
         self._state = None
         self._interaction_spec = MissionInteractionSpec(
@@ -180,6 +184,10 @@ class MissionOrchestratorNode(Node):
             "proposal_text",
             "Last time, {child_name} really enjoyed {activity_label}. Shall we do that again? Say something if you prefer a different activity.",
         )
+        self.declare_parameter("skip_to_child_activity", False)
+        self.declare_parameter("test_child_name", "Luca")
+        self.declare_parameter("test_activity_type", "storytelling")
+        self.declare_parameter("test_task_description", "Take the book")
 
     def task_callback(self, msg):
         text = msg.data.strip()
@@ -257,115 +265,190 @@ class MissionOrchestratorNode(Node):
 
     def run_mission(self):
         try:
-            self.transition(MissionState.GO_TO_THERAPIST)
-            if not self.navigate_to_pose(
-                "therapist",
-                self.static_nav_pose("therapist", "receive_instruction"),
-            ):
-                return
-
-            self.transition(MissionState.WAIT_CHILD_NAME)
-            self.say(str(self.get_parameter("child_name_ask_text").value))
-            if not self.wait_for_child_name():
-                return
-
-            self.transition(MissionState.ACK_CHILD_NAME)
-            self.say(self.child_name_ack_text())
-
-            self.transition(MissionState.PROPOSE_ACTIVITY)
-            proposal = self.propose_activity()
-
-            if proposal is not None:
-                self.transition(MissionState.WAIT_THERAPIST_OVERRIDE)
-                override = self.wait_for_therapist_override()
-                if override:
-                    self.apply_therapist_override(override)
-                    self.publish_feedback(
-                        f"Therapist override applied: task={self._interaction_spec.task_description}, "
-                        f"activity={self._interaction_spec.activity_type}"
-                    )
-                else:
-                    self.publish_feedback("Therapist accepted the proposal (silence/timeout)")
-
-                self.transition(MissionState.ACK_PROPOSAL)
-                self.say(
-                    f"Okay! I will do {self._activity_label(self._interaction_spec.activity_type)} "
-                    f"with {self._interaction_spec.child_name}."
-                )
+            if bool(self.get_parameter("skip_to_child_activity").value):
+                self.run_mission_skip_to_child()
             else:
-                self.say(
-                    str(self.get_parameter("no_history_text").value).format(
-                        child_name=self._interaction_spec.child_name
-                    )
-                )
-                self.transition(MissionState.WAIT_TASK)
-                if not self.wait_for_task():
-                    return
-                self.transition(MissionState.ACK_TASK)
-                self.say(str(self.get_parameter("task_ack_text").value))
-
-                self.transition(MissionState.WAIT_ACTIVITY)
-                if not self.wait_for_activity():
-                    return
-                self.transition(MissionState.ACK_ACTIVITY)
-                self.say("Okay, I understood the activity.")
-
-            self.transition(MissionState.GO_TO_SPAWN)
-            if not self.navigate_to_pose(
-                "spawn",
-                self.static_nav_pose("center", "capture_origin"),
-            ):
-                return
-
-            self.transition(MissionState.RUN_EMPOWER)
-            if not self.run_empower(self._interaction_spec.task_description):
-                return
-
-            if bool(self.get_parameter("child_delivery_handled_by_empower").value):
-                self.publish_feedback(
-                    "Skipping hardcoded GO_TO_CHILD because EMPOWER handles child delivery"
-                )
-            else:
-                self.transition(MissionState.GO_TO_CHILD)
-                if not self.navigate_to_pose(
-                    "child",
-                    self.static_nav_pose("child", "deliver_object"),
-                ):
-                    return
-
-            self.transition(MissionState.CHILD_READY)
-            self.publish(self.child_ready_pub, "child_ready")
-            self.publish_feedback("Child interaction can start")
-
-            if not self.start_gaze_process():
-                self.publish_feedback(
-                    "Gaze estimation failed to start; aborting mission",
-                    log_level="error",
-                )
-                self.transition(MissionState.MISSION_FAILED)
-                return
-
-            self.transition(MissionState.CHILD_ACTIVITY)
-            self.run_child_activity()
-
-            self.stop_gaze_process()
-
-            self.transition(MissionState.GO_BACK_TO_THERAPIST)
-            self.navigate_to_pose(
-                "therapist",
-                self.static_nav_pose("therapist", "receive_instruction"),
-            )
-            self.say(self.build_activity_summary())
-
-            self.transition(MissionState.MISSION_COMPLETE)
-            self.publish_feedback("Mission complete")
-
+                self.run_mission_full()
         except Exception as exc:
             self.stop_gaze_process()
             self.publish_feedback(
                 f"Mission failed with {type(exc).__name__}: {exc}",
                 log_level="error",
             )
+
+    def run_mission_skip_to_child(self):
+        child_name = str(self.get_parameter("test_child_name").value)
+        activity_type = str(self.get_parameter("test_activity_type").value)
+        task_desc = str(self.get_parameter("test_task_description").value)
+        self._interaction_spec.child_name = child_name
+        self._interaction_spec.activity_type = activity_type
+        self._interaction_spec.task_description = task_desc
+        self._interaction_spec.activity_description = self._activity_label(activity_type)
+        self.child_name = child_name
+
+        self.publish_feedback(
+            f"[TEST MODE] Skipping to child activity: "
+            f"child={child_name}, activity={activity_type}, task={task_desc}"
+        )
+
+        self.simulate_drop_on_child_table(task_desc)
+
+        self.transition(MissionState.CHILD_READY)
+        self.publish(self.child_ready_pub, "child_ready")
+
+        if not self.start_gaze_process():
+            self.publish_feedback(
+                "Gaze estimation failed to start; continuing without gaze",
+                log_level="warn",
+            )
+
+        self.transition(MissionState.CHILD_ACTIVITY)
+        self.run_child_activity()
+
+        self.stop_gaze_process()
+
+        self.transition(MissionState.MISSION_COMPLETE)
+        self.publish_feedback("Mission complete")
+
+    def simulate_drop_on_child_table(self, task_desc):
+        params_file = str(self.get_parameter("params_file").value)
+        drop_pose = self.static_scene_graph.resolve_drop_pose(role="child_delivery_drop")
+        if drop_pose is None:
+            self.publish_feedback("No child delivery drop pose in scene graph", log_level="warn")
+            return
+        task_lower = task_desc.lower()
+        object_keys = {
+            "book": "clear_red_book_on_right_table",
+            "teddy": "teddy_bear_on_right_table",
+            "peluche": "teddy_bear_on_right_table",
+            "computer": "laptop_computer_on_right_table",
+            "laptop": "laptop_computer_on_right_table",
+        }
+        entity = None
+        drop_z = 0.01
+        for keyword, gazebo_entity in object_keys.items():
+            if keyword in task_lower:
+                entity = gazebo_entity
+                break
+        if entity is None:
+            self.publish_feedback(f"No matching Gazebo object for task: {task_desc}", log_level="warn")
+            return
+        gz_cmd = self.empower_param(params_file, "object_simulation.gz_command", "gz")
+        gz_world = self.empower_param(params_file, "object_simulation.gz_world_name", "scene")
+        x, y, z = drop_pose["x"], drop_pose["y"], drop_pose["z"]
+        cmd = [
+            gz_cmd, "model", "-w", gz_world, "-m", entity,
+            "--pose", f"{x},{y},{z + drop_z},0,0,0",
+        ]
+        self.publish_feedback(f"[TEST MODE] Dropping {entity} at child table ({x}, {y}, {z})")
+        try:
+            subprocess.run(cmd, timeout=10.0, check=False)
+        except Exception as exc:
+            self.publish_feedback(f"Gazebo drop failed: {exc}", log_level="warn")
+
+    def run_mission_full(self):
+        self.transition(MissionState.GO_TO_THERAPIST)
+        if not self.navigate_to_pose(
+            "therapist",
+            self.static_nav_pose("therapist", "receive_instruction"),
+        ):
+            return
+
+        self.transition(MissionState.WAIT_CHILD_NAME)
+        self.say(str(self.get_parameter("child_name_ask_text").value))
+        if not self.wait_for_child_name():
+            return
+
+        self.transition(MissionState.ACK_CHILD_NAME)
+        self.say(self.child_name_ack_text())
+
+        self.transition(MissionState.PROPOSE_ACTIVITY)
+        proposal = self.propose_activity()
+
+        if proposal is not None:
+            self.transition(MissionState.WAIT_THERAPIST_OVERRIDE)
+            override = self.wait_for_therapist_override()
+            if override:
+                self.apply_therapist_override(override)
+                self.publish_feedback(
+                    f"Therapist override applied: task={self._interaction_spec.task_description}, "
+                    f"activity={self._interaction_spec.activity_type}"
+                )
+            else:
+                self.publish_feedback("Therapist accepted the proposal (silence/timeout)")
+
+            self.transition(MissionState.ACK_PROPOSAL)
+            self.say(
+                f"Okay! I will do {self._activity_label(self._interaction_spec.activity_type)} "
+                f"with {self._interaction_spec.child_name}."
+            )
+        else:
+            self.say(
+                str(self.get_parameter("no_history_text").value).format(
+                    child_name=self._interaction_spec.child_name
+                )
+            )
+            self.transition(MissionState.WAIT_TASK)
+            if not self.wait_for_task():
+                return
+            self.transition(MissionState.ACK_TASK)
+            self.say(str(self.get_parameter("task_ack_text").value))
+
+            self.transition(MissionState.WAIT_ACTIVITY)
+            if not self.wait_for_activity():
+                return
+            self.transition(MissionState.ACK_ACTIVITY)
+            self.say("Okay, I understood the activity.")
+
+        self.transition(MissionState.GO_TO_SPAWN)
+        if not self.navigate_to_pose(
+            "spawn",
+            self.static_nav_pose("center", "capture_origin"),
+        ):
+            return
+
+        self.transition(MissionState.RUN_EMPOWER)
+        if not self.run_empower(self._interaction_spec.task_description):
+            return
+
+        if bool(self.get_parameter("child_delivery_handled_by_empower").value):
+            self.publish_feedback(
+                "Skipping hardcoded GO_TO_CHILD because EMPOWER handles child delivery"
+            )
+        else:
+            self.transition(MissionState.GO_TO_CHILD)
+            if not self.navigate_to_pose(
+                "child",
+                self.static_nav_pose("child", "deliver_object"),
+            ):
+                return
+
+        self.transition(MissionState.CHILD_READY)
+        self.publish(self.child_ready_pub, "child_ready")
+        self.publish_feedback("Child interaction can start")
+
+        if not self.start_gaze_process():
+            self.publish_feedback(
+                "Gaze estimation failed to start; aborting mission",
+                log_level="error",
+            )
+            self.transition(MissionState.MISSION_FAILED)
+            return
+
+        self.transition(MissionState.CHILD_ACTIVITY)
+        self.run_child_activity()
+
+        self.stop_gaze_process()
+
+        self.transition(MissionState.GO_BACK_TO_THERAPIST)
+        self.navigate_to_pose(
+            "therapist",
+            self.static_nav_pose("therapist", "receive_instruction"),
+        )
+        self.say(self.build_activity_summary())
+
+        self.transition(MissionState.MISSION_COMPLETE)
+        self.publish_feedback("Mission complete")
 
     def wait_for_task(self):
         timeout_sec = float(self.get_parameter("wait_for_task_timeout_sec").value)
@@ -583,7 +666,10 @@ class MissionOrchestratorNode(Node):
                 )
                 self.stop_gaze_process()
                 return False
-            rclpy.spin_once(self, timeout_sec=0.1)
+            if self._skip_mode:
+                self._gaze_ready_event.wait(timeout=0.2)
+            else:
+                rclpy.spin_once(self, timeout_sec=0.1)
 
         if self._gaze_error_message:
             self.publish_feedback(

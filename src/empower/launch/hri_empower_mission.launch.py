@@ -47,6 +47,10 @@ def generate_launch_description():
             DeclareLaunchArgument("hri_input_mode", default_value="voice"),
             DeclareLaunchArgument("stt_device_index", default_value="8"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
+            DeclareLaunchArgument("skip_to_child_activity", default_value="false"),
+            DeclareLaunchArgument("test_child_name", default_value="Luca"),
+            DeclareLaunchArgument("test_activity_type", default_value="storytelling"),
+            DeclareLaunchArgument("test_task_description", default_value="Take the book"),
             Node(
                 package="empower",
                 executable="models_cacher_node",
@@ -86,6 +90,12 @@ def generate_launch_description():
                         "params_file": LaunchConfiguration("empower_params_file"),
                         "static_scene_graph_path": LaunchConfiguration("static_scene_graph_path"),
                         "use_sim_time": use_sim_time,
+                        "skip_to_child_activity": ParameterValue(
+                            LaunchConfiguration("skip_to_child_activity"), value_type=bool,
+                        ),
+                        "test_child_name": LaunchConfiguration("test_child_name"),
+                        "test_activity_type": LaunchConfiguration("test_activity_type"),
+                        "test_task_description": LaunchConfiguration("test_task_description"),
                     },
                 ],
                 output="screen",

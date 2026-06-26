@@ -3,7 +3,7 @@ voice_llm_node:
     input_mode: "voice"
     llm_provider: "ollama"
     llm_base_url: "http://localhost:11434"
-    llm_model: "gemma3:12b" #"qwen2.5:1.5b"
+    llm_model: "qwen2.5:1.5b"
     llm_fallback_model: "llama3.2:1b"
     llm_timeout: 600.0
     temperature: 0.4
