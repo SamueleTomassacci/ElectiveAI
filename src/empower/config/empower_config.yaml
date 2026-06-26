@@ -40,7 +40,7 @@
     action_server_timeout_sec: 20.0
     nav_result_timeout_sec: 300.0
     standoff_distance: 1.2 #1.2 era
-    continue_on_nav_failure: false
+    continue_on_nav_failure: true
     child_context:
       enabled: true
       planner_description: >
