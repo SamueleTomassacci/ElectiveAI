@@ -20,20 +20,43 @@ from std_msgs.msg import String
 
 from empower.static_scene_graph import StaticSceneGraph, StaticSceneGraphError, default_scene_graph_path
 
+try:
+    from llm_interaction.session_scores import (
+        ACTIVITY_TO_TASK,
+        best_activity_for_child,
+        infer_activity_and_task,
+    )
+except ImportError:
+    ACTIVITY_TO_TASK = {
+        "storytelling": "Take the book",
+        "mood_check_teddy": "Take the teddy bear",
+        "computer_emotion_recognition": "Take the computer",
+    }
+
+    def best_activity_for_child(path, child_name):
+        return None
+
+    def infer_activity_and_task(text):
+        return None
+
 
 class MissionState(str, Enum):
     GO_TO_THERAPIST = "GO_TO_THERAPIST"
+    WAIT_CHILD_NAME = "WAIT_CHILD_NAME"
+    ACK_CHILD_NAME = "ACK_CHILD_NAME"
+    PROPOSE_ACTIVITY = "PROPOSE_ACTIVITY"
+    WAIT_THERAPIST_OVERRIDE = "WAIT_THERAPIST_OVERRIDE"
+    ACK_PROPOSAL = "ACK_PROPOSAL"
     WAIT_TASK = "WAIT_TASK"
     ACK_TASK = "ACK_TASK"
     WAIT_ACTIVITY = "WAIT_ACTIVITY"
     ACK_ACTIVITY = "ACK_ACTIVITY"
-    WAIT_CHILD_NAME = "WAIT_CHILD_NAME"
-    ACK_CHILD_NAME = "ACK_CHILD_NAME"
     GO_TO_SPAWN = "GO_TO_SPAWN"
     RUN_EMPOWER = "RUN_EMPOWER"
     GO_TO_CHILD = "GO_TO_CHILD"
     CHILD_READY = "CHILD_READY"
     CHILD_ACTIVITY = "CHILD_ACTIVITY"
+    GO_BACK_TO_THERAPIST = "GO_BACK_TO_THERAPIST"
     MISSION_COMPLETE = "MISSION_COMPLETE"
     MISSION_FAILED = "MISSION_FAILED"
 
@@ -79,6 +102,8 @@ class MissionOrchestratorNode(Node):
         self._task_event = threading.Event()
         self._activity_event = threading.Event()
         self._child_name_event = threading.Event()
+        self._override_event = threading.Event()
+        self._override_text = ""
         self.child_name = ""
         self._stop_event = threading.Event()
         self._dialog_complete_event = threading.Event()
@@ -138,21 +163,43 @@ class MissionOrchestratorNode(Node):
         self.declare_parameter("gaze_estimation.device", "auto")
         self.declare_parameter("gaze_estimation.show_window", True)
         self.declare_parameter("gaze_estimation.startup_timeout_sec", 30.0)
+        self.declare_parameter("proposal_acceptance_timeout_sec", 15.0)
+        self.declare_parameter(
+            "session_scores_path",
+            "/root/exchange/output/interaction_output/session_scores.json",
+        )
+        self.declare_parameter(
+            "child_name_ask_text",
+            "Hello! Which child do we have today?",
+        )
+        self.declare_parameter(
+            "no_history_text",
+            "I don't have any previous sessions with {child_name} yet. What would you like me to do?",
+        )
+        self.declare_parameter(
+            "proposal_text",
+            "Last time, {child_name} really enjoyed {activity_label}. Shall we do that again? Say something if you prefer a different activity.",
+        )
 
     def task_callback(self, msg):
         text = msg.data.strip()
         if not text:
             return
         state = self.current_state()
-        if state not in {
+        _INPUT_STATES = {
+            MissionState.WAIT_CHILD_NAME,
             MissionState.WAIT_TASK,
             MissionState.WAIT_ACTIVITY,
-            MissionState.WAIT_CHILD_NAME,
-        }:
+            MissionState.WAIT_THERAPIST_OVERRIDE,
+        }
+        if state not in _INPUT_STATES:
             self.publish_feedback(
                 f"Ignoring HRI utterance outside therapist input capture: {text}",
                 log_level="debug",
             )
+            return
+        if state == MissionState.WAIT_CHILD_NAME:
+            self.capture_child_name(text)
             return
         if state == MissionState.WAIT_TASK:
             self.capture_physical_task(text)
@@ -160,8 +207,9 @@ class MissionOrchestratorNode(Node):
         if state == MissionState.WAIT_ACTIVITY:
             self.capture_child_activity(text)
             return
-        if state == MissionState.WAIT_CHILD_NAME:
-            self.capture_child_name(text)
+        if state == MissionState.WAIT_THERAPIST_OVERRIDE:
+            self._override_text = text
+            self._override_event.set()
 
     def capture_physical_task(self, text):
         if self._interaction_spec.task_description:
@@ -216,26 +264,51 @@ class MissionOrchestratorNode(Node):
             ):
                 return
 
-            self.transition(MissionState.WAIT_TASK)
-            if not self.wait_for_task():
-                return
-
-            self.transition(MissionState.ACK_TASK)
-            self.say(str(self.get_parameter("task_ack_text").value))
-
-            self.transition(MissionState.WAIT_ACTIVITY)
-            if not self.wait_for_activity():
-                return
-
-            self.transition(MissionState.ACK_ACTIVITY)
-            self.say(str(self.get_parameter("activity_ack_text").value))
-
             self.transition(MissionState.WAIT_CHILD_NAME)
+            self.say(str(self.get_parameter("child_name_ask_text").value))
             if not self.wait_for_child_name():
                 return
 
             self.transition(MissionState.ACK_CHILD_NAME)
             self.say(self.child_name_ack_text())
+
+            self.transition(MissionState.PROPOSE_ACTIVITY)
+            proposal = self.propose_activity()
+
+            if proposal is not None:
+                self.transition(MissionState.WAIT_THERAPIST_OVERRIDE)
+                override = self.wait_for_therapist_override()
+                if override:
+                    self.apply_therapist_override(override)
+                    self.publish_feedback(
+                        f"Therapist override applied: task={self._interaction_spec.task_description}, "
+                        f"activity={self._interaction_spec.activity_type}"
+                    )
+                else:
+                    self.publish_feedback("Therapist accepted the proposal (silence/timeout)")
+
+                self.transition(MissionState.ACK_PROPOSAL)
+                self.say(
+                    f"Okay! I will do {self._activity_label(self._interaction_spec.activity_type)} "
+                    f"with {self._interaction_spec.child_name}."
+                )
+            else:
+                self.say(
+                    str(self.get_parameter("no_history_text").value).format(
+                        child_name=self._interaction_spec.child_name
+                    )
+                )
+                self.transition(MissionState.WAIT_TASK)
+                if not self.wait_for_task():
+                    return
+                self.transition(MissionState.ACK_TASK)
+                self.say(str(self.get_parameter("task_ack_text").value))
+
+                self.transition(MissionState.WAIT_ACTIVITY)
+                if not self.wait_for_activity():
+                    return
+                self.transition(MissionState.ACK_ACTIVITY)
+                self.say("Okay, I understood the activity.")
 
             self.transition(MissionState.GO_TO_SPAWN)
             if not self.navigate_to_pose(
@@ -276,6 +349,13 @@ class MissionOrchestratorNode(Node):
             self.run_child_activity()
 
             self.stop_gaze_process()
+
+            self.transition(MissionState.GO_BACK_TO_THERAPIST)
+            self.navigate_to_pose(
+                "therapist",
+                self.static_nav_pose("therapist", "receive_instruction"),
+            )
+            self.say(self.build_activity_summary())
 
             self.transition(MissionState.MISSION_COMPLETE)
             self.publish_feedback("Mission complete")
@@ -363,6 +443,81 @@ class MissionOrchestratorNode(Node):
         else:
             self.publish_feedback("Child activity timed out; stopping HRI", log_level="warn")
             self.publish(self.dialog_command_pub, json.dumps({"command": "stop"}))
+
+    def propose_activity(self):
+        scores_path = str(self.get_parameter("session_scores_path").value)
+        child_name = self._interaction_spec.child_name
+        result = best_activity_for_child(scores_path, child_name)
+        if result is None:
+            self.publish_feedback(f"No session history for {child_name}")
+            return None
+
+        activity_type = result["activity_type"]
+        task = result.get("task_description") or ACTIVITY_TO_TASK.get(activity_type, "")
+        avg_score = result.get("average_score", 0)
+        self._interaction_spec.activity_type = activity_type
+        self._interaction_spec.task_description = task
+        self._interaction_spec.activity_description = self._activity_label(activity_type)
+
+        proposal = str(self.get_parameter("proposal_text").value).format(
+            child_name=child_name,
+            activity_label=self._activity_label(activity_type),
+        )
+        self.say(proposal)
+        self.publish_feedback(
+            f"Proposed {activity_type} (avg_score={avg_score}) for {child_name}"
+        )
+        return result
+
+    def wait_for_therapist_override(self):
+        timeout_sec = float(self.get_parameter("proposal_acceptance_timeout_sec").value)
+        self._override_event.clear()
+        self._override_text = ""
+        self.publish_feedback(
+            f"Waiting {timeout_sec:.0f}s for therapist override (silence = accept)"
+        )
+        if self._override_event.wait(timeout=timeout_sec):
+            return self._override_text.strip()
+        return None
+
+    def apply_therapist_override(self, text):
+        inferred = infer_activity_and_task(text)
+        if inferred:
+            activity_type, task = inferred
+            self._interaction_spec.activity_type = activity_type
+            self._interaction_spec.task_description = task
+            self._interaction_spec.activity_description = text
+        else:
+            self._interaction_spec.activity_type = self.normalize_activity_type(text)
+            task = ACTIVITY_TO_TASK.get(self._interaction_spec.activity_type, "")
+            if task:
+                self._interaction_spec.task_description = task
+            self._interaction_spec.activity_description = text
+
+    @staticmethod
+    def _activity_label(activity_type):
+        labels = {
+            "storytelling": "storytelling with the book",
+            "mood_check_teddy": "a mood check with the teddy bear",
+            "computer_emotion_recognition": "emotion recognition with the computer",
+            "generic_child_activity": "a fun activity",
+        }
+        return labels.get(activity_type, "a fun activity")
+
+    def build_activity_summary(self):
+        try:
+            payload = json.loads(self._dialog_complete_payload)
+        except (json.JSONDecodeError, TypeError):
+            return "The activity is complete."
+        scores = payload.get("scores", {})
+        child_name = payload.get("child_name", "the child")
+        activity_type = payload.get("activity_type", "activity")
+        overall = scores.get("overall", "N/A")
+        reason = payload.get("reason", "completed")
+        return (
+            f"The {activity_type} session with {child_name} is complete. "
+            f"Reason: {reason}. Overall engagement score: {overall}."
+        )
 
     def gaze_command_callback(self, msg):
         try:

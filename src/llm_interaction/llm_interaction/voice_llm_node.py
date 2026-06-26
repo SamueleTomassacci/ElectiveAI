@@ -2,10 +2,12 @@
 
 import json
 import os
+import select
+import sys
 import threading
 import time
 from collections import deque
-from typing import Any, Deque, Dict, List
+from typing import Any, Deque, Dict, List, Tuple
 
 import rclpy
 from rclpy.node import Node
@@ -17,6 +19,7 @@ from llm_interaction.rdf_child_memory import (
     RdfChildMemoryStore,
     generate_child_memory_report,
 )
+from llm_interaction.session_scores import compute_session_scores, save_session_score
 from llm_interaction.speech_to_text import (
     FasterWhisperSpeechToText,
     MockSpeechToText,
@@ -82,6 +85,39 @@ _CHILD_ACTIVITY_STYLE_RULES = (
     "Always finish with a complete sentence. "
     "Never stop in the middle of a sentence. "
 )
+
+_NEGATIVE_EMOTIONS = {"sad", "angry", "fear", "disgust"}
+
+_DISENGAGEMENT_SYSTEM_PROMPT = (
+    "You are TIAGo, a friendly social robot interacting with a young child. "
+    "The child seems disengaged from the {activity_type} activity. "
+    "Generate ONE gentle question (maximum 15 words) asking if they would "
+    "prefer to stop and do something different. Be warm and non-judgmental. "
+    "Do not mention that you are monitoring attention or emotions."
+)
+
+_DISENGAGEMENT_QUESTION_FALLBACKS = {
+    "storytelling": "Would you like me to stop reading and do something else?",
+    "mood_check_teddy": "Should we take a little break from the teddy bear?",
+    "computer_emotion_recognition": "Should we stop looking at pictures and do something else?",
+    "generic_child_activity": "Would you prefer to stop and do something different?",
+}
+
+_CONTINUE_KEYWORDS = {"no", "continue", "keep", "keep going", "go on", "more", "stay", "yes continue"}
+_STOP_KEYWORDS = {"yes", "stop", "done", "enough", "bored", "tired", "want to stop", "yes stop"}
+
+_FAREWELL_SYSTEM_PROMPT = (
+    "You are TIAGo, a friendly social robot. The activity session is ending. "
+    "Generate ONE warm, short goodbye sentence (maximum 15 words) for {child_name}. "
+    "Be kind and positive. Do not mention monitoring or internal details."
+)
+
+_FAREWELL_FALLBACKS = {
+    "storytelling": "That was a lovely story! We will read more next time.",
+    "mood_check_teddy": "The teddy bear says goodbye! See you next time.",
+    "computer_emotion_recognition": "Great job with the pictures! See you next time.",
+    "generic_child_activity": "That was fun! See you next time.",
+}
 
 
 def child_memory_prompt_section(context: Dict[str, Any]) -> str:
@@ -256,6 +292,18 @@ class VoiceLlmNode(Node):
         )
         self._emotion_prompt_hints = self.load_emotion_prompt_hints()
 
+        self._session_start_time: float = 0.0
+        self._session_attention_alerts: int = 0
+        self._session_emotion_samples: List[Tuple[float, str]] = []
+        self._session_emotion_lock = threading.Lock()
+
+        self._disengagement_alert_count: int = 0
+        self._disengagement_cooldown_until: float = 0.0
+        self._disengagement_ask_count: int = 0
+
+        self._graceful_stop_requested = threading.Event()
+        self._keyboard_monitor_thread: threading.Thread | None = None
+
         self._stop_event = threading.Event()
         self._worker = threading.Thread(
             target=self.interaction_loop,
@@ -309,6 +357,16 @@ class VoiceLlmNode(Node):
         self.declare_parameter("memory_max_prompt_facts", 12)
         self.declare_parameter("memory_seed_if_missing", True)
         self.declare_parameter("memory_update_enabled", False)
+        self.declare_parameter(
+            "session_scores_path",
+            "/root/exchange/output/interaction_output/session_scores.json",
+        )
+        self.declare_parameter("disengagement_alert_threshold", 4)
+        self.declare_parameter("disengagement_negative_emotion_ratio", 0.6)
+        self.declare_parameter("disengagement_check_window_sec", 120.0)
+        self.declare_parameter("disengagement_cooldown_sec", 180.0)
+        self.declare_parameter("disengagement_max_asks", 2)
+        self.declare_parameter("graceful_stop_key", "q")
         for emotion, hint in _DEFAULT_EMOTION_PROMPT_HINTS.items():
             self.declare_parameter(f"emotion_prompt_hints.{emotion}", hint)
 
@@ -391,12 +449,19 @@ class VoiceLlmNode(Node):
         elif command == "stop":
             self._child_activity_stop_event.set()
             self.get_logger().info("Child activity stop requested via /hri/dialog_command")
+        elif command == "graceful_stop":
+            self._graceful_stop_requested.set()
+            self.get_logger().info("Graceful stop requested via /hri/dialog_command")
         else:
             self.get_logger().warning(f"Unknown dialog_command: '{command}'")
 
     def mission_state_callback(self, msg: String) -> None:
         self._mission_state = msg.data.strip()
-        if self._mission_state not in {"WAIT_TASK", "WAIT_ACTIVITY", "WAIT_CHILD_NAME"}:
+        _INPUT_STATES = {
+            "WAIT_CHILD_NAME", "WAIT_TASK", "WAIT_ACTIVITY",
+            "WAIT_THERAPIST_OVERRIDE",
+        }
+        if self._mission_state not in _INPUT_STATES:
             self._last_therapist_input_state = ""
 
     def speak_hardcoded_text(self, text: str) -> None:
@@ -430,6 +495,14 @@ class VoiceLlmNode(Node):
             self._mode = _MODE_CHILD_ACTIVITY
         with self._attention_alert_lock:
             self._pending_attention_alert = None
+        self._session_start_time = time.monotonic()
+        self._session_attention_alerts = 0
+        with self._session_emotion_lock:
+            self._session_emotion_samples = []
+        self._disengagement_alert_count = 0
+        self._disengagement_cooldown_until = 0.0
+        self._disengagement_ask_count = 0
+        self._graceful_stop_requested.clear()
         self.get_logger().info(
             f"Switched to child activity mode. Context: {self._child_activity_context}"
         )
@@ -610,7 +683,11 @@ class VoiceLlmNode(Node):
     def can_read_therapist_input(self) -> bool:
         if not bool(self.get_parameter("follow_mission_state_for_therapist_input").value):
             return True
-        if self._mission_state not in {"WAIT_TASK", "WAIT_ACTIVITY", "WAIT_CHILD_NAME"}:
+        _INPUT_STATES = {
+            "WAIT_CHILD_NAME", "WAIT_TASK", "WAIT_ACTIVITY",
+            "WAIT_THERAPIST_OVERRIDE",
+        }
+        if self._mission_state not in _INPUT_STATES:
             return False
         return self._mission_state != self._last_therapist_input_state
 
@@ -635,6 +712,8 @@ class VoiceLlmNode(Node):
             return
         with self._attention_alert_lock:
             self._pending_attention_alert = payload
+        self._session_attention_alerts += 1
+        self._disengagement_alert_count += 1
 
     def load_emotion_prompt_hints(self) -> Dict[str, str]:
         hints: Dict[str, str] = {}
@@ -651,9 +730,14 @@ class VoiceLlmNode(Node):
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
             return
+        emotion = payload.get("emotion")
+        ts = float(payload.get("timestamp", 0.0))
         with self._emotion_lock:
-            self._last_emotion = payload.get("emotion")
-            self._last_emotion_ts = float(payload.get("timestamp", 0.0))
+            self._last_emotion = emotion
+            self._last_emotion_ts = ts
+        if emotion:
+            with self._session_emotion_lock:
+                self._session_emotion_samples.append((ts, emotion))
 
     def get_emotion_context(self) -> str:
         with self._emotion_lock:
@@ -729,16 +813,16 @@ class VoiceLlmNode(Node):
             self.get_logger().error(f"[ATTENTION_RECALL] TTS failed: {exc}")
 
     def run_child_activity_session(self) -> None:
-        
         with self._mode_lock:
             context = dict(self._child_activity_context)
         activity_type = str(context.get("activity_type", "generic_child_activity"))
+        child_name = str(context.get("child_name", "")).strip()
         self.get_logger().info(
             f"Starting child activity with child. activity_type={activity_type}"
         )
         self.publish_state("child_activity_active")
+        self._start_keyboard_monitor()
 
-        # The robot opens the activity without waiting for child input.
         try:
             opening = child_activity_opening(activity_type, context)
             self.history.append({"role": "user", "content": "[START_ACTIVITY]"})
@@ -751,9 +835,9 @@ class VoiceLlmNode(Node):
         except (LlmError, TextToSpeechError) as exc:
             self.get_logger().error(f"Child activity opening failed: {exc}")
 
-        # Interactive turns: child speaks, robot reacts 
         max_turns = int(self.get_parameter("storytelling_max_turns").value)
         turns = 0
+        reason = "stopped"
 
         while (
             rclpy.ok()
@@ -763,14 +847,29 @@ class VoiceLlmNode(Node):
         ):
             try:
                 child_text = self.read_child_text()
+                graceful_key = str(self.get_parameter("graceful_stop_key").value)
                 if child_text.lower() in {"/quit", "/exit", "quit", "exit"}:
                     break
-                if not child_text:
-                    # VAD: no speech detected within max_duration
+                if child_text.strip().lower() == graceful_key:
+                    self._graceful_stop_requested.set()
+                if not child_text or self._graceful_stop_requested.is_set():
+                    if self._graceful_stop_requested.is_set():
+                        reason = "graceful_stop_by_therapist"
+                        break
                     continue
                 self.handle_utterance(child_text)
                 self.handle_attention_recall()
                 turns += 1
+
+                if self._graceful_stop_requested.is_set():
+                    reason = "graceful_stop_by_therapist"
+                    break
+
+                disengagement_result = self.check_disengagement(activity_type)
+                if disengagement_result == "child_requested_stop":
+                    reason = "child_requested_stop"
+                    break
+
                 self.publish_state("ready")
             except EOFError:
                 break
@@ -786,15 +885,44 @@ class VoiceLlmNode(Node):
                     f"{type(exc).__name__}: {exc}"
                 )
 
-        reason = "max_turns" if (max_turns > 0 and turns >= max_turns) else "stopped"
-        self.get_logger().info(
-            f"Child activity ended: {turns} turns, reason={reason}, activity_type={activity_type}"
+        if reason == "stopped" and max_turns > 0 and turns >= max_turns:
+            reason = "max_turns"
+
+        if reason == "graceful_stop_by_therapist":
+            self._speak_farewell(activity_type, child_name)
+
+        self._stop_keyboard_monitor()
+
+        duration_sec = time.monotonic() - self._session_start_time
+        with self._session_emotion_lock:
+            emotion_samples = list(self._session_emotion_samples)
+        scores = compute_session_scores(
+            attention_alert_count=self._session_attention_alerts,
+            emotion_samples=emotion_samples,
+            child_turns=turns,
+            expected_turns=max_turns,
+            duration_sec=duration_sec,
         )
+        self.get_logger().info(
+            f"Child activity ended: {turns} turns, reason={reason}, "
+            f"activity_type={activity_type}, scores={scores}"
+        )
+
+        self._save_session_scores(
+            context=context,
+            activity_type=activity_type,
+            turns=turns,
+            duration_sec=duration_sec,
+            reason=reason,
+            scores=scores,
+        )
+
         memory_report_path = self.generate_memory_report(
             context=context,
             activity_type=activity_type,
             turns=turns,
             reason=reason,
+            scores=scores,
         )
         self.publish(
             self.dialog_complete_pub,
@@ -803,8 +931,9 @@ class VoiceLlmNode(Node):
                     "reason": reason,
                     "turns": turns,
                     "activity_type": activity_type,
-                    "child_name": str(context.get("child_name", "")),
+                    "child_name": child_name,
                     "memory_report_path": memory_report_path,
+                    "scores": scores,
                 }
             ),
         )
@@ -819,6 +948,7 @@ class VoiceLlmNode(Node):
         activity_type: str,
         turns: int,
         reason: str,
+        scores: Dict[str, float] | None = None,
     ) -> str:
         if not bool(self.get_parameter("memory_enabled").value):
             return ""
@@ -838,6 +968,7 @@ class VoiceLlmNode(Node):
                 memory_context=dict(context.get("child_memory", {})),
                 completion_reason=reason,
                 turns=turns,
+                scores=scores,
                 llm_client=self.llm,
                 temperature=float(self.get_parameter("temperature").value),
                 max_response_tokens=max(
@@ -852,6 +983,208 @@ class VoiceLlmNode(Node):
             return ""
         self.get_logger().info(f"Child memory report written to: {report_path}")
         return report_path
+
+    def _save_session_scores(
+        self,
+        *,
+        context: Dict[str, Any],
+        activity_type: str,
+        turns: int,
+        duration_sec: float,
+        reason: str,
+        scores: Dict[str, float],
+    ) -> None:
+        path = str(self.get_parameter("session_scores_path").value)
+        child_name = str(context.get("child_name", "")).strip()
+        if not path or not child_name:
+            return
+        session_data = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "activity_type": activity_type,
+            "task_description": str(context.get("task", "")),
+            "scores": scores,
+            "turns": turns,
+            "duration_sec": round(duration_sec, 1),
+            "completion_reason": reason,
+        }
+        try:
+            save_session_score(path, child_name, session_data)
+            self.get_logger().info(
+                f"Session scores saved for {child_name}: {scores}"
+            )
+        except Exception as exc:
+            self.get_logger().warning(
+                f"Could not save session scores: {type(exc).__name__}: {exc}"
+            )
+
+    def check_disengagement(self, activity_type: str) -> str | None:
+        now = time.monotonic()
+        if now < self._disengagement_cooldown_until:
+            return None
+        max_asks = int(self.get_parameter("disengagement_max_asks").value)
+        if self._disengagement_ask_count >= max_asks:
+            return None
+        alert_threshold = int(self.get_parameter("disengagement_alert_threshold").value)
+
+        window_sec = float(self.get_parameter("disengagement_check_window_sec").value)
+        with self._session_emotion_lock:
+            recent = [
+                (ts, em) for ts, em in self._session_emotion_samples
+                if time.time() - ts <= window_sec
+            ]
+        neg_ratio = 0.0
+        if recent:
+            valid = [(ts, em) for ts, em in recent if em not in ("no_face", "unavailable")]
+            if valid:
+                neg_count = sum(1 for _, em in valid if em in _NEGATIVE_EMOTIONS)
+                neg_ratio = neg_count / len(valid)
+
+        neg_threshold = float(self.get_parameter("disengagement_negative_emotion_ratio").value)
+        alert_triggered = self._disengagement_alert_count >= alert_threshold
+        emotion_triggered = neg_ratio >= neg_threshold and len(recent) >= 3
+
+        if not alert_triggered and not emotion_triggered:
+            return None
+
+        self.get_logger().info(
+            f"[DISENGAGEMENT] Threshold reached: alerts={self._disengagement_alert_count}, "
+            f"neg_ratio={neg_ratio:.2f}. Asking child."
+        )
+        question = self._generate_disengagement_question(activity_type)
+        self._session_transcript.append({"role": "assistant", "content": question})
+        self.publish(self.robot_publisher, question)
+        try:
+            self.publish_state("speaking")
+            self.tts.speak(question)
+        except TextToSpeechError as exc:
+            self.get_logger().error(f"[DISENGAGEMENT] TTS failed: {exc}")
+
+        self._disengagement_ask_count += 1
+        try:
+            child_response = self.read_child_text()
+        except (SpeechToTextError, EOFError):
+            child_response = ""
+
+        if child_response:
+            self._session_transcript.append({"role": "child", "content": child_response})
+
+        if self._child_wants_to_stop(child_response):
+            farewell = "Okay, no problem! Let's do something else."
+            self._session_transcript.append({"role": "assistant", "content": farewell})
+            self.publish(self.robot_publisher, farewell)
+            try:
+                self.publish_state("speaking")
+                self.tts.speak(farewell)
+            except TextToSpeechError:
+                pass
+            return "child_requested_stop"
+
+        self._disengagement_alert_count = 0
+        cooldown = float(self.get_parameter("disengagement_cooldown_sec").value)
+        self._disengagement_cooldown_until = now + cooldown
+        self.get_logger().info(
+            f"[DISENGAGEMENT] Child wants to continue. Cooldown {cooldown}s."
+        )
+        return None
+
+    def _generate_disengagement_question(self, activity_type: str) -> str:
+        if self._attention_llm is not None:
+            prompt = _DISENGAGEMENT_SYSTEM_PROMPT.format(activity_type=activity_type)
+            try:
+                result = self._attention_llm.chat(
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": f"The child seems disengaged from {activity_type}."},
+                    ],
+                    temperature=0.7,
+                    max_response_tokens=30,
+                )
+                if result and result.strip():
+                    return result.strip()
+            except LlmError:
+                pass
+        return _DISENGAGEMENT_QUESTION_FALLBACKS.get(
+            activity_type,
+            _DISENGAGEMENT_QUESTION_FALLBACKS["generic_child_activity"],
+        )
+
+    @staticmethod
+    def _child_wants_to_stop(response: str) -> bool:
+        if not response:
+            return False
+        words = response.lower().strip()
+        if any(kw in words for kw in _STOP_KEYWORDS):
+            if not any(kw in words for kw in _CONTINUE_KEYWORDS):
+                return True
+        return False
+
+    def _speak_farewell(self, activity_type: str, child_name: str) -> None:
+        farewell = self._generate_farewell(activity_type, child_name)
+        self.get_logger().info(f"[GRACEFUL_STOP] Farewell: {farewell}")
+        self._session_transcript.append({"role": "assistant", "content": farewell})
+        self.publish(self.robot_publisher, farewell)
+        try:
+            self.publish_state("speaking")
+            self.tts.speak(farewell)
+        except TextToSpeechError as exc:
+            self.get_logger().error(f"[GRACEFUL_STOP] TTS failed: {exc}")
+
+    def _generate_farewell(self, activity_type: str, child_name: str) -> str:
+        name_part = child_name if child_name else "the child"
+        if self._attention_llm is not None:
+            prompt = _FAREWELL_SYSTEM_PROMPT.format(child_name=name_part)
+            try:
+                result = self._attention_llm.chat(
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": f"Say goodbye after {activity_type}."},
+                    ],
+                    temperature=0.7,
+                    max_response_tokens=30,
+                )
+                if result and result.strip():
+                    return result.strip()
+            except LlmError:
+                pass
+        return _FAREWELL_FALLBACKS.get(
+            activity_type,
+            _FAREWELL_FALLBACKS["generic_child_activity"],
+        )
+
+    def _start_keyboard_monitor(self) -> None:
+        if str(self.get_parameter("input_mode").value) != "voice":
+            return
+        self._graceful_stop_requested.clear()
+        self._keyboard_monitor_thread = threading.Thread(
+            target=self._keyboard_monitor_loop,
+            name="keyboard_monitor",
+            daemon=True,
+        )
+        self._keyboard_monitor_thread.start()
+
+    def _stop_keyboard_monitor(self) -> None:
+        self._keyboard_monitor_thread = None
+
+    def _keyboard_monitor_loop(self) -> None:
+        graceful_key = str(self.get_parameter("graceful_stop_key").value).lower()
+        try:
+            while (
+                rclpy.ok()
+                and not self._stop_event.is_set()
+                and not self._child_activity_stop_event.is_set()
+                and self._keyboard_monitor_thread is not None
+            ):
+                ready, _, _ = select.select([sys.stdin], [], [], 0.5)
+                if ready:
+                    line = sys.stdin.readline().strip().lower()
+                    if line == graceful_key:
+                        self._graceful_stop_requested.set()
+                        self.get_logger().info(
+                            f"[KEYBOARD] Graceful stop key '{graceful_key}' detected"
+                        )
+                        return
+        except (OSError, ValueError):
+            pass
 
     def interaction_loop(self) -> None:
         input_mode = str(self.get_parameter("input_mode").value)

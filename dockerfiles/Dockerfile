@@ -121,7 +121,12 @@ RUN python3 -m pip install --no-cache-dir \
     ultralytics==8.4.71 \
     ftfy
 
-# Pre-download DINOv2 ViT-L/14 backbone 
+# Ultralytics CLIP (pinned) — prevents 31s runtime auto-install on every container start
+RUN python3 -m pip install --no-cache-dir \
+    git+https://github.com/ultralytics/CLIP.git@16be45c7062240d445cce764f2afd9454a91ef7e
+ENV YOLO_AUTOINSTALL=0
+
+# Pre-download DINOv2 ViT-L/14 backbone
 RUN python3 -c "\
 import torch; \
 torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', pretrained=True); \

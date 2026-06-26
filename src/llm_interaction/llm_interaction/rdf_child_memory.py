@@ -392,6 +392,17 @@ def format_memory_for_report(memory_context: Mapping[str, Any]) -> str:
     return str(memory_context.get("prompt_text", "Stored memory was found."))
 
 
+def _format_scores_section(scores):
+    if not isinstance(scores, dict):
+        return "No session scores were computed."
+    lines = []
+    for key in ("attention", "emotion", "participation", "overall"):
+        value = scores.get(key)
+        if value is not None:
+            lines.append(f"- {key}: {value}")
+    return "\n".join(lines) if lines else "No session scores were computed."
+
+
 def generate_child_memory_report(
     *,
     report_dir: str,
@@ -400,6 +411,7 @@ def generate_child_memory_report(
     memory_context: Mapping[str, Any],
     completion_reason: str,
     turns: int,
+    scores=None,
     llm_client: Optional[Any] = None,
     temperature: float = 0.2,
     max_response_tokens: int = 400,
@@ -434,6 +446,7 @@ def generate_child_memory_report(
 
     transcript_text = compact_transcript(transcript)
     candidate_memory_updates = candidate_updates(transcript, memory_context)
+    scores_section = _format_scores_section(scores)
     body = f"""# Child Memory Session Report
 
 Child name: {child_name}
@@ -443,6 +456,9 @@ Activity description: {context.get("activity_description", "")}
 Date/time: {now.isoformat(timespec="seconds")}
 Number of turns: {turns}
 Completion reason: {completion_reason}
+
+## Session scores
+{scores_section}
 
 ## Memory used at session start
 {format_memory_for_report(memory_context)}

@@ -4,12 +4,16 @@ mission_orchestrator_node:
     static_scene_graph_path: "/root/exchange/src/empower/config/scenes/therapy_room_scene_graph.json"
     nav_action_name: "navigate_to_pose"
     params_file: "/root/exchange/src/empower/config/empower_config.yaml"
+    session_scores_path: "/root/exchange/output/interaction_output/session_scores.json"
     wait_for_task_timeout_sec: 300.0
     wait_for_activity_timeout_sec: 300.0
     wait_for_child_name_timeout_sec: 300.0
+    proposal_acceptance_timeout_sec: 15.0
+    child_name_ask_text: "Hello! Which child do we have today?"
+    child_name_ack_text: "Okay, I know {child_name}."
     task_ack_text: "Okay, I understood the task."
-    activity_ack_text: "Okay, I understood the activity. What is the child's name?"
-    child_name_ack_text: "Okay, I will personalize the activity for {child_name}."
+    no_history_text: "I don't have any previous sessions with {child_name} yet. What would you like me to do?"
+    proposal_text: "Last time, {child_name} really enjoyed {activity_label}. Shall we do that again? Say something if you prefer a different activity."
     default_activity_type: "generic_child_activity"
     auto_start: true
     action_server_timeout_sec: 20.0
@@ -24,7 +28,7 @@ mission_orchestrator_node:
     storytelling_timeout_sec: 300.0
     child_activity_timeout_sec: 300.0
     gaze_estimation:
-      enabled: true 
+      enabled: true
       camera_index: 0
       device: "auto"
       show_window: true

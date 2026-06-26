@@ -33,6 +33,13 @@ voice_llm_node:
     memory_max_prompt_facts: 12
     memory_seed_if_missing: true
     memory_update_enabled: false
+    session_scores_path: "/root/exchange/output/interaction_output/session_scores.json"
+    disengagement_alert_threshold: 4
+    disengagement_negative_emotion_ratio: 0.6
+    disengagement_check_window_sec: 120.0
+    disengagement_cooldown_sec: 180.0
+    disengagement_max_asks: 2
+    graceful_stop_key: "q"
     emotion_staleness_threshold_sec: 15.0
     emotion_prompt_hints:
       sad: "seems a bit sad or down. Keep a warm, gentle, reassuring tone. Avoid sad, scary, or negative-outcome content in stories or topics."

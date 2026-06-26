@@ -1,10 +1,11 @@
 # Stato attuale della repo ElectiveAI
 
-Questo documento e' pensato per essere passato a ChatGPT come contesto tecnico
-della repo. Descrive lo stato attuale del codice, l'architettura dei package
-ROS 2, il flusso di esecuzione della simulazione TIAGo in Gazebo e, in modo
-particolare, la pipeline EMPOWER e l'interazione robot-bambino con gaze
-estimation integrata.
+Questo documento e' pensato per essere passato a un assistente AI come contesto
+tecnico della repo. Descrive lo stato attuale del codice, l'architettura dei
+package ROS 2, il flusso di esecuzione della simulazione TIAGo in Gazebo e, in
+modo particolare, la pipeline EMPOWER, lo scene graph statico, l'interazione
+robot-bambino con gaze estimation integrata e il sistema di memoria bambino
+basato su RDF.
 
 ## Sintesi generale
 
@@ -15,15 +16,21 @@ basata su EMPOWER. La scena supportata e' una scena custom:
 - world: `exchange/scene.world`
 - mappa statica Nav2: `exchange/maps/scene.yaml`
 - configurazione EMPOWER: `src/empower/config/empower_config.yaml`
+- scene graph statico: `src/empower/config/scenes/therapy_room_scene_graph.json`
 
 La repo e' organizzata intorno a tre componenti principali:
 
-1. `empower`: adapter ROS 2 della pipeline EMPOWER, piu orchestrazione
+1. `empower`: adapter ROS 2 della pipeline EMPOWER, piu' orchestrazione
    missione, Nav2, capture RGB-D (single-view e multi-view), planning,
-   grounding, aggregazione multi-vista, visualizzazione ed esecuzione low-level.
+   grounding, aggregazione multi-vista, esecuzione low-level e scene graph
+   statico per la risoluzione delle pose di navigazione.
 2. `llm_interaction`: componente di interazione vocale/testuale. Usa STT,
-   LLM locale via Ollama e TTS per raccogliere istruzioni dal terapista e
-   dialogare con il bambino. Include richiamo attenzione basato su gaze.
+   LLM locale via Ollama e TTS (Piper) per raccogliere istruzioni dal
+   terapista e dialogare con il bambino. Include richiamo attenzione basato
+   su gaze, soglia di disengagement secondaria (basata su alert attenzione
+   accumulati e ratio emozioni negative), graceful stop da terapista,
+   memoria bambino basata su RDF, generazione report sessione e sistema di
+   punteggi sessione (session scores) con persistenza JSON.
 3. `gaze_estimation`: componente per stimare se una persona guarda un oggetto
    target usando webcam, Gazelle/Gaze-LLE e YOLO-World. Include un nodo
    `attention_monitor` che monitora la disattenzione durante le attivita'
@@ -119,17 +126,17 @@ semplice e stabile la simulazione.
 `empower` e' il package centrale. E' un package `ament_python` che espone
 questi console script:
 
-- `scene_capture_node`
 - `multi_view_capture_node`
 - `multi_view_aggregator`
 - `models_cacher_node`
 - `plan_generator_node`
-- `export_reports`
-- `color_pcl_node`
-- `marker_centroids_node`
 - `ground_truth_localizer_node`
 - `low_level_execution_node`
 - `mission_orchestrator_node`
+
+NOTA: `child_interaction_test_node` e' ancora elencato in `setup.py` come entry
+point, ma il modulo sorgente corrispondente e' stato cancellato (rimane solo
+`__pycache__`). Non e' utilizzabile.
 
 Il package contiene due livelli di codice:
 
@@ -142,6 +149,84 @@ presenti anche direttamente in `src/empower/` e risultano identici alle
 copie sotto `src/empower/python/`. La configurazione `setup.py` installa
 questi file come `py_modules`, mentre il package ROS 2 vero e proprio sta in
 `python/empower`.
+
+### Launch files del package empower
+
+I launch file attualmente presenti sono solo tre:
+
+- `empower_plan.launch.py`
+- `hri_empower_mission.launch.py`
+- `tiago_nav2_ground_truth.launch.py`
+
+I vecchi launch file (`empower_capture.launch.py`, `empower_models_cacher.launch.py`,
+`empower_multiview_capture.launch.py`, `empower_visualization.launch.py`,
+`empower_execute.launch.py`) sono stati rimossi.
+
+NOTA: NON esiste un launch file `child_interaction_test.launch.py`.
+
+## Static Scene Graph
+
+Il sistema usa ora uno scene graph statico caricato da JSON al posto delle pose
+hardcoded nei file YAML. Questo e' il cambiamento architetturale piu' importante
+rispetto alle versioni precedenti.
+
+### Modulo e file
+
+- Modulo Python: `src/empower/python/empower/static_scene_graph.py`
+  (classe `StaticSceneGraph`)
+- File JSON: `src/empower/config/scenes/therapy_room_scene_graph.json`
+
+### Struttura dello scene graph
+
+Lo scene graph definisce nodi e archi semantici:
+
+Nodi (ognuno con tipo, pose opzionale, alias, ruoli):
+
+- `room_therapy`: type=room
+- `zone_center`: type=zone, pose=[4.8, 0.0, 1.72], roles=[capture_origin,
+  mission_reset], aliases=[center, spawn, ...]
+- `therapist`: type=person, aliases=[therapist, person, adult, ...]
+- `therapist_interaction_pose`: type=nav_pose, target=therapist,
+  pose=[0.0, -1.3, -1.5708], roles=[receive_instruction, ask_activity]
+- `child`: type=person, aliases=[child, kid, ...]
+- `child_delivery_pose`: type=nav_pose, target=child,
+  pose=[0.0, 0.95, 1.5708], roles=[deliver_object, start_child_interaction],
+  via=[child_approach_waypoint]
+- `child_approach_waypoint`: type=waypoint, pose=[3.0, 0.0, 3.14159]
+- `child_delivery_table`: type=surface,
+  drop_pose=[0.0, 1.65, 0.65, 1.5708], roles=[child_delivery_drop]
+
+Archi (relazioni semantiche): `located_in`, `approaches`, `reachable_via`,
+`used_for`.
+
+### Utilizzo nello scene graph
+
+L'orchestratore missione chiama `self.static_scene_graph.resolve_nav_pose(target,
+role=role)` per ottenere le pose di navigazione, al posto delle vecchie chiavi
+YAML `therapist_pose`, `spawn_pose`, `child_pose` (che non esistono piu' in
+`task_config.yaml`).
+
+`low_level_execution_node` usa lo scene graph per:
+
+- Risoluzione alias child/person
+- Risoluzione nav pose per target non visuali
+- Risoluzione drop pose (es. `child_delivery_table`)
+- Risoluzione waypoint intermedi (es. `child_approach_waypoint` prima di
+  arrivare al bambino)
+
+### Configurazione
+
+In `task_config.yaml`:
+
+```yaml
+static_scene_graph_path: "/root/exchange/src/empower/config/scenes/therapy_room_scene_graph.json"
+```
+
+In `empower_config.yaml`:
+
+```yaml
+static_scene_graph_path: "/root/exchange/src/empower/config/scenes/therapy_room_scene_graph.json"
+```
 
 ## Configurazione principale EMPOWER
 
@@ -168,9 +253,28 @@ base_frame: base_footprint
 nav_action_name: navigate_to_pose
 standoff_distance: 1.2
 continue_on_nav_failure: false
+depth_unit_scale_to_mm: ...
+static_scene_graph_path: "/root/exchange/src/empower/config/scenes/therapy_room_scene_graph.json"
 ```
 
-### Multi-view EMPOWER (novita')
+Campi rimossi rispetto alle versioni precedenti:
+
+- `child_navigation` (intera sezione rimossa)
+- `person_navigation` (intera sezione rimossa)
+- `object_simulation.child_delivery_table_drop_*` (le drop pose vengono dallo
+  scene graph)
+
+Campi aggiunti:
+
+- `static_scene_graph_path`
+- `depth_unit_scale_to_mm`
+- `multi_view.merge.min_detection_confidence`
+- `object_simulation.world_sdf_path`
+- `object_simulation.gz_cli_timeout_sec`
+- `object_simulation.world_frame: world`
+- `object_simulation.robot_base_frame: base_footprint`
+
+### Multi-view EMPOWER
 
 La YAML abilita la modalita' multi-view per la capture:
 
@@ -190,12 +294,13 @@ multi_view:
     small_object_distance_m: 0.25
     large_object_distance_m: 0.60
     z_threshold_m: 0.25
+    min_detection_confidence: ...
 ```
 
 Quando `multi_view.enabled` e' true, l'orchestratore usa `multi_view_capture_node`
-al posto di `scene_capture_node`. Il nodo ruota il robot sul posto (via Nav2)
-catturando una serie di viste RGB-D a 360 gradi con sovrapposizione configurabile.
-I dettagli sono nella sezione dedicata piu' sotto.
+al posto del vecchio `scene_capture_node` (che non esiste piu' come entry point).
+Il nodo ruota il robot sul posto (via Nav2) catturando una serie di viste RGB-D
+a 360 gradi con sovrapposizione configurabile.
 
 ### Contesto non visuale del bambino
 
@@ -219,33 +324,15 @@ Questo contesto viene passato all'agente LLM di planning, ma viene filtrato
 dalla detection visuale per evitare che YOLO-World provi a rilevare il bambino
 nell'immagine.
 
-### Navigazione verso target non visuali
+### Navigazione verso target non visuali (via scene graph)
 
-La YAML definisce pose hardcoded per target non visuali:
-
-```yaml
-child_navigation:
-  enabled: true
-  frame_id: map
-  x: 0.0
-  y: 0.95
-  yaw: 1.5708
-  via_waypoint:
-    enabled: true
-    x: 3.0
-    y: 0.0
-    yaw: 3.14159
-
-person_navigation:
-  enabled: true
-  frame_id: map
-  x: 0.0
-  y: 0.0
-  yaw: -1.5708
-```
-
-Il nodo low-level intercetta `NAVIGATE to child` e `NAVIGATE to person` senza
-usare marker EMPOWER: genera goal Nav2 direttamente da queste pose.
+Le vecchie sezioni `child_navigation` e `person_navigation` con pose hardcoded
+sono state rimosse dalla YAML. Ora `low_level_execution_node` usa lo scene graph
+statico per risolvere le pose di navigazione verso target non visuali (child,
+therapist, ecc.). Il nodo intercetta `NAVIGATE to child` e `NAVIGATE to person`
+e genera goal Nav2 dalle pose definite nello scene graph, inclusi eventuali
+waypoint intermedi (es. `child_approach_waypoint` prima di raggiungere il
+bambino).
 
 ### Simulazione oggetti
 
@@ -255,10 +342,10 @@ La manipolazione non e' reale. La YAML abilita pero' una simulazione via Gazebo:
 object_simulation:
   enabled: true
   drop_distance: 0.75
-  child_delivery_table_drop_x: 0.0
-  child_delivery_table_drop_y: 1.65
-  child_delivery_table_drop_z: 1.7
-  child_delivery_table_drop_yaw: 1.5708
+  world_frame: world
+  robot_base_frame: base_footprint
+  world_sdf_path: ...
+  gz_cli_timeout_sec: ...
   hidden_x: 0.0
   hidden_y: 0.0
   hidden_z: -10.0
@@ -279,31 +366,23 @@ object_simulation:
       drop_z: 0.01
 ```
 
+Le drop pose per il tavolo di consegna bambino (`child_delivery_table`)
+vengono ora dallo scene graph (campo `drop_pose` del nodo
+`child_delivery_table`: `[0.0, 1.65, 0.65, 1.5708]`) e non piu' da
+campi `child_delivery_table_drop_*` nella YAML.
+
 Quando `low_level_execution_node` esegue:
 
 - `GRAB peluche`: sposta il modello Gazebo del peluche nella posizione nascosta
   (`hidden_z = -10.0`);
 - `DROP peluche`: riposiziona il modello. Se l'ultima navigazione era verso il
-  bambino, usa una posa fissa sul tavolo di consegna
-  `(x=0.0, y=1.65, z=1.7, yaw=1.5708)` nella YAML corrente.
+  bambino, usa la drop pose dal nodo `child_delivery_table` dello scene graph.
 
-Questa simulazione e' centrale nello stato attuale: il piano puo' manipolare il
-peluche anche se la detection finale non ha un marker specifico del peluche,
-perche' il mapping simbolico `peluche -> teddy_bear_on_right_table` e'
-hardcoded.
-
-## Pipeline EMPOWER multi-view (novita')
+## Pipeline EMPOWER multi-view
 
 ### Multi-view capture (`multi_view_capture_node`)
 
 File: `src/empower/python/empower/multi_view_capture_node.py`
-
-Launch:
-
-```bash
-ros2 launch empower empower_multiview_capture.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-```
 
 Il nodo:
 
@@ -353,16 +432,31 @@ Dopo che EMPOWER ha eseguito detection su ogni singola vista, l'aggregatore:
 
 ### Agenti LLM con supporto multi-view
 
-`agents.py` supporta ora immagini multiple: se riceve una lista di immagini
-base64 (una per vista), costruisce prompt che istruiscono l'LLM a trattarle
-come viste complementari della stessa scena (prefisso "View 0:", "View 1:",
-ecc.). La pipeline multi-agent e' altrimenti invariata:
+`agents.py` usa OpenAI Chat Completions con modello `gpt-4o`.
 
-1. `enviroment_agent`: relazioni spaziali;
-2. `description_agent`: descrizione scena;
-3. planning agent: piano simbolico.
+La pipeline multi-agent e':
 
-### Esecuzione low-level con global_detections.json
+1. `enviroment_agent`:
+   - input: immagine/i RGB base64 + task visuale;
+   - output: triple `(subject, relation, object)`;
+   - relazioni consentite/promosse: `right to`, `left to`, `behind to`,
+     `beside to`, `on`, ecc.
+   - in multi-view: riceve tutte le viste come immagini separate con prefisso
+     "View N:" e istruzione di trattarle come viste complementari.
+2. `description_agent`:
+   - input: immagine/i + relazioni del primo agente;
+   - output: descrizione testuale della scena e istruzioni preliminari.
+3. planning agent:
+   - input: task completo + descrizione + relazioni;
+   - output: solo azioni simboliche fra `NAVIGATE`, `GRAB`, `DROP`, `PULL`,
+     `PUSH`.
+
+Quando il task cita il bambino, `Agents` costruisce anche una versione
+"visual-only" del task per evitare che gli agenti visuali pretendano di vedere
+il bambino. Il contesto non visuale del bambino viene invece aggiunto al prompt
+di planning.
+
+### Esecuzione low-level con global_detections.json e scene graph
 
 Quando `multi_view.enabled` e' true, `low_level_execution_node` carica
 `global_detections.json` e lo usa per risolvere i target NAVIGATE:
@@ -371,8 +465,8 @@ Quando `multi_view.enabled` e' true, `low_level_execution_node` carica
   label normalizzate e gli alias;
 - Costruisce un goal Nav2 usando il centroide dell'oggetto nel frame `map` con
   `standoff_distance`;
-- I publisher point-cloud/marker (`color_pcl_node`, `marker_centroids_node`)
-  vengono saltati in modalita' multi-view.
+- Per target non visuali (child, person), usa lo scene graph per risolvere
+  la nav pose, inclusi waypoint intermedi.
 
 ### Model cacher con supporto multi-view
 
@@ -381,89 +475,6 @@ Quando `multi_view.enabled` e' true, `low_level_execution_node` carica
 la pipeline di detection per-vista e l'aggregazione successiva. Anche gli
 alias degli oggetti (`object_simulation.objects.*.aliases`) vengono passati
 al loader per normalizzare le label in fase di aggregazione.
-
-## Flusso EMPOWER single-view (legacy)
-
-Il flusso manuale tipico richiede terminali separati.
-
-### 1. Gazebo
-
-```bash
-ros2 launch tiago_gazebo tiago_gazebo.launch.py \
-  is_public_sim:=True \
-  gazebo_version:=classic \
-  world_name:=/root/exchange/exchange/scene.world
-```
-
-### 2. Nav2 con ground truth
-
-```bash
-ros2 launch empower tiago_nav2_ground_truth.launch.py \
-  map:=/root/exchange/exchange/maps/scene.yaml
-```
-
-### 3. Capture RGB-D (single-view)
-
-```bash
-ros2 launch empower empower_capture.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-```
-
-Nodo coinvolto: `scene_capture_node`.
-
-### 4. Model cacher
-
-```bash
-ros2 launch empower empower_models_cacher.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-```
-
-Nodo coinvolto: `models_cacher_node`.
-
-Ruolo:
-
-- carica una sola volta i modelli pesanti:
-  - YOLO-World;
-  - EfficientViT-SAM encoder/decoder ONNX;
-  - spaCy `en_core_web_sm`;
-  - word2vec `word2vec-google-news-300`;
-- legge `OPENAI_API_KEY` oppure `openai_api_key.txt`;
-- crea un `EmpowerLoader`, compatibile con il codice EMPOWER upstream;
-- apre un socket TCP su `127.0.0.1:10000`;
-- aspetta un messaggio JSON con `command: "detection"`;
-- esegue detection, grounding e planning.
-
-### 5. Planning EMPOWER
-
-```bash
-ros2 launch empower empower_plan.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-```
-
-Nodo coinvolto: `plan_generator_node`.
-
-### 6. Visualizzazione EMPOWER
-
-```bash
-ros2 launch empower empower_visualization.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-```
-
-Nodi coinvolti: `color_pcl_node`, `marker_centroids_node`.
-
-### 7. Esecuzione low-level
-
-```bash
-ros2 launch empower empower_execute.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-```
-
-Azioni supportate:
-
-- `NAVIGATE` e' implementato via Nav2 `NavigateToPose`;
-- `GRAB` e `DROP` sono simulati via `gz model` solo per oggetti configurati;
-- `PUSH` e `PULL` vengono riconosciuti ma non implementati;
-- non c'e' controllo reale di braccio/gripper.
 
 ## Missione orchestrata HRI + EMPOWER
 
@@ -487,65 +498,185 @@ La configurazione missione e':
 src/empower/config/task_config.yaml
 ```
 
-Pose correnti:
+Contenuto corrente di `task_config.yaml`:
 
 ```yaml
-therapist_pose: [0.0, -1.3, -1.5708]
-spawn_pose: [4.8, 0.0, 1.72]
-child_pose: [0.0, 0.95, 1.5708]
+mission_orchestrator_node:
+  ros__parameters:
+    map_frame: "map"
+    static_scene_graph_path: "/root/exchange/src/empower/config/scenes/therapy_room_scene_graph.json"
+    session_scores_path: "/root/exchange/output/interaction_output/session_scores.json"
+    nav_action_name: "navigate_to_pose"
+    params_file: "/root/exchange/src/empower/config/empower_config.yaml"
+    wait_for_task_timeout_sec: 300.0
+    wait_for_activity_timeout_sec: 300.0
+    wait_for_child_name_timeout_sec: 300.0
+    proposal_acceptance_timeout_sec: 15.0
+    task_ack_text: "Okay, I understood the task."
+    activity_ack_text: "Okay, I understood the activity. What is the child's name?"
+    child_name_ack_text: "Okay, I will personalize the activity for {child_name}."
+    child_name_ask_text: "What is the child's name?"
+    no_history_text: "I don't have session history for this child. Please tell me the task."
+    proposal_text: "Based on past sessions, I suggest {activity}. Say something to override, or wait to accept."
+    default_activity_type: "generic_child_activity"
+    auto_start: true
+    action_server_timeout_sec: 20.0
+    nav_result_timeout_sec: 300.0
+    empower_process_timeout_sec: 0.0
+    capture_timeout_sec: 300.0
+    capture_before_empower: true
+    execute_empower_plan: true
+    child_delivery_handled_by_empower: true
+    use_case: "therapy_task"
+    output_root: "/root/exchange/output"
+    storytelling_timeout_sec: 300.0
+    child_activity_timeout_sec: 300.0
+    gaze_estimation:
+      enabled: true
+      camera_index: 0
+      device: "auto"
+      show_window: true
+      startup_timeout_sec: 120.0
 ```
 
-Stati missione:
+NOTA: le vecchie chiavi `therapist_pose`, `spawn_pose`, `child_pose` NON
+esistono piu'. Le pose vengono ora dallo scene graph.
+
+Parametri nuovi rispetto alla versione precedente:
+
+- `session_scores_path`: path del file JSON dei punteggi sessione.
+- `proposal_acceptance_timeout_sec`: timeout (in secondi) per l'accettazione
+  automatica della proposta di attivita'.
+- `child_name_ask_text`: testo pronunciato per chiedere il nome del bambino.
+- `no_history_text`: testo pronunciato se non c'e' storico per il bambino.
+- `proposal_text`: template per la proposta di attivita' (con `{activity}`).
+
+### Stati missione
+
+Il flusso e' ora "child-first": il nome del bambino e' il PRIMO input
+richiesto. Se esiste uno storico di punteggi sessione per quel bambino,
+il robot propone automaticamente l'attivita' con il miglior punteggio medio;
+altrimenti chiede task e attivita' manualmente alla terapista.
 
 ```text
 GO_TO_THERAPIST
-WAIT_TASK
-ACK_TASK
-WAIT_ACTIVITY
-ACK_ACTIVITY
+WAIT_CHILD_NAME
+ACK_CHILD_NAME
+PROPOSE_ACTIVITY
+WAIT_THERAPIST_OVERRIDE
+ACK_PROPOSAL
 GO_TO_SPAWN
 RUN_EMPOWER
 GO_TO_CHILD
 CHILD_READY
 CHILD_ACTIVITY
+GO_BACK_TO_THERAPIST
 MISSION_COMPLETE
 MISSION_FAILED
 ```
 
-Nel config attuale:
+Se non c'e' storico per il bambino, dopo ACK_CHILD_NAME il flusso passa
+per gli stati WAIT_TASK -> ACK_TASK -> WAIT_ACTIVITY -> ACK_ACTIVITY prima
+di GO_TO_SPAWN (fallback al flusso manuale).
 
-```yaml
-capture_before_empower: true
-execute_empower_plan: true
-child_delivery_handled_by_empower: true
-```
+Il flusso completo dell'orchestratore (caso con storico):
 
-L'orchestratore:
-
-1. naviga dal terapista;
-2. aspetta il task su `/hri/user_utterance`;
-3. fa ack via `/hri/dialog_command`;
-4. aspetta la descrizione dell'attivita' per il bambino;
-5. torna allo spawn;
-6. esegue capture EMPOWER (multi-view se abilitato, altrimenti single-view);
-7. lancia planning EMPOWER;
-8. lancia esecuzione EMPOWER (con o senza point cloud/marker publishers a
-   seconda della modalita' multi-view);
-9. se `child_delivery_handled_by_empower` e' true, non fa una seconda
-   navigazione hardcoded al bambino;
-10. pubblica `/mission/child_ready`;
-11. **lancia la gaze estimation come sottoprocesso** (se abilitata);
-12. avvia l'attivita' bambino via HRI (stato `CHILD_ACTIVITY`);
-13. al termine dell'attivita' ferma la gaze estimation;
-14. transiziona a `MISSION_COMPLETE`.
+1. Naviga dal terapista (pose risolta dallo scene graph via ruolo
+   `receive_instruction`) (`GO_TO_THERAPIST`);
+2. Aspetta il nome del bambino su `/hri/user_utterance`
+   (`WAIT_CHILD_NAME`);
+3. `ACK_CHILD_NAME`: conferma il nome ricevuto;
+4. `PROPOSE_ACTIVITY`: chiama `best_activity_for_child()` dal modulo
+   `session_scores` per trovare l'attivita' con il miglior punteggio medio
+   storico. Se trova uno storico, propone l'attivita' alla terapista
+   (es. "I suggest storytelling based on past sessions");
+5. `WAIT_THERAPIST_OVERRIDE`: attende un timeout
+   (`proposal_acceptance_timeout_sec`). Se la terapista parla prima del
+   timeout, la proposta viene sovrascritta con l'input manuale; se il
+   timeout scade senza input, la proposta viene accettata
+   automaticamente;
+6. `ACK_PROPOSAL`: conferma l'attivita' scelta;
+7. Torna allo spawn (pose risolta dallo scene graph via ruolo
+   `mission_reset`) (`GO_TO_SPAWN`);
+8. Esegue capture EMPOWER (multi-view se abilitato) (`RUN_EMPOWER`);
+9. Lancia planning EMPOWER;
+10. Lancia esecuzione EMPOWER;
+11. Se `child_delivery_handled_by_empower` e' true, NON fa una seconda
+    navigazione hardcoded al bambino (stato `GO_TO_CHILD` saltato);
+12. Pubblica `/mission/child_ready`;
+13. Lancia la gaze estimation come sottoprocesso (se abilitata);
+14. Avvia l'attivita' bambino via HRI (stato `CHILD_ACTIVITY`), passando
+    `child_name` nel contesto;
+15. Al termine dell'attivita' ferma la gaze estimation;
+16. `GO_BACK_TO_THERAPIST`: il robot torna dalla terapista e pronuncia un
+    riepilogo dell'attivita' con i punteggi sessione;
+17. Transiziona a `MISSION_COMPLETE`.
 
 Se la gaze estimation non riesce ad avviarsi (timeout, errore modelli, webcam
 non disponibile), la missione transiziona a `MISSION_FAILED`.
 
+### Mapping attivita' -> task EMPOWER
+
+Il modulo `session_scores` definisce `ACTIVITY_TO_TASK`:
+
+```text
+storytelling           -> book
+mood_check_teddy       -> teddy bear
+computer_emotion_recognition -> computer
+```
+
+Questo mapping viene usato dall'orchestratore per associare automaticamente
+il task fisico EMPOWER quando il robot propone un'attivita' basata sullo
+storico.
+
+### MissionInteractionSpec
+
+Il dataclass che passa informazioni tra orchestratore e HRI:
+
+```python
+@dataclass
+class MissionInteractionSpec:
+    task_description: str = ""
+    activity_description: str = ""
+    activity_type: str = "generic_child_activity"
+    child_name: str = ""
+```
+
+Il campo `child_name` e' stato aggiunto per supportare la personalizzazione
+dell'attivita' in base al nome del bambino.
+
+### Sistema di punteggi sessione (session_scores)
+
+Il modulo `session_scores.py` calcola 4 punteggi (0-100) alla fine di ogni
+attivita' bambino:
+
+- **attention**: basato sugli alert di attenzione accumulati durante la
+  sessione (`_session_attention_alerts`).
+- **emotion**: basato sui campioni emozionali raccolti durante la sessione
+  (`_session_emotion_samples`).
+- **participation**: basato sulla partecipazione attiva del bambino.
+- **overall**: media pesata dei tre punteggi precedenti.
+
+I punteggi vengono salvati in:
+
+```text
+output/interaction_output/session_scores.json
+```
+
+Il file JSON e' organizzato per bambino e per sessione. La funzione
+`best_activity_for_child(child_name)` interroga lo storico e restituisce
+l'attivita' con il miglior punteggio overall medio. Il mapping
+`ACTIVITY_TO_TASK` converte il tipo di attivita' nel task fisico EMPOWER
+corrispondente (es. `storytelling` -> `book`).
+
+Nel `voice_llm_node`, a fine sessione vengono chiamati
+`compute_session_scores()` e `save_session_score()`. Il payload di
+`/hri/dialog_complete` ora include un campo `scores` con i punteggi.
+Il report Markdown include una sezione "Session scores".
+
 ## Interazione robot-bambino e gaze estimation (dettaglio)
 
-Questa sezione descrive in dettaglio il flusso dell'interazione con il bambino,
-che e' la parte piu' recente e integrata del sistema.
+Questa sezione descrive in dettaglio il flusso dell'interazione con il bambino.
 
 ### Panoramica
 
@@ -701,6 +832,18 @@ Il nodo HRI e' stato esteso per consumare gli alert di disattenzione:
   - `computer_emotion_recognition`: "Let's look at the screen together!"
   - `generic_child_activity`: "Hey, look at me! Let's continue together!"
 
+#### Regole di stile per risposte al bambino
+
+Il `voice_llm_node` applica regole di stile esplicite per le risposte
+child-facing tramite la costante `_CHILD_ACTIVITY_STYLE_RULES`:
+
+```text
+"Use exactly two short sentences for each child-facing response.
+ Sentence 1: contribute one small new piece of the activity.
+ Sentence 2: ask one simple question or invitation for the child.
+ ..."
+```
+
 ### Flusso completo interazione bambino
 
 ```text
@@ -710,8 +853,10 @@ Il nodo HRI e' stato esteso per consumare gli alert di disattenzione:
 4. gaze_webcam_node pubblica {"state": "READY"} su /gaze/node_status
 5. Orchestratore riceve READY -> stato CHILD_ACTIVITY
 6. Orchestratore -> pubblica start_child_activity su /hri/dialog_command
+   (con child_name nel contesto)
 7. attention_monitor_node riceve start_child_activity, configura target validi
-8. voice_llm_node inizia l'attivita' (es. storytelling)
+8. voice_llm_node inizia l'attivita' (es. storytelling), con memoria bambino
+   iniettata nel system prompt se disponibile
 9. [Loop turni dialogo]:
    a. voice_llm_node genera risposta LLM e la pronuncia con TTS
    b. voice_llm_node pubblica "speaking" su /hri/dialog_state
@@ -720,15 +865,53 @@ Il nodo HRI e' stato esteso per consumare gli alert di disattenzione:
    e. attention_monitor_node conta tempo disattenzione
    f. Se disattenzione > 2.5s -> pubblica alert su /hri/attention_alert
    g. voice_llm_node finisce TTS
-   h. voice_llm_node controlla alert pendente
+   h. voice_llm_node controlla alert pendente (richiamo attenzione breve)
    i. Se alert: genera/pronuncia frase richiamo (non in history)
-   j. voice_llm_node pubblica "listening" su /hri/dialog_state
-   k. attention_monitor_node si disarma
-   l. voice_llm_node ascolta risposta bambino (STT)
-10. Fine attivita' -> voice_llm_node pubblica su /hri/dialog_complete
+   j. voice_llm_node incrementa _session_attention_alerts e
+      _disengagement_alert_count
+   k. voice_llm_node chiama check_disengagement():
+      - Se alert count >= disengagement_alert_threshold (default 4)
+        OPPURE negative emotion ratio >= disengagement_negative_emotion_ratio
+        (default 0.6) su finestra disengagement_check_window_sec (default 120s)
+      - Chiede al bambino "Would you prefer to stop?" via LLM (con fallback)
+      - Se il bambino vuole fermarsi: reason = "child_requested_stop"
+      - Se il bambino vuole continuare: reset contatori, cooldown
+        disengagement_cooldown_sec (default 180s)
+      - Max richieste per sessione: disengagement_max_asks (default 2)
+   l. voice_llm_node pubblica "listening" su /hri/dialog_state
+   m. attention_monitor_node si disarma
+   n. voice_llm_node ascolta risposta bambino (STT)
+   o. Ogni utterance viene registrata nel _session_transcript
+   p. emotion_status_callback appende a _session_emotion_samples
+   q. Se graceful stop attivato: il robot pronuncia un saluto (LLM con
+      fallback), poi termina. Reason = "graceful_stop_by_therapist"
+10. Fine attivita':
+    a. voice_llm_node calcola punteggi sessione (compute_session_scores)
+    b. voice_llm_node salva punteggi (save_session_score)
+    c. voice_llm_node genera report Markdown (con sezione "Session scores")
+    d. voice_llm_node pubblica su /hri/dialog_complete
+       (payload include child_name, memory_report_path e scores)
 11. Orchestratore -> ferma gaze estimation
-12. Orchestratore -> stato MISSION_COMPLETE
+12. Orchestratore -> stato GO_BACK_TO_THERAPIST: naviga verso la terapista
+    e pronuncia un riepilogo dell'attivita' con i punteggi
+13. Orchestratore -> stato MISSION_COMPLETE
 ```
+
+### Graceful stop
+
+La terapista puo' fermare l'attivita' bambino in modo controllato:
+
+- In modalita' voice: preme il tasto `q` (configurabile via
+  `graceful_stop_key`). Un thread monitor tastiera usa `select.select`
+  su stdin per rilevare la pressione.
+- In modalita' text: digita `q` come input.
+- Via topic: pubblica `{"command": "graceful_stop"}` su
+  `/hri/dialog_command`.
+
+Dopo lo scambio corrente, il robot pronuncia un saluto (generato dall'LLM
+con fallback hardcoded), poi termina la sessione. I punteggi e il report
+vengono generati prima della chiusura. La reason nel payload di
+`/hri/dialog_complete` e' `"graceful_stop_by_therapist"`.
 
 ### Topic ROS 2 per gaze/interazione
 
@@ -740,6 +923,65 @@ Il nodo HRI e' stato esteso per consumare gli alert di disattenzione:
 | `/mission/gaze_command` | `std_msgs/String` | (esterno/script) | `{"command": "stop_gaze"}` |
 | `/hri/dialog_state` | `std_msgs/String` | `voice_llm_node` | `"speaking"`, `"listening"`, ecc. |
 | `/hri/dialog_command` | `std_msgs/String` | `mission_orchestrator_node` | JSON con command |
+| `/hri/dialog_complete` | `std_msgs/String` | `voice_llm_node` | JSON con child_name, memory_report_path, scores |
+
+## Sistema di memoria bambino (RDF + SPARQL)
+
+### Modulo
+
+File: `src/llm_interaction/llm_interaction/rdf_child_memory.py`
+
+### Architettura
+
+Il sistema usa `rdflib` con file in formato Turtle (.ttl) e query SPARQL per
+recuperare e gestire la memoria dei bambini. Definisce un'ontologia custom con
+namespace HRI e predicati per:
+
+- Preferenze sulle storie
+- Preferenze sulle emozioni
+- Emozioni riconosciute
+- Stimoli preferiti
+- Tipi di attivita'
+
+### Seed iniziale
+
+Se il file `.ttl` non esiste, il sistema crea automaticamente due bambini
+di esempio (Luca e Sofia) con dati di seed, purche' `memory_seed_if_missing`
+sia true.
+
+### Iniezione nel prompt
+
+La memoria del bambino viene iniettata nel system prompt dell'attivita'
+bambino come sezione "Child personalization memory". Il numero massimo di
+fatti iniettati e' controllato da `memory_max_prompt_facts` (default 12).
+
+### Report sessione
+
+Al termine di ogni attivita' bambino, viene generato un report in Markdown
+nella directory `output/interaction_output/reports/`. Il report include:
+
+- Metadati sessione (data, bambino, tipo attivita')
+- Memoria utilizzata durante la sessione
+- Riassunto sessione (generato dall'LLM se possibile)
+- Transcript compatto della conversazione
+- Suggerimenti di aggiornamento memoria (candidati, NON scritti nel RDF)
+
+NOTA: `memory_update_enabled` e' false nello stato corrente. Non vengono
+effettuati aggiornamenti automatici al file RDF. I suggerimenti nei report
+sono solo proposte da valutare manualmente o da implementare in futuro.
+
+### Configurazione memoria
+
+Parametri in `llm_config.yaml`:
+
+```yaml
+memory_enabled: true
+memory_rdf_path: "/root/exchange/output/interaction_output/children_memory.ttl"
+memory_report_dir: "/root/exchange/output/interaction_output/reports"
+memory_max_prompt_facts: 12
+memory_seed_if_missing: true
+memory_update_enabled: false
+```
 
 ## Package `llm_interaction`
 
@@ -749,26 +991,52 @@ Il nodo HRI e' stato esteso per consumare gli alert di disattenzione:
 voice_llm_node = llm_interaction.voice_llm_node:main
 ```
 
-Launch:
+Moduli interni:
 
-- `hri_voice_llm_english.launch.py`
-- `hri_voice_llm_cpu.launch.py`
+```text
+ollama_client.py      – client HTTP per Ollama
+rdf_child_memory.py   – memoria bambino RDF/SPARQL
+session_scores.py     – calcolo e persistenza punteggi sessione (NUOVO)
+speech_to_text.py     – STT via faster-whisper
+terminal_io.py        – input da terminale
+text_to_speech.py     – TTS multi-provider
+voice_llm_node.py     – nodo ROS 2 principale
+```
+
+Launch files: NESSUNO. La directory launch e' vuota. Il nodo viene avviato
+dal launch integrato `hri_empower_mission.launch.py` del package `empower`.
+
+Test: NESSUNO. La directory test e' vuota (i vecchi test `test_ollama_client.py`
+e `test_text_to_speech.py` sono stati rimossi).
 
 Config principali:
 
 - `src/llm_interaction/config/llm_config.yaml`
 - `src/llm_interaction/config/hri_cpu_local.yaml`
 
+Valori correnti in `llm_config.yaml` (quelli che differiscono dalle versioni
+precedenti):
+
+```yaml
+llm_model: "gemma3:12b"          # era qwen2.5:1.5b
+llm_timeout: 600.0                # era 60.0
+max_response_tokens: 0             # era 120 (0 = nessun limite)
+tts_provider: "piper"              # era "system"
+tts_timeout: 60.0                  # era 30.0
+piper_model_path: "/root/exchange/models/piper/en_GB-jenny_dioco-medium.onnx"
+piper_config_path: "/root/exchange/models/piper/en_GB-jenny_dioco-medium.onnx.json"
+```
+
 Pipeline inglese tipica:
 
 ```text
-microfono -> faster-whisper base -> Ollama/Qwen -> system TTS -> speaker
+microfono -> faster-whisper base -> Ollama/Gemma3 -> Piper TTS -> speaker
 ```
 
 Pipeline locale/testuale:
 
 ```text
-terminal input -> Ollama/Qwen -> pyttsx3/system TTS
+terminal input -> Ollama/Gemma3 -> Piper TTS
 ```
 
 Il nodo pubblica:
@@ -776,17 +1044,20 @@ Il nodo pubblica:
 - `/hri/user_utterance`
 - `/hri/robot_utterance`
 - `/hri/dialog_state`
-- `/hri/dialog_complete`
+- `/hri/dialog_complete` (con `child_name`, `memory_report_path` e `scores`
+  nel payload)
 
 Il nodo sottoscrive:
 
 - `/hri/dialog_command`
 - `/mission/state`
 - `/hri/attention_alert`
+- `/child/emotion_status_smoothed`
 
 Quando `follow_mission_state_for_therapist_input` e' true, l'HRI legge input
-dal terapista solo negli stati missione `WAIT_TASK` e `WAIT_ACTIVITY`. Questo
-evita che input vocali casuali entrino nella missione fuori fase.
+dal terapista solo negli stati missione `WAIT_CHILD_NAME`, `WAIT_TASK`,
+`WAIT_ACTIVITY` e `WAIT_THERAPIST_OVERRIDE`. Questo evita che input vocali
+casuali entrino nella missione fuori fase.
 
 Per il bambino, il nodo supporta tipi di attivita':
 
@@ -797,6 +1068,10 @@ Per il bambino, il nodo supporta tipi di attivita':
 
 La normalizzazione dell'attivita' viene fatta nell'orchestratore in base a
 keyword nella frase del terapista.
+
+Il nodo mantiene un `_session_transcript` (lista) che traccia tutte le
+utterance durante l'attivita' bambino, usato per la generazione del report
+sessione a fine attivita'.
 
 ## EMPOWER: come e' realizzato internamente
 
@@ -826,32 +1101,6 @@ il codice EMPOWER originale si aspetta:
 
 Questo adapter e' il ponte principale fra ROS 2 e la logica EMPOWER portata
 dalla repo upstream.
-
-### Agenti LLM
-
-`agents.py` usa OpenAI Chat Completions con modello `gpt-4o`.
-
-La pipeline multi-agent e':
-
-1. `enviroment_agent`:
-   - input: immagine/i RGB base64 + task visuale;
-   - output: triple `(subject, relation, object)`;
-   - relazioni consentite/promosse: `right to`, `left to`, `behind to`,
-     `beside to`, `on`, ecc.
-   - in multi-view: riceve tutte le viste come immagini separate con prefisso
-     "View N:" e istruzione di trattarle come viste complementari.
-2. `description_agent`:
-   - input: immagine/i + relazioni del primo agente;
-   - output: descrizione testuale della scena e istruzioni preliminari.
-3. planning agent:
-   - input: task completo + descrizione + relazioni;
-   - output: solo azioni simboliche fra `NAVIGATE`, `GRAB`, `DROP`, `PULL`,
-     `PUSH`.
-
-Quando il task cita il bambino, `Agents` costruisce anche una versione
-"visual-only" del task per evitare che gli agenti visuali pretendano di vedere
-il bambino. Il contesto non visuale del bambino viene invece aggiunto al prompt
-di planning.
 
 ### Detection e visual grounding
 
@@ -891,8 +1140,6 @@ riconoscere relazioni spaziali come `left to`, `right to`, `on`, `into`, `near`,
 ### Report leggibili
 
 `report_writer.py` rigenera file `.txt` e `.json` a partire da pickle e piano.
-`export_reports` permette di rigenerare solo i report senza rifare detection o
-planning.
 
 ## Comandi operativi principali
 
@@ -923,29 +1170,6 @@ ros2 launch empower tiago_nav2_ground_truth.launch.py \
   map:=/root/exchange/exchange/maps/scene.yaml
 ```
 
-Multi-view capture manuale:
-
-```bash
-ros2 launch empower empower_multiview_capture.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-```
-
-Pipeline EMPOWER manuale (single-view legacy):
-
-```bash
-ros2 launch empower empower_capture.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-
-ros2 launch empower empower_models_cacher.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-
-ros2 launch empower empower_plan.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-
-ros2 launch empower empower_execute.launch.py \
-  params_file:=/root/exchange/src/empower/config/empower_config.yaml
-```
-
 Gaze estimation standalone:
 
 ```bash
@@ -970,9 +1194,8 @@ ros2 launch empower hri_empower_mission.launch.py \
 - Il model cacher usa un socket TCP custom, non un service/action ROS 2.
 - La detection/grounding e' euristica e puo' produrre label non corrispondenti
   perfettamente agli oggetti manipolabili.
-- Il bambino e' gestito come target non visuale hardcoded, non tramite
+- Il bambino e' gestito come target non visuale nello scene graph, non tramite
   perception.
-- Le pose di bambino/persona/spawn/consegna sono hardcoded nei file YAML.
 - La manipolazione fisica non esiste: `GRAB` e `DROP` sono simulati solo per
   `book`, `computer`, `peluche` via Gazebo CLI.
 - `PUSH` e `PULL` sono accettati dal piano ma non implementati.
@@ -988,6 +1211,19 @@ ros2 launch empower hri_empower_mission.launch.py \
 - L'audio TTS richiede PulseAudio funzionante nel container (socket +
   cookie montati, `pulseaudio-utils` installato).
 - Ci sono file `__pycache__` e output generati versionati/non puliti nella repo.
+- `child_interaction_test_node` e' ancora in `setup.py` ma il modulo sorgente
+  e' stato cancellato: l'entry point non funziona.
+- La memoria bambino e' in sola lettura (`memory_update_enabled: false`):
+  i suggerimenti di aggiornamento nei report non vengono scritti nel RDF
+  automaticamente.
+- Il graceful stop in modalita' voice dipende dalla lettura di stdin via
+  `select.select`, che potrebbe non funzionare in tutti i terminali o
+  ambienti containerizzati.
+- La soglia di disengagement secondaria si basa su contatori che vengono
+  resettati se il bambino sceglie di continuare; non c'e' un meccanismo
+  di persistenza cross-sessione per questi dati.
+- I punteggi sessione sono salvati in un file JSON locale: non c'e' un
+  database o un servizio di aggregazione centralizzato.
 - Alcuni README/config non sono completamente allineati allo stato corrente.
 
 ## Punti da tenere presenti per modifiche future
@@ -1013,20 +1249,54 @@ livello modificare:
 6. Esecuzione low-level:
    - modificare `src/empower/python/empower/low_level_execution_node.py`;
    - impatta Nav2, target non visuali, simulazione Gazebo, risoluzione
-     target da global_detections.json.
-7. Configurazione scenario:
+     target da global_detections.json, risoluzione pose dallo scene graph.
+7. Scene graph statico:
+   - modificare `src/empower/config/scenes/therapy_room_scene_graph.json` per
+     cambiare pose, alias, ruoli, waypoint, relazioni semantiche;
+   - modificare `src/empower/python/empower/static_scene_graph.py` per
+     cambiare la logica di risoluzione.
+8. Configurazione scenario:
    - modificare `src/empower/config/empower_config.yaml`;
-   - impatta task, topic, pose, alias, oggetti simulabili, multi-view config.
-8. Orchestrazione missione:
+   - impatta task, topic, alias, oggetti simulabili, multi-view config.
+   - NON contiene piu' pose di navigazione (sono nello scene graph).
+9. Orchestrazione missione:
    - modificare `src/empower/python/empower/mission_orchestrator_node.py`;
-   - impatta quando viene lanciata EMPOWER, gaze estimation e come interagisce
-     con HRI/Nav2.
-9. Gaze estimation:
-   - modificare `src/gaze_estimation/gaze_estimation/gaze_webcam_node.py` per
-     la pipeline gaze;
-   - modificare `src/gaze_estimation/gaze_estimation/attention_monitor_node.py`
-     per la logica di disattenzione;
-   - modificare `src/gaze_estimation/config/*.yaml` per soglie e target.
-10. Interazione bambino (HRI):
+   - impatta stati missione, flusso terapista/bambino, quando viene lanciata
+     EMPOWER, gaze estimation e come interagisce con HRI/Nav2.
+   - modificare `src/empower/config/task_config.yaml` per timeout, testi ack,
+     parametri gaze.
+10. Gaze estimation:
+    - modificare `src/gaze_estimation/gaze_estimation/gaze_webcam_node.py` per
+      la pipeline gaze;
+    - modificare `src/gaze_estimation/gaze_estimation/attention_monitor_node.py`
+      per la logica di disattenzione;
+    - modificare `src/gaze_estimation/config/*.yaml` per soglie e target.
+11. Interazione bambino (HRI):
     - modificare `src/llm_interaction/llm_interaction/voice_llm_node.py`;
-    - impatta dialogo, richiamo attenzione, system prompt per attivita'.
+    - impatta dialogo, richiamo attenzione, system prompt per attivita',
+      regole di stile per risposte child-facing, session transcript.
+12. Memoria bambino:
+    - modificare `src/llm_interaction/llm_interaction/rdf_child_memory.py`;
+    - impatta ontologia RDF, query SPARQL, iniezione memoria nel prompt,
+      generazione report sessione, seed bambini di esempio.
+    - modificare `src/llm_interaction/config/llm_config.yaml` per parametri
+      memoria (path, max facts, seed, update enabled).
+13. Report sessione e personalizzazione futura:
+    - I report in `output/interaction_output/reports/` contengono suggerimenti
+      di aggiornamento memoria che possono guidare l'implementazione di
+      aggiornamenti automatici al RDF.
+    - Per abilitare aggiornamenti automatici, impostare
+      `memory_update_enabled: true` e implementare la logica di scrittura
+      nel modulo `rdf_child_memory.py`.
+14. Punteggi sessione:
+    - modificare `src/llm_interaction/llm_interaction/session_scores.py`;
+    - impatta calcolo punteggi (attention, emotion, participation, overall),
+      persistenza in `session_scores.json`, query storico attivita' per
+      bambino e mapping ACTIVITY_TO_TASK.
+15. Disengagement secondario e graceful stop:
+    - modificare `src/llm_interaction/llm_interaction/voice_llm_node.py`;
+    - impatta soglie di disengagement (`disengagement_alert_threshold`,
+      `disengagement_negative_emotion_ratio`, `disengagement_check_window_sec`,
+      `disengagement_cooldown_sec`, `disengagement_max_asks`),
+      monitor tastiera per graceful stop (`graceful_stop_key`),
+      generazione farewell e reason di terminazione.
