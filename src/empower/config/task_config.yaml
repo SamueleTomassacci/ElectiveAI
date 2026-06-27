@@ -8,7 +8,7 @@ mission_orchestrator_node:
     wait_for_task_timeout_sec: 300.0
     wait_for_activity_timeout_sec: 300.0
     wait_for_child_name_timeout_sec: 300.0
-    proposal_acceptance_timeout_sec: 15.0
+    proposal_acceptance_timeout_sec: 30.0
     child_name_ask_text: "Hello! Which child do we have today?"
     child_name_ack_text: "Okay, I know {child_name}."
     task_ack_text: "Okay, I understood the task."
@@ -28,7 +28,7 @@ mission_orchestrator_node:
     storytelling_timeout_sec: 300.0
     child_activity_timeout_sec: 300.0
     gaze_estimation:
-      enabled: true
+      enabled: false
       camera_index: 0
       device: "auto"
       show_window: true

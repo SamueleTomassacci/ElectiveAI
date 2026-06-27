@@ -7,7 +7,7 @@ voice_llm_node:
     llm_fallback_model: "llama3.2:1b"
     llm_timeout: 600.0
     temperature: 0.4
-    max_response_tokens: 0
+    max_response_tokens: 80
     max_history_turns: 4
     stt_provider: "faster_whisper"
     stt_model: "base"
@@ -18,7 +18,7 @@ voice_llm_node:
     record_seconds: 5.0
     sample_rate: 16000
     tts_provider: "piper"
-    tts_timeout: 60.0
+    tts_timeout: 30.0
     storytelling_max_turns: 10
     storytelling_auto_listen: true
     stt_vad_energy_threshold: 0.01
