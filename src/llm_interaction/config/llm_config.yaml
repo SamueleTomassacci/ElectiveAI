@@ -17,7 +17,7 @@ voice_llm_node:
     language: "en"
     record_seconds: 5.0
     sample_rate: 16000
-    tts_provider: "piper"
+    tts_provider: "system"
     tts_timeout: 30.0
     storytelling_max_turns: 10
     storytelling_auto_listen: true
