@@ -13,6 +13,10 @@ log/
 # Generated mission output (overwritten or extended at runtime)
 output/
 
+# Runtime-generated Gazebo dialogue bubble assets
+exchange/models/hri_dialog_bubbles/generated/
+exchange/models/hri_dialog_bubbles/materials/
+
 # ROS2 runtime logs
 .ros/
 
