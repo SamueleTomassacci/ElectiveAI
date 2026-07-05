@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
+  <asset>
+    <unit name="meter" meter="1"/>
+    <up_axis>Z_UP</up_axis>
+  </asset>
+  <library_images>
+    <image id="hri_dialog_bubble_adult_1783277843830_5_image" name="hri_dialog_bubble_adult_1783277843830_5_image">
+      <init_from>file:///root/exchange/exchange/models/hri_dialog_bubbles/materials/textures/hri_dialog_bubble_adult_1783277843830_5.png</init_from>
+    </image>
+  </library_images>
+  <library_effects>
+    <effect id="hri_dialog_bubble_adult_1783277843830_5_effect">
+      <profile_COMMON>
+        <newparam sid="bubble_surface">
+          <surface type="2D">
+            <init_from>hri_dialog_bubble_adult_1783277843830_5_image</init_from>
+          </surface>
+        </newparam>
+        <newparam sid="bubble_sampler">
+          <sampler2D>
+            <source>bubble_surface</source>
+          </sampler2D>
+        </newparam>
+        <technique sid="common">
+          <lambert>
+            <emission>
+              <color>0.35 0.35 0.35 1</color>
+            </emission>
+            <ambient>
+              <color>1 1 1 1</color>
+            </ambient>
+            <diffuse>
+              <texture texture="bubble_sampler" texcoord="UVSET0"/>
+            </diffuse>
+            <transparency>
+              <float>1.0</float>
+            </transparency>
+          </lambert>
+        </technique>
+        <extra>
+          <technique profile="GOOGLEEARTH">
+            <double_sided>1</double_sided>
+          </technique>
+        </extra>
+      </profile_COMMON>
+    </effect>
+  </library_effects>
+  <library_materials>
+    <material id="hri_dialog_bubble_adult_1783277843830_5_material" name="hri_dialog_bubble_adult_1783277843830_5_material">
+      <instance_effect url="#hri_dialog_bubble_adult_1783277843830_5_effect"/>
+    </material>
+  </library_materials>
+  <library_geometries>
+    <geometry id="hri_dialog_bubble_adult_1783277843830_5_geometry" name="hri_dialog_bubble_adult_1783277843830_5_geometry">
+      <mesh>
+        <source id="hri_dialog_bubble_adult_1783277843830_5_positions">
+          <float_array id="hri_dialog_bubble_adult_1783277843830_5_positions_array" count="12">
+            0 -0.950000 -0.375000
+            0 0.950000 -0.375000
+            0 0.950000 0.375000
+            0 -0.950000 0.375000
+          </float_array>
+          <technique_common>
+            <accessor source="#hri_dialog_bubble_adult_1783277843830_5_positions_array" count="4" stride="3">
+              <param name="X" type="float"/>
+              <param name="Y" type="float"/>
+              <param name="Z" type="float"/>
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="hri_dialog_bubble_adult_1783277843830_5_uvs">
+          <float_array id="hri_dialog_bubble_adult_1783277843830_5_uvs_array" count="16">
+            0 0
+            1 0
+            1 1
+            0 1
+            1 0
+            0 0
+            0 1
+            1 1
+          </float_array>
+          <technique_common>
+            <accessor source="#hri_dialog_bubble_adult_1783277843830_5_uvs_array" count="8" stride="2">
+              <param name="S" type="float"/>
+              <param name="T" type="float"/>
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="hri_dialog_bubble_adult_1783277843830_5_vertices">
+          <input semantic="POSITION" source="#hri_dialog_bubble_adult_1783277843830_5_positions"/>
+        </vertices>
+        <triangles material="hri_dialog_bubble_adult_1783277843830_5_material" count="4">
+          <input semantic="VERTEX" source="#hri_dialog_bubble_adult_1783277843830_5_vertices" offset="0"/>
+          <input semantic="TEXCOORD" source="#hri_dialog_bubble_adult_1783277843830_5_uvs" offset="1" set="0"/>
+          <p>
+            0 0 1 1 2 2
+            0 0 2 2 3 3
+            2 6 1 5 0 4
+            3 7 2 6 0 4
+          </p>
+        </triangles>
+      </mesh>
+    </geometry>
+  </library_geometries>
+  <library_visual_scenes>
+    <visual_scene id="hri_dialog_bubble_adult_1783277843830_5_scene" name="hri_dialog_bubble_adult_1783277843830_5_scene">
+      <node id="hri_dialog_bubble_adult_1783277843830_5_node" name="hri_dialog_bubble_adult_1783277843830_5_node">
+        <instance_geometry url="#hri_dialog_bubble_adult_1783277843830_5_geometry">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="hri_dialog_bubble_adult_1783277843830_5_material" target="#hri_dialog_bubble_adult_1783277843830_5_material"/>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+      </node>
+    </visual_scene>
+  </library_visual_scenes>
+  <scene>
+    <instance_visual_scene url="#hri_dialog_bubble_adult_1783277843830_5_scene"/>
+  </scene>
+</COLLADA>

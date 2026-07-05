@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="hri_dialog_bubble_robot_1783277843830_8">
+    <static>false</static>
+    <link name="bubble">
+      <gravity>false</gravity>
+      <kinematic>true</kinematic>
+      <visual name="bubble_visual">
+        <geometry>
+          <mesh>
+            <uri>file:///root/exchange/exchange/models/hri_dialog_bubbles/generated/hri_dialog_bubble_robot_1783277843830_8.dae</uri>
+          </mesh>
+        </geometry>
+        <transparency>0.0</transparency>
+      </visual>
+    </link>
+  </model>
+</sdf>

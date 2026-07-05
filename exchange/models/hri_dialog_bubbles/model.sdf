@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="hri_dialog_bubbles">
+    <static>true</static>
+  </model>
+</sdf>

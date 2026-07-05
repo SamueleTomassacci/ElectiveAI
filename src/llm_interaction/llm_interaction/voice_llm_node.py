@@ -243,7 +243,15 @@ class VoiceLlmNode(Node):
         self.state_publisher = self.create_publisher(String, "/hri/dialog_state", 10)
         self.dialog_complete_pub = self.create_publisher(String, "/hri/dialog_complete", 10)
 
+        self._bubble_ready_condition = threading.Condition()
+        self._robot_bubble_ready_generation = 0
+        self._last_robot_bubble_ready_text = ""
+        self._speech_lock = threading.Lock()
+
         self.create_subscription(String, "/hri/dialog_command", self.dialog_command_callback, 10)
+        self.create_subscription(
+            String, "/hri/dialog_bubble_ready", self.dialog_bubble_ready_callback, 10,
+        )
         self.create_subscription(String, "/hri/attention_alert", self.attention_alert_callback, 10)
         self.create_subscription(
             String, "/child/emotion_status_smoothed",
@@ -332,6 +340,8 @@ class VoiceLlmNode(Node):
         self.declare_parameter("sample_rate", 16000)
         self.declare_parameter("tts_provider", "pyttsx3")
         self.declare_parameter("tts_timeout", 30.0)
+        self.declare_parameter("dialog_bubble_sync_enabled", False)
+        self.declare_parameter("dialog_bubble_ready_timeout_sec", 1.5)
         self.declare_parameter("piper_model_path", "")
         self.declare_parameter("piper_config_path", "")
         self.declare_parameter("system_prompt", DEFAULT_SYSTEM_PROMPT)
@@ -438,7 +448,12 @@ class VoiceLlmNode(Node):
             return
         command = payload.get("command", "")
         if command in {"say", "speak_text"}:
-            self.speak_hardcoded_text(str(payload.get("text", "")))
+            threading.Thread(
+                target=self.speak_hardcoded_text,
+                args=(str(payload.get("text", "")),),
+                name="hardcoded_speech",
+                daemon=True,
+            ).start()
         elif command == "start_child_activity":
             self.start_child_activity(dict(payload.get("context", {})))
         elif command == "start_storytelling":
@@ -469,17 +484,18 @@ class VoiceLlmNode(Node):
         if not text:
             self.get_logger().warning("Ignoring empty say command")
             return
-        self.publish(self.robot_publisher, text)
-        self.get_logger().info(f"TIAGo: {text}")
-        try:
-            self.publish_state("speaking")
-            backend = self.tts.speak(text)
-            self.get_logger().info(f"Response played with TTS '{backend}'.")
-        except TextToSpeechError as exc:
-            self.publish_state("error")
-            self.get_logger().error(f"Hardcoded speech failed: {exc}")
-        finally:
-            self.publish_state("ready")
+        with self._speech_lock:
+            self.publish_robot_utterance(text)
+            self.get_logger().info(f"TIAGo: {text}")
+            try:
+                self.publish_state("speaking")
+                backend = self.tts.speak(text)
+                self.get_logger().info(f"Response played with TTS '{backend}'.")
+            except TextToSpeechError as exc:
+                self.publish_state("error")
+                self.get_logger().error(f"Hardcoded speech failed: {exc}")
+            finally:
+                self.publish_state("ready")
 
     def start_child_activity(self, context: Dict[str, Any]) -> None:
         activity_type = str(context.get("activity_type", "generic_child_activity"))
@@ -587,6 +603,45 @@ class VoiceLlmNode(Node):
         message.data = text
         publisher.publish(message)
 
+    def dialog_bubble_ready_callback(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if payload.get("anchor") != "robot":
+            return
+        text = str(payload.get("text", ""))
+        with self._bubble_ready_condition:
+            self._last_robot_bubble_ready_text = text
+            self._robot_bubble_ready_generation += 1
+            self._bubble_ready_condition.notify_all()
+
+    def publish_robot_utterance(self, text: str) -> None:
+        with self._bubble_ready_condition:
+            generation = self._robot_bubble_ready_generation
+        self.publish(self.robot_publisher, text)
+        self.wait_for_dialog_bubble(text, generation)
+
+    def wait_for_dialog_bubble(self, text: str, generation: int) -> None:
+        if not bool(self.get_parameter("dialog_bubble_sync_enabled").value):
+            return
+        timeout_sec = float(self.get_parameter("dialog_bubble_ready_timeout_sec").value)
+        if timeout_sec <= 0:
+            return
+        with self._bubble_ready_condition:
+            ready = self._bubble_ready_condition.wait_for(
+                lambda: (
+                    self._robot_bubble_ready_generation > generation
+                    and self._last_robot_bubble_ready_text == text
+                ),
+                timeout=timeout_sec,
+            )
+        if not ready:
+            self.get_logger().warning(
+                f"Timed out waiting {timeout_sec:.1f}s for Gazebo dialogue bubble; "
+                "starting TTS anyway."
+            )
+
     def publish_state(self, state: str) -> None:
         self.publish(self.state_publisher, state)
         self.get_logger().info(f"Dialog state: {state}")
@@ -637,7 +692,7 @@ class VoiceLlmNode(Node):
         if in_child_activity:
             self._session_transcript.append({"role": "child", "content": user_text})
             self._session_transcript.append({"role": "assistant", "content": response})
-        self.publish(self.robot_publisher, response)
+        self.publish_robot_utterance(response)
         self.get_logger().info(f"TIAGo: {response}")
         self.publish_state("speaking")
         backend = self.tts.speak(response)
@@ -799,7 +854,7 @@ class VoiceLlmNode(Node):
             )
 
         self.get_logger().info(f"[ATTENTION_RECALL] TIAGo: {recall_text}")
-        self.publish(self.robot_publisher, recall_text)
+        self.publish_robot_utterance(recall_text)
         with self._mode_lock:
             in_child_activity = self._mode == _MODE_CHILD_ACTIVITY
         if in_child_activity:
@@ -828,7 +883,7 @@ class VoiceLlmNode(Node):
             self.history.append({"role": "user", "content": "[START_ACTIVITY]"})
             self.history.append({"role": "assistant", "content": opening})
             self._session_transcript.append({"role": "assistant", "content": opening})
-            self.publish(self.robot_publisher, opening)
+            self.publish_robot_utterance(opening)
             self.get_logger().info(f"TIAGo (activity opening): {opening}")
             self.publish_state("speaking")
             self.tts.speak(opening)
@@ -1052,7 +1107,7 @@ class VoiceLlmNode(Node):
         )
         question = self._generate_disengagement_question(activity_type)
         self._session_transcript.append({"role": "assistant", "content": question})
-        self.publish(self.robot_publisher, question)
+        self.publish_robot_utterance(question)
         try:
             self.publish_state("speaking")
             self.tts.speak(question)
@@ -1071,7 +1126,7 @@ class VoiceLlmNode(Node):
         if self._child_wants_to_stop(child_response):
             farewell = "Okay, no problem! Let's do something else."
             self._session_transcript.append({"role": "assistant", "content": farewell})
-            self.publish(self.robot_publisher, farewell)
+            self.publish_robot_utterance(farewell)
             try:
                 self.publish_state("speaking")
                 self.tts.speak(farewell)
@@ -1122,7 +1177,7 @@ class VoiceLlmNode(Node):
         farewell = self._generate_farewell(activity_type, child_name)
         self.get_logger().info(f"[GRACEFUL_STOP] Farewell: {farewell}")
         self._session_transcript.append({"role": "assistant", "content": farewell})
-        self.publish(self.robot_publisher, farewell)
+        self.publish_robot_utterance(farewell)
         try:
             self.publish_state("speaking")
             self.tts.speak(farewell)

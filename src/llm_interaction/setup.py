@@ -40,6 +40,7 @@ setup(
     test_suite="test",
     entry_points={
         "console_scripts": [
+            "dialog_bubble_node = llm_interaction.dialog_bubble_node:main",
             "voice_llm_node = llm_interaction.voice_llm_node:main",
         ],
     },
