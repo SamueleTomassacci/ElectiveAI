@@ -1,0 +1,44 @@
+Aprire terminali e su ognuno:
+
+docker exec -it hrai_sim bash
+
+
+
+Terminale 1 — Gazebo
+
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+export GAZEBO_MODEL_PATH=/root/exchange/exchange/models:${GAZEBO_MODEL_PATH:-}
+ros2 launch tiago_gazebo tiago_gazebo.launch.py \
+  is_public_sim:=True \
+  gazebo_version:=classic \
+  world_name:=/root/exchange/exchange/scene.world
+
+
+
+
+
+Terminale 2 — Nav2
+
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+ros2 launch empower tiago_nav2_ground_truth.launch.py \
+  map:=/root/exchange/exchange/maps/scene.yaml
+
+
+
+Terminale 3 — Missione
+
+cd /root/exchange
+source /opt/ros/humble/setup.bash
+source /root/tiago_public_ws/install/setup.bash
+source /root/exchange/install/setup.bash
+rm -rf /root/exchange/output/empower_output/therapy_task
+ros2 launch empower hri_empower_mission.launch.py \
+  hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
+  hri_input_mode:=voice \
+  stt_device_index:=8

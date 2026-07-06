@@ -364,7 +364,7 @@ class VoiceLlmNode(Node):
         self.declare_parameter("stt_vad_silence_sec", 1.5)
         self.declare_parameter("stt_vad_max_duration_sec", 30.0)
         self.declare_parameter("attention_recall_llm_timeout", 4.0)
-        self.declare_parameter("attention_recall_max_tokens", 30)
+        self.declare_parameter("attention_recall_max_tokens", 60)
         self.declare_parameter("emotion_staleness_threshold_sec", 15.0)
         self.declare_parameter("memory_enabled", True)
         self.declare_parameter(

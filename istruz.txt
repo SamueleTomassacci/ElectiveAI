@@ -55,3 +55,5 @@ ros2 launch empower hri_empower_mission.launch.py \
       hri_input_mode:=voice \
       stt_device_index:=4
 - Per terminare l'attivita' in modo graceful: premere 'q' nel terminale della missione
+
+
