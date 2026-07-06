@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import numpy as np
 
@@ -6,10 +5,10 @@ import numpy as np
 class GazelleEstimator:
     def __init__(
         self,
-        gazelle_checkpoint_path: str,
-        face_detector_checkpoint_path: str,
-        device: str,
-        gaze_inout_threshold: float = 0.5,
+        gazelle_checkpoint_path,
+        face_detector_checkpoint_path,
+        device,
+        gaze_inout_threshold = 0.5,
     ):
         try:
             import torch

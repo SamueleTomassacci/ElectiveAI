@@ -1,9 +1,7 @@
-from __future__ import annotations
-
-from typing import Callable
 
 
-def cuda_available() -> bool:
+
+def cuda_available():
     try:
         import torch
 
@@ -12,7 +10,7 @@ def cuda_available() -> bool:
         return False
 
 
-def select_device(requested: str = "auto", warn: Callable[[str], None] | None = None) -> str:
+def select_device(requested = "auto", warn = None):
     """Select a torch device string without failing when CUDA is absent."""
     requested_normalized = (requested or "auto").strip().lower()
     has_cuda = cuda_available()
@@ -37,6 +35,6 @@ def select_device(requested: str = "auto", warn: Callable[[str], None] | None = 
     return "cuda" if has_cuda else "cpu"
 
 
-def yolo_device_arg(device: str) -> int | str:
+def yolo_device_arg(device):
     """Return the Ultralytics device argument matching the selected torch device."""
     return 0 if device == "cuda" else "cpu"

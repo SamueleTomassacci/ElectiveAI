@@ -47,6 +47,9 @@ def generate_launch_description():
             DeclareLaunchArgument("dialog_bubble_yaw", default_value="1.35"),
             DeclareLaunchArgument("start_models_cacher", default_value="true"),
             DeclareLaunchArgument("hri_input_mode", default_value="voice"),
+            DeclareLaunchArgument("therapist_input_enabled", default_value="true"),
+            DeclareLaunchArgument("benchmark_child_utterances_enabled", default_value="false"),
+            DeclareLaunchArgument("benchmark_child_utterance_timeout_sec", default_value="120.0"),
             DeclareLaunchArgument("stt_device_index", default_value="8"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             DeclareLaunchArgument("skip_to_child_activity", default_value="false"),
@@ -74,7 +77,16 @@ def generate_launch_description():
                         "input_mode": LaunchConfiguration("hri_input_mode"),
                         "stt_device_index": stt_device_index,
                         "therapist_llm_replies": False,
+                        "therapist_input_enabled": ParameterValue(
+                            LaunchConfiguration("therapist_input_enabled"), value_type=bool,
+                        ),
                         "follow_mission_state_for_therapist_input": True,
+                        "benchmark_child_utterances_enabled": ParameterValue(
+                            LaunchConfiguration("benchmark_child_utterances_enabled"), value_type=bool,
+                        ),
+                        "benchmark_child_utterance_timeout_sec": ParameterValue(
+                            LaunchConfiguration("benchmark_child_utterance_timeout_sec"), value_type=float,
+                        ),
                         "dialog_bubble_sync_enabled": ParameterValue(
                             LaunchConfiguration("start_dialog_bubbles"), value_type=bool,
                         ),

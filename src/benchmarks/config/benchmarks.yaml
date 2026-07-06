@@ -1,0 +1,142 @@
+benchmark:
+  output_root: /root/exchange/output/benchmark_output
+  use_case: therapy_task
+  mission_timeout_sec: 900.0
+  live_gaze_timeout_sec: 8.0
+  child_response_timeout_sec: 180.0
+  child_response_rating_threshold: 6.0
+
+functionality:
+  nav2:
+    enabled: true
+    goals:
+      - id: therapist_instruction
+        target: therapist
+        role: receive_instruction
+      - id: capture_origin
+        target: center
+        role: capture_origin
+      - id: child_delivery
+        target: child
+        role: deliver_object
+    action_server_timeout_sec: 20.0
+    result_timeout_sec: 300.0
+    position_tolerance_m: 0.35
+  perception:
+    enabled: true
+    expected_objects:
+      - label: book
+        aliases: [book, red book, clear red book]
+      - label: teddy bear
+        aliases: [teddy bear, teddy, peluche, plush toy, stuffed animal]
+      - label: computer
+        aliases: [computer, laptop, laptop computer]
+  hri:
+    enabled: true
+    start_node: true
+    hri_params_file: /root/exchange/src/llm_interaction/config/llm_config.yaml
+    startup_timeout_sec: 60.0
+    max_turn_duration_sec: 45.0
+    record_seconds: 5.0
+    prompt_before_each_case: true
+    manual_response_rating: true
+    require_response_rating: true
+    min_response_rating: 6
+    cases:
+      - id: therapist_story
+        prompt: "Can you read a story with Luca today?"
+        expected_stt_keywords: [story, Luca]
+      - id: child_mood
+        prompt: "I feel happy today."
+        expected_stt_keywords: [happy]
+      - id: child_stop
+        prompt: "I want to stop."
+        expected_stt_keywords: [stop]
+  gaze:
+    enabled: true
+    start_launch: true
+    camera_index: 0
+    device: auto
+    show_window: true
+    startup_timeout_sec: 120.0
+    phase_duration_sec: 10.0
+    prompt_before_each_phase: true
+    target_classes: [book, teddy bear, laptop, computer]
+    phases:
+      - id: look_book
+        instruction: "Place the book in the webcam view and look at it."
+        activity_type: storytelling
+        expected_status: LOOKING_AT_OBJECT
+        expected_target_aliases: [book]
+        expected_alert: false
+      - id: look_teddy
+        instruction: "Place the teddy bear in the webcam view and look at it."
+        activity_type: mood_check_teddy
+        expected_status: LOOKING_AT_OBJECT
+        expected_target_aliases: [teddy bear, teddy, peluche, plush toy]
+        expected_alert: false
+      - id: look_computer
+        instruction: "Place the laptop/computer in the webcam view and look at it."
+        activity_type: computer_emotion_recognition
+        expected_status: LOOKING_AT_OBJECT
+        expected_target_aliases: [computer, laptop]
+        expected_alert: false
+      - id: look_away
+        instruction: "Keep your face visible, but look away from the book."
+        activity_type: storytelling
+        expected_statuses: [LOOKING_ELSEWHERE, GAZE_OUT_OF_FRAME, NO_TARGET_OBJECT]
+        expected_alert: true
+      - id: no_face
+        instruction: "Move your face out of the webcam frame."
+        activity_type: storytelling
+        expected_status: NO_FACE
+        expected_alert: true
+  emotion:
+    enabled: true
+    start_launch: true
+    camera_index: 0
+    device: auto
+    show_window: true
+    startup_timeout_sec: 120.0
+    phase_duration_sec: 12.0
+    ignore_initial_sec: 1.0
+    min_samples: 2
+    emotion_accuracy_threshold: 0.5
+    prompt_before_each_phase: true
+    target_classes: [book]
+    phases:
+      - id: neutral_face
+        instruction: "Look at the webcam with a neutral expression."
+        expected_emotion_aliases: [neutral]
+      - id: happy_face
+        instruction: "Look at the webcam and make a happy expression."
+        expected_emotion_aliases: [happy, happiness]
+      - id: surprised_face
+        instruction: "Look at the webcam and make a surprised expression."
+        expected_emotion_aliases: [surprise, surprised]
+      - id: sad_face
+        instruction: "Look at the webcam and make a sad expression."
+        expected_emotion_aliases: [sad, sadness]
+
+tasks:
+  - id: storytelling_book
+    task_description: Take the book and give it to the child
+    activity_description: storytelling with the book
+    activity_type: storytelling
+    expected_object: book
+    expected_plan_keywords: [book, child]
+    benchmark_child_utterance: "Yes, I am ready. Can you start the story?"
+  - id: mood_check_teddy
+    task_description: Take the teddy bear and give it to the child
+    activity_description: mood check with the teddy bear
+    activity_type: mood_check_teddy
+    expected_object: teddy bear
+    expected_plan_keywords: [teddy, child]
+    benchmark_child_utterance: "I feel happy today, and I want to play with the teddy bear."
+  - id: computer_emotion_recognition
+    task_description: Take the computer and give it to the child
+    activity_description: emotion recognition with the computer
+    activity_type: computer_emotion_recognition
+    expected_object: computer
+    expected_plan_keywords: [computer, child]
+    benchmark_child_utterance: "I think the face on the screen looks happy."

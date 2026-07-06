@@ -1,12 +1,10 @@
 #RDF/SPARQL child personalization memory for HRI activities
 
-from __future__ import annotations
 
 import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 try:
     from rdflib import Graph, Literal, Namespace, URIRef
@@ -17,10 +15,10 @@ except ImportError:
     URIRef = str
 
     class Namespace(str):
-        def __getattr__(self, name: str) -> str:
+        def __getattr__(self, name):
             return f"{self}{name}"
 
-        def __getitem__(self, name: str) -> str:
+        def __getitem__(self, name):
             return f"{self}{name}"
 
     class _RdfFallback:
@@ -39,16 +37,16 @@ SESSION = Namespace("http://example.org/session/")
 CONCEPT = Namespace("http://example.org/concept/")
 
 
-def slug(text: str) -> str:
+def slug(text):
     slug = re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
     return slug or "unknown"
 
 
-def safe_filename_part(text: str) -> str:
+def safe_filename_part(text):
     return slug(text).replace("_", "-")
 
 
-def unique_preserve_order(values: Iterable[str]) -> List[str]:
+def unique_preserve_order(values):
     seen = set()
     result = []
     for value in values:
@@ -75,7 +73,7 @@ class RdfChildMemoryStore:
         str(HRI.prefersActivityType): "preferred_activity_types",
     }
 
-    def __init__(self, rdf_path: str, seed_if_missing: bool = True):
+    def __init__(self, rdf_path, seed_if_missing = True):
         if Graph is None:
             raise RuntimeError(
                 "RDF child memory requires rdflib. Install the package dependency "
@@ -93,18 +91,18 @@ class RdfChildMemoryStore:
             self.seed_graph()
             self.save()
 
-    def bind_namespaces(self) -> None:
+    def bind_namespaces(self):
         self.graph.bind("hri", HRI)
         self.graph.bind("child", CHILD)
         self.graph.bind("session", SESSION)
         self.graph.bind("concept", CONCEPT)
         self.graph.bind("rdfs", RDFS)
 
-    def save(self) -> None:
+    def save(self):
         self.rdf_path.parent.mkdir(parents=True, exist_ok=True)
         self.graph.serialize(destination=str(self.rdf_path), format="turtle")
 
-    def seed_graph(self) -> None:
+    def seed_graph(self):
         for rdf_class in (
             HRI.Child,
             HRI.StoryTheme,
@@ -143,7 +141,7 @@ class RdfChildMemoryStore:
             activity_types=["mood_check_teddy"],
         )
 
-    def concept(self, label: str, rdf_class: URIRef) -> URIRef:
+    def concept(self, label, rdf_class):
         uri = CONCEPT[slug(label)]
         self.graph.add((uri, RDF.type, rdf_class))
         self.graph.add((uri, RDFS.label, Literal(label)))
@@ -151,28 +149,28 @@ class RdfChildMemoryStore:
 
     def add_values(
         self,
-        child_uri: URIRef,
-        predicate: URIRef,
-        values: Iterable[str],
-        rdf_class: URIRef,
-    ) -> None:
+        child_uri,
+        predicate,
+        values,
+        rdf_class,
+    ):
         for value in values:
             self.graph.add((child_uri, predicate, self.concept(value, rdf_class)))
 
     def add_child(
         self,
-        display_name: str,
+        display_name,
         *,
-        story_themes: Iterable[str],
-        story_characters: Iterable[str],
-        story_settings: Iterable[str],
-        story_endings: Iterable[str],
-        emotion_topics: Iterable[str],
-        recognizes_well: Iterable[str],
-        needs_support: Iterable[str],
-        recognition_stimuli: Iterable[str],
-        activity_types: Iterable[str],
-    ) -> None:
+        story_themes,
+        story_characters,
+        story_settings,
+        story_endings,
+        emotion_topics,
+        recognizes_well,
+        needs_support,
+        recognition_stimuli,
+        activity_types,
+    ):
         child_uri = CHILD[slug(display_name)]
         self.graph.add((child_uri, RDF.type, HRI.Child))
         self.graph.add((child_uri, HRI.displayName, Literal(display_name)))
@@ -199,10 +197,10 @@ class RdfChildMemoryStore:
 
     def get_child_memory_context(
         self,
-        child_name: str,
-        activity_type: str,
-        max_facts: int = 12,
-    ) -> Dict[str, Any]:
+        child_name,
+        activity_type,
+        max_facts = 12,
+    ):
         """Return child memory context using a case-insensitive SPARQL query."""
         requested_name = child_name.strip()
         if not requested_name:
@@ -289,22 +287,22 @@ class RdfChildMemoryStore:
         return memory
 
     @staticmethod
-    def label_from_uri(value: Any) -> str:
+    def label_from_uri(value):
         text = str(value).rstrip("/#").split("/")[-1].split("#")[-1]
         return text.replace("_", " ")
 
     def build_prompt_text(
         self,
-        memory: Mapping[str, Any],
-        activity_type: str,
-        max_facts: int,
-    ) -> str:
+        memory,
+        activity_type,
+        max_facts,
+    ):
         max_facts = max(1, int(max_facts))
         child_name = memory.get("child_name", "the child")
         facts_used = 0
         lines = [f"The child is {child_name}."]
 
-        def take(values: Iterable[str]) -> List[str]:
+        def take(values):
             nonlocal facts_used
             remaining = max_facts - facts_used
             if remaining <= 0:
@@ -375,7 +373,7 @@ class RdfChildMemoryStore:
         return "\n".join(lines)
 
     @staticmethod
-    def join_words(values: Iterable[str]) -> str:
+    def join_words(values):
         words = list(values)
         if not words:
             return ""
@@ -384,7 +382,7 @@ class RdfChildMemoryStore:
         return ", ".join(words[:-1]) + f" and {words[-1]}"
 
 
-def format_memory_for_report(memory_context: Mapping[str, Any]) -> str:
+def format_memory_for_report(memory_context):
     if not memory_context:
         return "Memory was disabled or unavailable."
     if not memory_context.get("found"):
@@ -405,18 +403,18 @@ def _format_scores_section(scores):
 
 def generate_child_memory_report(
     *,
-    report_dir: str,
-    context: Mapping[str, Any],
-    transcript: List[Mapping[str, str]],
-    memory_context: Mapping[str, Any],
-    completion_reason: str,
-    turns: int,
+    report_dir,
+    context,
+    transcript,
+    memory_context,
+    completion_reason,
+    turns,
     scores=None,
-    llm_client: Optional[Any] = None,
-    temperature: float = 0.2,
-    max_response_tokens: int = 400,
-    now: Optional[datetime] = None,
-) -> str:
+    llm_client = None,
+    temperature = 0.2,
+    max_response_tokens = 400,
+    now = None,
+):
     """Create a Markdown session report without modifying RDF memory."""
     now = now or datetime.now()
     child_name = str(context.get("child_name", "") or "unknown").strip() or "unknown"
@@ -494,13 +492,13 @@ These are suggestions only. They were NOT written to the RDF memory.
 
 def try_generate_report_notes(
     *,
-    llm_client: Any,
-    context: Mapping[str, Any],
-    transcript: List[Mapping[str, str]],
-    memory_context: Mapping[str, Any],
-    temperature: float,
-    max_response_tokens: int,
-) -> str:
+    llm_client,
+    context,
+    transcript,
+    memory_context,
+    temperature,
+    max_response_tokens,
+):
     system = (
         "You write concise clinical support notes for a therapist after a child-robot "
         "activity. Do not claim that suggestions were stored. Mention only cautious "
@@ -525,7 +523,7 @@ def try_generate_report_notes(
         return ""
 
 
-def deterministic_session_summary(transcript: List[Mapping[str, str]]) -> str:
+def deterministic_session_summary(transcript):
     if not transcript:
         return "No child activity transcript was captured."
     child_turns = sum(1 for item in transcript if item.get("role") == "child")
@@ -537,10 +535,10 @@ def deterministic_session_summary(transcript: List[Mapping[str, str]]) -> str:
 
 
 def compact_transcript(
-    transcript: List[Mapping[str, str]],
-    max_items: int = 24,
-    max_chars: int = 240,
-) -> str:
+    transcript,
+    max_items = 24,
+    max_chars = 240,
+):
     if not transcript:
         return "- No transcript entries captured."
     lines = []
@@ -554,9 +552,9 @@ def compact_transcript(
 
 
 def candidate_updates(
-    transcript: List[Mapping[str, str]],
-    memory_context: Mapping[str, Any],
-) -> str:
+    transcript,
+    memory_context,
+):
     if not transcript:
         return "- No candidate updates; no transcript was captured."
     if memory_context and not memory_context.get("found", False):

@@ -2,14 +2,13 @@
 
 import os
 import tempfile
-from typing import Callable, Optional
 
 import numpy as np
 
 from llm_interaction.terminal_io import read_terminal
 
 
-def resample(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+def resample(audio, orig_sr, target_sr):
     
     if orig_sr == target_sr:
         return audio
@@ -19,7 +18,7 @@ def resample(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
     return np.interp(indices, np.arange(len(audio)), audio.flatten()).astype(np.float32)
 
 
-def get_device_samplerate(device_index, target_sr: int) -> int:
+def get_device_samplerate(device_index, target_sr):
     
     try:
         import sounddevice as sd
@@ -42,10 +41,10 @@ class SpeechToTextError(RuntimeError):
 class MockSpeechToText:
     
 
-    def transcribe_push_to_talk(self) -> str:
+    def transcribe_push_to_talk(self):
         return read_terminal("Simulated transcription (or /quit): ").strip()
 
-    def transcribe_auto(self, **kwargs) -> str:
+    def transcribe_auto(self, **kwargs):
         return read_terminal("Simulated auto-listening (or /quit): ").strip()
 
 
@@ -54,15 +53,15 @@ class FasterWhisperSpeechToText:
 
     def __init__(
         self,
-        model_name: str,
-        device: str,
-        compute_type: str,
-        language: str,
-        record_seconds: float,
-        sample_rate: int,
-        device_index: int = -1,
+        model_name,
+        device,
+        compute_type,
+        language,
+        record_seconds,
+        sample_rate,
+        device_index = -1,
         logger=None,
-        state_callback: Optional[Callable[[str], None]] = None,
+        state_callback = None,
     ):
         if device.lower() != "cpu":
             raise SpeechToTextError(
@@ -79,7 +78,7 @@ class FasterWhisperSpeechToText:
         self.state_callback = state_callback
         self._model = None
 
-    def set_state(self, state: str) -> None:
+    def set_state(self, state):
         if self.state_callback is not None:
             self.state_callback(state)
 
@@ -113,7 +112,7 @@ class FasterWhisperSpeechToText:
             ) from exc
         return self._model
 
-    def record_wav(self, wav_path: str) -> None:
+    def record_wav(self, wav_path):
         try:
             import sounddevice as sd
             import soundfile as sf
@@ -153,7 +152,7 @@ class FasterWhisperSpeechToText:
                 "Try input_mode:=text or stt_provider:=mock."
             ) from exc
 
-    def transcribe_push_to_talk(self) -> str:
+    def transcribe_push_to_talk(self):
         command = read_terminal(
             "Press ENTER to record (or type /quit): "
         ).strip()
@@ -183,11 +182,11 @@ class FasterWhisperSpeechToText:
 
     def transcribe_auto(
         self,
-        energy_threshold: float = 0.01,
-        silence_duration_sec: float = 1.5,
-        max_duration_sec: float = 30.0,
-        min_speech_sec: float = 0.3,
-    ) -> str:
+        energy_threshold = 0.01,
+        silence_duration_sec = 1.5,
+        max_duration_sec = 30.0,
+        min_speech_sec = 0.3,
+    ):
         
         try:
             import sounddevice as sd
@@ -204,7 +203,7 @@ class FasterWhisperSpeechToText:
         max_chunks = int(max_duration_sec / chunk_sec)
         min_speech_chunks = max(1, int(min_speech_sec / chunk_sec))
 
-        recorded_chunks: list = []
+        recorded_chunks = []
         speech_started = False
         silence_count = 0
         speech_chunk_count = 0

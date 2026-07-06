@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import json
 import time
@@ -113,8 +112,8 @@ class GazeWebcamNode(Node):
             "emotion_model_name": str(self.get_parameter("emotion_model_name").value),
         }
 
-    def load_activity_detection_map(self) -> dict[str, list[str]]:
-        mapping: dict[str, list[str]] = {}
+    def load_activity_detection_map(self):
+        mapping = {}
         for activity in ("storytelling", "mood_check_teddy", "computer_emotion_recognition"):
             param_name = f"activity_detection_classes.{activity}"
             try:
@@ -125,7 +124,7 @@ class GazeWebcamNode(Node):
                 mapping[activity] = list(value)
         return mapping
 
-    def dialog_command_callback(self, msg: String) -> None:
+    def dialog_command_callback(self, msg):
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -154,15 +153,15 @@ class GazeWebcamNode(Node):
                 f"{', '.join(self._initial_target_classes)}"
             )
 
-    def publish_node_status(self, state: str, message: str = "") -> None:
-        payload: dict = {"state": state}
+    def publish_node_status(self, state, message = ""):
+        payload = {"state": state}
         if message:
             payload["message"] = message
         msg = String()
         msg.data = json.dumps(payload)
         self.node_status_pub.publish(msg)
 
-    def publish_gaze_status(self, status: str, target_class: str | None = None) -> None:
+    def publish_gaze_status(self, status, target_class = None):
         msg = String()
         msg.data = json.dumps({
             "status": status,
@@ -175,7 +174,7 @@ class GazeWebcamNode(Node):
             self.publish_node_status("READY")
             self._last_heartbeat = now
 
-    def initialize(self) -> bool:
+    def initialize(self):
         try:
             gazelle_checkpoint = resolve_checkpoint(
                 self.params["weights_dir"], self.params["gazelle_checkpoint"], "Gazelle"
@@ -362,7 +361,7 @@ class GazeWebcamNode(Node):
 
             _, scores = self.emotion_recognizer.predict_emotions(face_crop, logits=False)
             score_values = scores[0]
-            all_scores: dict[str, float] = {}
+            all_scores = {}
             for idx, class_name in self.emotion_recognizer.idx_to_emotion_class.items():
                 mapped = _EMOTION_CLASS_MAP.get(class_name, class_name.lower())
                 all_scores[mapped] = all_scores.get(mapped, 0.0) + float(score_values[idx])
@@ -377,12 +376,12 @@ class GazeWebcamNode(Node):
 
     def publish_emotion_status(
         self,
-        emotion: str,
-        confidence: float = 0.0,
-        all_scores: dict | None = None,
-        error: str | None = None,
-    ) -> None:
-        payload: dict = {"emotion": emotion, "timestamp": time.time()}
+        emotion,
+        confidence = 0.0,
+        all_scores = None,
+        error = None,
+    ):
+        payload = {"emotion": emotion, "timestamp": time.time()}
         if error is not None:
             payload["error"] = error
         else:
@@ -393,7 +392,7 @@ class GazeWebcamNode(Node):
         msg.data = json.dumps(payload)
         self.emotion_pub.publish(msg)
 
-    def set_status(self, status: str, target_class: str | None = None):
+    def set_status(self, status, target_class = None):
         if self.params["print_debug"] and status != self.last_status:
             self.get_logger().info(status)
         self.last_status = status

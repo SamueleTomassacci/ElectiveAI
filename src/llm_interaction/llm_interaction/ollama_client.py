@@ -1,7 +1,6 @@
 #Local LLM clients used by the HRI node
 
 import json
-from typing import Dict, List, Optional
 from urllib import error, request
 
 
@@ -14,10 +13,10 @@ class OllamaClient:
 
     def __init__(
         self,
-        base_url: str,
-        model: str,
-        fallback_model: str = "",
-        timeout: float = 60.0,
+        base_url,
+        model,
+        fallback_model = "",
+        timeout = 60.0,
         logger=None,
     ):
         self.base_url = base_url.rstrip("/")
@@ -26,7 +25,7 @@ class OllamaClient:
         self.timeout = timeout
         self.logger = logger
 
-    def request_json(self, path: str, payload: Optional[Dict] = None) -> Dict:
+    def request_json(self, path, payload = None):
         data = None
         headers = {"Accept": "application/json"}
         method = "GET"
@@ -64,7 +63,7 @@ class OllamaClient:
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise LlmError("Ollama returned an invalid response.") from exc
 
-    def available_models(self) -> List[str]:
+    def available_models(self):
         response = self.request_json("/api/tags")
         return [
             item.get("name", "")
@@ -73,7 +72,7 @@ class OllamaClient:
         ]
 
     @staticmethod
-    def matches_model(configured: str, available: str) -> bool:
+    def matches_model(configured, available):
         if configured == available:
             return True
         if ":" not in configured and available == f"{configured}:latest":
@@ -82,7 +81,7 @@ class OllamaClient:
             return True
         return False
 
-    def select_model(self) -> str:
+    def select_model(self):
         available = self.available_models()
         if any(self.matches_model(self.model, item) for item in available):
             return self.model
@@ -104,10 +103,10 @@ class OllamaClient:
 
     def chat(
         self,
-        messages: List[Dict[str, str]],
-        temperature: float,
-        max_response_tokens: int,
-    ) -> str:
+        messages,
+        temperature,
+        max_response_tokens,
+    ):
         """Generate one non-streaming response from the local model."""
         selected_model = self.select_model()
         options = {"temperature": temperature}
@@ -133,10 +132,10 @@ class MockLlmClient:
 
     def chat(
         self,
-        messages: List[Dict[str, str]],
-        temperature: float,
-        max_response_tokens: int,
-    ) -> str:
+        messages,
+        temperature,
+        max_response_tokens,
+    ):
         del temperature, max_response_tokens
         user_text = next(
             (

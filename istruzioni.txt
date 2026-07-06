@@ -5,7 +5,7 @@ cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
 
-colcon build --symlink-install --packages-select empower llm_interaction
+colcon build --symlink-install --packages-select empower llm_interaction benchmarks
 
 source /root/exchange/install/setup.bash
 
@@ -19,7 +19,7 @@ DENTRO AL CONTAINER
   source /opt/ros/humble/setup.bash
   source /root/tiago_public_ws/install/setup.bash
   source /root/exchange/install/setup.bash
-  colcon build --symlink-install --packages-select empower llm_interaction gaze_estimation
+  colcon build --symlink-install --packages-select empower llm_interaction gaze_estimation benchmarks
 
 
 Terminale 1: Gazebo
@@ -83,4 +83,3 @@ ros2 launch empower hri_empower_mission.launch.py \
   hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
   hri_input_mode:=voice
   
-

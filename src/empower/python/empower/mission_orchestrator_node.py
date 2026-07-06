@@ -5,7 +5,6 @@ import signal
 import subprocess
 import threading
 import time
-from dataclasses import dataclass
 from enum import Enum
 
 import rclpy
@@ -61,12 +60,18 @@ class MissionState(str, Enum):
     MISSION_FAILED = "MISSION_FAILED"
 
 
-@dataclass
 class MissionInteractionSpec:
-    task_description: str = ""
-    activity_description: str = ""
-    activity_type: str = "generic_child_activity"
-    child_name: str = ""
+    def __init__(
+        self,
+        task_description="",
+        activity_description="",
+        activity_type="generic_child_activity",
+        child_name="",
+    ):
+        self.task_description = task_description
+        self.activity_description = activity_description
+        self.activity_type = activity_type
+        self.child_name = child_name
 
 
 class MissionOrchestratorNode(Node):

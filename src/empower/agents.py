@@ -4,7 +4,7 @@ client = OpenAI()
 
 
 class Agents:
-    def __init__(self, image, task_description, child_context: str = ""):
+    def __init__(self, image, task_description, child_context = ""):
         if isinstance(image, (list, tuple)):
             self.encoded_images = [item for item in image if item]
         else:

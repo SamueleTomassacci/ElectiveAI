@@ -1,11 +1,9 @@
-from __future__ import annotations
 
-from typing import Any
 
 import numpy as np
 
 
-def point_in_bbox(point, bbox, margin_px=0) -> bool:
+def point_in_bbox(point, bbox, margin_px=0):
     if point is None or bbox is None:
         return False
     x, y = float(point[0]), float(point[1])
@@ -14,20 +12,20 @@ def point_in_bbox(point, bbox, margin_px=0) -> bool:
     return (x1 - margin) <= x <= (x2 + margin) and (y1 - margin) <= y <= (y2 + margin)
 
 
-def bbox_area(bbox) -> float:
+def bbox_area(bbox):
     if bbox is None:
         return 0.0
     x1, y1, x2, y2 = [float(v) for v in bbox]
     return max(0.0, x2 - x1) * max(0.0, y2 - y1)
 
 
-def extract_bbox(candidate: Any):
+def extract_bbox(candidate):
     if isinstance(candidate, dict):
         return candidate.get("bbox") or candidate.get("face_bbox") or candidate.get("face")
     return candidate
 
 
-def select_largest_face(results) -> int | None:
+def select_largest_face(results):
     if not results:
         return None
 
@@ -41,7 +39,7 @@ def select_largest_face(results) -> int | None:
     return best_index
 
 
-def heatmap_mass_inside_bbox(heatmap, bbox, image_width, image_height) -> float:
+def heatmap_mass_inside_bbox(heatmap, bbox, image_width, image_height):
     if heatmap is None or bbox is None:
         return 0.0
 
@@ -78,7 +76,7 @@ def is_gaze_on_object(
     margin_px,
     use_heatmap_ratio_check,
     heatmap_inside_bbox_threshold,
-) -> bool:
+):
     if object_bbox is None:
         return False
 

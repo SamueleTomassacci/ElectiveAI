@@ -6,10 +6,8 @@ import re
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
 from html import escape
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
 
 import cv2
 import numpy as np
@@ -20,15 +18,15 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
 
-@dataclass
 class BubbleEntity:
-    name: str
-    anchor: str
-    created_at: float
-    expires_at: float
+    def __init__(self, name, anchor, created_at, expires_at):
+        self.name = name
+        self.anchor = anchor
+        self.created_at = created_at
+        self.expires_at = expires_at
 
 
-def _as_float_list(value: Iterable[float], expected_len: int, fallback: List[float]) -> List[float]:
+def _as_float_list(value, expected_len, fallback):
     try:
         result = [float(item) for item in value]
     except (TypeError, ValueError):
@@ -38,12 +36,12 @@ def _as_float_list(value: Iterable[float], expected_len: int, fallback: List[flo
     return result
 
 
-def _wrap_text(text: str, max_chars: int, max_lines: int) -> List[str]:
+def _wrap_text(text, max_chars, max_lines):
     words = text.strip().split()
     if not words:
         return [""]
 
-    lines: List[str] = []
+    lines = []
     current = ""
     for word in words:
         candidate = word if not current else f"{current} {word}"
@@ -67,7 +65,7 @@ def _wrap_text(text: str, max_chars: int, max_lines: int) -> List[str]:
 class DialogBubbleNode(Node):
     """Render /hri utterances as speech bubbles inside Gazebo classic."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         super().__init__("dialog_bubble_node")
         self.declare_parameters(
             namespace="",
@@ -107,7 +105,7 @@ class DialogBubbleNode(Node):
         self.generated_dir = self.output_dir / "generated"
         self.run_id = int(time.time() * 1000)
         self.message_counter = 0
-        self.current: Dict[str, BubbleEntity] = {}
+        self.current = {}
         self.mission_state = ""
         self.dialog_state = ""
         self.last_robot_text = ""
@@ -130,7 +128,7 @@ class DialogBubbleNode(Node):
         else:
             self.get_logger().info("Gazebo HRI speech bubbles disabled.")
 
-    def prepare_output_dir(self) -> None:
+    def prepare_output_dir(self):
         if self.output_dir.exists():
             shutil.rmtree(self.output_dir)
         self.texture_dir.mkdir(parents=True, exist_ok=True)
@@ -160,14 +158,14 @@ class DialogBubbleNode(Node):
             encoding="utf-8",
         )
 
-    def robot_utterance_callback(self, msg: String) -> None:
+    def robot_utterance_callback(self, msg):
         text = msg.data.strip()
         if not text:
             return
         self.last_robot_text = text
         self.show_bubble("robot", text, str(self.get_parameter("robot_label").value))
 
-    def user_utterance_callback(self, msg: String) -> None:
+    def user_utterance_callback(self, msg):
         text = msg.data.strip()
         if not text:
             return
@@ -175,7 +173,7 @@ class DialogBubbleNode(Node):
         label_param = "user_label_child" if anchor == "child" else "user_label_adult"
         self.show_bubble(anchor, text, str(self.get_parameter(label_param).value))
 
-    def dialog_state_callback(self, msg: String) -> None:
+    def dialog_state_callback(self, msg):
         state = msg.data.strip()
         if state == self.dialog_state:
             return
@@ -188,10 +186,10 @@ class DialogBubbleNode(Node):
         if text:
             self.show_bubble("robot", text, str(self.get_parameter("robot_label").value), short=True)
 
-    def mission_state_callback(self, msg: String) -> None:
+    def mission_state_callback(self, msg):
         self.mission_state = msg.data.strip()
 
-    def resolve_user_anchor(self) -> str:
+    def resolve_user_anchor(self):
         mode = str(self.get_parameter("user_anchor").value).strip().lower()
         if mode in {"child", "adult"}:
             return mode
@@ -199,7 +197,7 @@ class DialogBubbleNode(Node):
             return "child"
         return "adult"
 
-    def show_bubble(self, anchor: str, text: str, label: str, short: bool = False) -> None:
+    def show_bubble(self, anchor, text, label, short = False):
         if not self.enabled:
             return
         self.message_counter += 1
@@ -240,7 +238,7 @@ class DialogBubbleNode(Node):
         )
         self.publish_ready(anchor, entity_name, text)
 
-    def publish_ready(self, anchor: str, entity_name: str, text: str) -> None:
+    def publish_ready(self, anchor, entity_name, text):
         payload = {
             "anchor": anchor,
             "entity": entity_name,
@@ -250,22 +248,22 @@ class DialogBubbleNode(Node):
         message.data = json.dumps(payload)
         self.ready_publisher.publish(message)
 
-    def lifetime(self, short: bool) -> float:
+    def lifetime(self, short):
         base = float(self.get_parameter("bubble_lifetime_sec").value)
         return min(base, 2.5) if short else base
 
-    def delete_anchor(self, anchor: str) -> None:
+    def delete_anchor(self, anchor):
         bubble = self.current.pop(anchor, None)
         if bubble is None:
             return
         self.delete_entity(bubble.name)
 
-    def delete_entity(self, entity_name: str) -> None:
+    def delete_entity(self, entity_name):
         command = self.gz_model_command()
         command.extend(["-m", entity_name, "-d"])
         self.run_gz_command(command, "DeleteBubble")
 
-    def update_bubbles(self) -> None:
+    def update_bubbles(self):
         if not self.enabled:
             return
         now = time.monotonic()
@@ -276,27 +274,27 @@ class DialogBubbleNode(Node):
                 continue
             self.set_entity_pose(bubble.name, self.pose_for_anchor(anchor))
 
-    def set_entity_pose(self, entity_name: str, pose: Pose) -> None:
+    def set_entity_pose(self, entity_name, pose):
         command = self.gz_model_command()
         command.extend(self.pose_args(entity_name, pose))
         self.run_gz_command(command, "MoveBubble")
 
-    def spawn_entity(self, entity_name: str, sdf_path: Path, pose: Pose) -> bool:
+    def spawn_entity(self, entity_name, sdf_path, pose):
         command = self.gz_model_command()
         command.extend(["-m", entity_name, "-f", str(sdf_path)])
         command.extend(self.pose_args("", pose, include_model=False))
         return self.run_gz_command(command, "SpawnBubble")
 
-    def gz_model_command(self) -> List[str]:
+    def gz_model_command(self):
         command = [str(self.get_parameter("gazebo_command").value), "model"]
         world_name = str(self.get_parameter("gazebo_world_name").value).strip()
         if world_name:
             command.extend(["-w", world_name])
         return command
 
-    def pose_args(self, entity_name: str, pose: Pose, include_model: bool = True) -> List[str]:
+    def pose_args(self, entity_name, pose, include_model = True):
         yaw = self.yaw_from_pose(pose)
-        args: List[str] = []
+        args = []
         if include_model:
             args.extend(["-m", entity_name])
         args.extend(
@@ -318,13 +316,13 @@ class DialogBubbleNode(Node):
         return args
 
     @staticmethod
-    def yaw_from_pose(pose: Pose) -> float:
+    def yaw_from_pose(pose):
         return math.atan2(
             2.0 * pose.orientation.w * pose.orientation.z,
             1.0 - 2.0 * pose.orientation.z * pose.orientation.z,
         )
 
-    def run_gz_command(self, command: List[str], label: str) -> bool:
+    def run_gz_command(self, command, label):
         log_method = self.get_logger().debug if label == "MoveBubble" else self.get_logger().info
         log_method(f"{label} Gazebo command: {' '.join(command)}")
         try:
@@ -353,7 +351,7 @@ class DialogBubbleNode(Node):
             return False
         return True
 
-    def pose_for_anchor(self, anchor: str) -> Pose:
+    def pose_for_anchor(self, anchor):
         if anchor == "robot":
             pose = self.robot_pose_from_tf()
             if pose is not None:
@@ -377,7 +375,7 @@ class DialogBubbleNode(Node):
             )
         return self.make_pose(xyz[0], xyz[1], xyz[2])
 
-    def robot_pose_from_tf(self) -> Pose | None:
+    def robot_pose_from_tf(self):
         offset = _as_float_list(
             self.get_parameter("robot_offset_xyz").value,
             3,
@@ -398,7 +396,7 @@ class DialogBubbleNode(Node):
             translation.z + offset[2],
         )
 
-    def make_pose(self, x: float, y: float, z: float) -> Pose:
+    def make_pose(self, x, y, z):
         yaw = float(self.get_parameter("bubble_yaw").value)
         pose = Pose()
         pose.position.x = float(x)
@@ -408,7 +406,7 @@ class DialogBubbleNode(Node):
         pose.orientation.w = math.cos(yaw * 0.5)
         return pose
 
-    def write_bubble_texture(self, path: Path, label: str, lines: List[str], anchor: str) -> None:
+    def write_bubble_texture(self, path, label, lines, anchor):
         width, height = 1024, 448
         image = np.full((height, width, 3), (255, 255, 255), dtype=np.uint8)
 
@@ -463,14 +461,14 @@ class DialogBubbleNode(Node):
 
     @staticmethod
     def rounded_rectangle(
-        image: np.ndarray,
-        left: int,
-        top: int,
-        right: int,
-        bottom: int,
-        radius: int,
-        color: Tuple[int, ...],
-    ) -> None:
+        image,
+        left,
+        top,
+        right,
+        bottom,
+        radius,
+        color,
+    ):
         cv2.rectangle(image, (left + radius, top), (right - radius, bottom), color, -1)
         cv2.rectangle(image, (left, top + radius), (right, bottom - radius), color, -1)
         for cx, cy in (
@@ -483,15 +481,15 @@ class DialogBubbleNode(Node):
 
     @staticmethod
     def rounded_rectangle_outline(
-        image: np.ndarray,
-        left: int,
-        top: int,
-        right: int,
-        bottom: int,
-        radius: int,
-        color: Tuple[int, ...],
-        thickness: int,
-    ) -> None:
+        image,
+        left,
+        top,
+        right,
+        bottom,
+        radius,
+        color,
+        thickness,
+    ):
         cv2.line(image, (left + radius, top), (right - radius, top), color, thickness)
         cv2.line(image, (left + radius, bottom), (right - radius, bottom), color, thickness)
         cv2.line(image, (left, top + radius), (left, bottom - radius), color, thickness)
@@ -504,7 +502,7 @@ class DialogBubbleNode(Node):
         ):
             cv2.ellipse(image, center, (radius, radius), 0, start, end, color, thickness)
 
-    def write_bubble_mesh(self, path: Path, texture_path: Path, entity_name: str) -> None:
+    def write_bubble_mesh(self, path, texture_path, entity_name):
         width = float(self.get_parameter("bubble_width_m").value)
         height = float(self.get_parameter("bubble_height_m").value)
         half_w = width * 0.5
@@ -652,7 +650,7 @@ class DialogBubbleNode(Node):
             encoding="utf-8",
         )
 
-    def build_bubble_sdf(self, entity_name: str, mesh_path: Path) -> str:
+    def build_bubble_sdf(self, entity_name, mesh_path):
         mesh_uri = mesh_path.resolve().as_uri()
         return f"""<?xml version="1.0"?>
 <sdf version="1.6">
@@ -675,7 +673,7 @@ class DialogBubbleNode(Node):
 """
 
 
-def main(args=None) -> None:
+def main(args=None):
     rclpy.init(args=args)
     node = DialogBubbleNode()
     try:

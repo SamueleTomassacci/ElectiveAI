@@ -33,8 +33,8 @@ docker exec -it hrai_sim bash
 cd /root/exchange
 source /opt/ros/humble/setup.bash
 source /root/tiago_public_ws/install/setup.bash
-rm -rf build/empower install/empower build/llm_interaction install/llm_interaction
-colcon build --symlink-install --packages-select llm_interaction empower
+rm -rf build/empower install/empower build/llm_interaction install/llm_interaction build/benchmarks install/benchmarks
+colcon build --symlink-install --packages-select empower llm_interaction gaze_estimation benchmarks
 source /root/exchange/install/setup.bash
 rm -rf /root/exchange/output/empower_output/therapy_task
 ros2 launch empower hri_empower_mission.launch.py \

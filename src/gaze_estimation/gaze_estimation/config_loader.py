@@ -1,10 +1,8 @@
-from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 
-def resolve_checkpoint(weights_dir: str, filename: str, label: str) -> str:
+def resolve_checkpoint(weights_dir, filename, label):
     path = Path(weights_dir).expanduser() / filename
     if not path.is_file():
         raise FileNotFoundError(
@@ -16,7 +14,7 @@ def resolve_checkpoint(weights_dir: str, filename: str, label: str) -> str:
     return str(path)
 
 
-def parse_target_classes(value: Any) -> list[str]:
+def parse_target_classes(value):
     if value is None:
         return []
     if isinstance(value, str):

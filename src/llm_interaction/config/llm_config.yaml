@@ -13,7 +13,7 @@ voice_llm_node:
     stt_model: "base"
     stt_device: "cpu"
     stt_compute_type: "int8"
-    stt_device_index: 8
+    stt_device_index: 10
     language: "en"
     record_seconds: 5.0
     sample_rate: 16000

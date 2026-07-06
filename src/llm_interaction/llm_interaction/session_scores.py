@@ -1,20 +1,18 @@
 """Session score calculation, persistence, and history queries."""
 
-from __future__ import annotations
 
 import json
 import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-ACTIVITY_TO_TASK: Dict[str, str] = {
+ACTIVITY_TO_TASK = {
     "storytelling": "Take the book",
     "mood_check_teddy": "Take the teddy bear",
     "computer_emotion_recognition": "Take the computer",
 }
 
-TASK_KEYWORD_TO_ACTIVITY: List[Tuple[List[str], str, str]] = [
+TASK_KEYWORD_TO_ACTIVITY = [
     (["book", "read", "story"], "storytelling", "Take the book"),
     (
         ["teddy", "teddy bear", "plush", "peluche", "mood", "feelings", "how they feel"],
@@ -28,7 +26,7 @@ TASK_KEYWORD_TO_ACTIVITY: List[Tuple[List[str], str, str]] = [
     ),
 ]
 
-_EMOTION_VALENCE: Dict[str, float] = {
+_EMOTION_VALENCE = {
     "happy": 100.0,
     "surprise": 80.0,
     "neutral": 60.0,
@@ -46,12 +44,12 @@ _file_lock = threading.Lock()
 
 def compute_session_scores(
     *,
-    attention_alert_count: int,
-    emotion_samples: Sequence[Tuple[float, str]],
-    child_turns: int,
-    expected_turns: int,
-    duration_sec: float,
-) -> Dict[str, float]:
+    attention_alert_count,
+    emotion_samples,
+    child_turns,
+    expected_turns,
+    duration_sec,
+):
     attention = _attention_score(attention_alert_count, duration_sec)
     emotion = _emotion_score(emotion_samples)
     participation = _participation_score(child_turns, expected_turns)
@@ -64,7 +62,7 @@ def compute_session_scores(
     }
 
 
-def _attention_score(alert_count: int, duration_sec: float) -> float:
+def _attention_score(alert_count, duration_sec):
     if duration_sec <= 0:
         return 50.0
     penalty = alert_count * _ATTENTION_PENALTY_PER_ALERT_SEC
@@ -72,7 +70,7 @@ def _attention_score(alert_count: int, duration_sec: float) -> float:
     return round(max(0.0, min(100.0, score)), 1)
 
 
-def _emotion_score(samples: Sequence[Tuple[float, str]]) -> float:
+def _emotion_score(samples):
     if not samples:
         return 50.0
     total = 0.0
@@ -88,14 +86,14 @@ def _emotion_score(samples: Sequence[Tuple[float, str]]) -> float:
     return round(total / count, 1)
 
 
-def _participation_score(child_turns: int, expected_turns: int) -> float:
+def _participation_score(child_turns, expected_turns):
     if expected_turns <= 0:
         return 100.0 if child_turns > 0 else 50.0
     ratio = min(1.0, child_turns / max(1, expected_turns))
     return round(100.0 * ratio, 1)
 
 
-def load_score_history(path: str) -> Dict[str, Any]:
+def load_score_history(path):
     if not path or not os.path.exists(path):
         return {"children": {}}
     with _file_lock:
@@ -110,10 +108,10 @@ def load_score_history(path: str) -> Dict[str, Any]:
 
 
 def save_session_score(
-    path: str,
-    child_name: str,
-    session_data: Dict[str, Any],
-) -> None:
+    path,
+    child_name,
+    session_data,
+):
     key = child_name.strip().lower()
     if not key:
         return
@@ -141,9 +139,9 @@ def save_session_score(
 
 
 def best_activity_for_child(
-    path: str,
-    child_name: str,
-) -> Optional[Dict[str, Any]]:
+    path,
+    child_name,
+):
     history = load_score_history(path)
     key = child_name.strip().lower()
     child_data = history.get("children", {}).get(key)
@@ -154,8 +152,8 @@ def best_activity_for_child(
     if not sessions:
         return None
 
-    activity_scores: Dict[str, List[float]] = {}
-    activity_tasks: Dict[str, str] = {}
+    activity_scores = {}
+    activity_tasks = {}
     for session in sessions:
         atype = session.get("activity_type", "")
         overall = session.get("scores", {}).get("overall")
@@ -180,7 +178,7 @@ def best_activity_for_child(
     }
 
 
-def infer_activity_and_task(text: str) -> Optional[Tuple[str, str]]:
+def infer_activity_and_task(text):
     lower = text.lower()
     for keywords, activity_type, task in TASK_KEYWORD_TO_ACTIVITY:
         if any(kw in lower for kw in keywords):

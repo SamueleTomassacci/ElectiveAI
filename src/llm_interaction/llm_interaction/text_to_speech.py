@@ -5,7 +5,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Callable, List, Optional
 
 
 class TextToSpeechError(RuntimeError):
@@ -17,11 +16,11 @@ class TextToSpeech:
 
     def __init__(
         self,
-        provider: str,
-        piper_model_path: str = "",
-        piper_config_path: str = "",
-        language: str = "en",
-        timeout: float = 30.0,
+        provider,
+        piper_model_path = "",
+        piper_config_path = "",
+        language = "en",
+        timeout = 30.0,
         logger=None,
     ):
         self.provider = provider
@@ -31,15 +30,15 @@ class TextToSpeech:
         self.timeout = timeout
         self.logger = logger
 
-    def info(self, message: str) -> None:
+    def info(self, message):
         if self.logger is not None:
             self.logger.info(message)
 
-    def warn(self, message: str) -> None:
+    def warn(self, message):
         if self.logger is not None:
             self.logger.warning(message)
 
-    def speak_piper(self, text: str) -> None:
+    def speak_piper(self, text):
         executable = shutil.which("piper")
         if executable is None:
             raise TextToSpeechError("The 'piper' command is not installed.")
@@ -84,7 +83,7 @@ class TextToSpeech:
             if wav_path and os.path.exists(wav_path):
                 os.unlink(wav_path)
 
-    def play_wav(self, wav_path: str) -> None:
+    def play_wav(self, wav_path):
         players = [
             ("paplay", "paplay", ["paplay", wav_path]),
             ("aplay pulse", "aplay", ["aplay", "-q", "-D", "pulse", wav_path]),
@@ -130,7 +129,7 @@ class TextToSpeech:
             "Piper created the WAV, but no player is available (aplay, paplay, or ffplay)."
         )
 
-    def speak_pyttsx3(self, text: str) -> None:
+    def speak_pyttsx3(self, text):
         try:
             import pyttsx3
         except ImportError as exc:
@@ -163,7 +162,7 @@ class TextToSpeech:
         except Exception as exc:
             raise TextToSpeechError(f"pyttsx3 cannot play audio: {exc}") from exc
 
-    def speak_system(self, text: str) -> None:
+    def speak_system(self, text):
         for executable in ("espeak-ng", "espeak"):
             executable_path = shutil.which(executable)
             if executable_path:
@@ -200,12 +199,11 @@ class TextToSpeech:
         )
 
     @staticmethod
-    def speak_mock(text: str) -> None:
+    def speak_mock(text):
         print(f"TIAGo: {text}", flush=True)
 
-    def speak(self, text: str) -> str:
+    def speak(self, text):
         """Speak text, applying local fallbacks and returning the backend used."""
-        providers: List[tuple[str, Callable[[str], None]]]
         if self.provider == "piper":
             providers = [
                 ("piper", self.speak_piper),

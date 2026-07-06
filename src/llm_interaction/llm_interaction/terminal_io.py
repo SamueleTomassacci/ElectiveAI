@@ -3,7 +3,7 @@
 import sys
 
 
-def read_terminal(prompt: str) -> str:
+def read_terminal(prompt):
     #Read from the controlling terminal, falling back to standard input
     try:
         with open("/dev/tty", "r", encoding="utf-8") as terminal:

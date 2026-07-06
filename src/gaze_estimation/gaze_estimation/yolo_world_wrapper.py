@@ -1,10 +1,9 @@
-from __future__ import annotations
 
 from gaze_estimation.device import yolo_device_arg
 
 
 class YoloWorldDetector:
-    def __init__(self, checkpoint_path: str, target_classes: list[str], confidence: float, device: str):
+    def __init__(self, checkpoint_path, target_classes, confidence, device):
         try:
             from ultralytics import YOLOWorld
         except ImportError as exc:
@@ -18,7 +17,7 @@ class YoloWorldDetector:
         self.target_classes = []
         self.set_classes(target_classes)
 
-    def set_classes(self, target_classes: list[str]) -> None:
+    def set_classes(self, target_classes):
         self.target_classes = list(target_classes or [])
         if self.target_classes:
             self.model.set_classes(self.target_classes)
