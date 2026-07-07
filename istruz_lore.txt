@@ -1,4 +1,11 @@
-Aprire terminali e su ognuno:
+avviare container
+
+cd Scrivania/ElectiveAI2
+bash start_thiago.sh
+
+
+
+Poi, aprire terminali e su ognuno:
 
 docker exec -it hrai_sim bash
 
@@ -15,7 +22,6 @@ ros2 launch tiago_gazebo tiago_gazebo.launch.py \
   is_public_sim:=True \
   gazebo_version:=classic \
   world_name:=/root/exchange/exchange/scene.world
-
 
 
 
