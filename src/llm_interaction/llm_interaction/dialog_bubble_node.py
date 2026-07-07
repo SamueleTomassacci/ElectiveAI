@@ -6,11 +6,13 @@ import re
 import shutil
 import subprocess
 import time
+from functools import lru_cache
 from html import escape
 from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 import rclpy
 from geometry_msgs.msg import Pose
 from rclpy.node import Node
@@ -26,6 +28,50 @@ class BubbleEntity:
         self.expires_at = expires_at
 
 
+BUBBLE_TEXTURE_WIDTH_PX = 1024
+BUBBLE_TEXTURE_MIN_HEIGHT_PX = 448
+BUBBLE_TEXT_X_PX = 72
+BUBBLE_LABEL_Y_PX = 58
+BUBBLE_TEXT_FIRST_LINE_Y_PX = 138
+BUBBLE_TEXT_LINE_STEP_PX = 86
+BUBBLE_TEXT_RIGHT_MARGIN_PX = 72
+BUBBLE_TEXT_FONT_SIZE = 56
+BUBBLE_LABEL_FONT_SIZE = 54
+BUBBLE_TEXT_MAX_WIDTH_PX = (
+    BUBBLE_TEXTURE_WIDTH_PX - BUBBLE_TEXT_X_PX - BUBBLE_TEXT_RIGHT_MARGIN_PX
+)
+
+
+@lru_cache(maxsize=8)
+def _load_font(size, bold=False):
+    candidates = [
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            if bold
+            else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        ),
+        (
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"
+            if bold
+            else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"
+        ),
+        (
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+            if bold
+            else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+        ),
+        (
+            "/usr/share/fonts/opentype/urw-base35/NimbusSans-Bold.otf"
+            if bold
+            else "/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf"
+        ),
+    ]
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return ImageFont.truetype(candidate, size=size)
+    return ImageFont.load_default()
+
+
 def _as_float_list(value, expected_len, fallback):
     try:
         result = [float(item) for item in value]
@@ -36,30 +82,76 @@ def _as_float_list(value, expected_len, fallback):
     return result
 
 
-def _wrap_text(text, max_chars, max_lines):
+def _text_pixel_width(text):
+    font = _load_font(BUBBLE_TEXT_FONT_SIZE, bold=True)
+    bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0]
+
+
+def _line_fits(text, max_chars):
+    return len(text) <= max_chars and _text_pixel_width(text) <= BUBBLE_TEXT_MAX_WIDTH_PX
+
+
+def _split_word_to_fit(word, max_chars):
+    chunks = []
+    current = ""
+    for char in word:
+        candidate = f"{current}{char}"
+        if current and not _line_fits(candidate, max_chars):
+            chunks.append(current)
+            current = char
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _wrap_text(text, max_chars):
     words = text.strip().split()
     if not words:
         return [""]
 
+    max_chars = max(1, int(max_chars))
     lines = []
     current = ""
     for word in words:
+        chunks = _split_word_to_fit(word, max_chars)
+        if len(chunks) > 1:
+            if current:
+                lines.append(current)
+                current = ""
+            lines.extend(chunks[:-1])
+            current = chunks[-1]
+            continue
+
         candidate = word if not current else f"{current} {word}"
-        if len(candidate) <= max_chars:
+        if _line_fits(candidate, max_chars):
             current = candidate
             continue
         if current:
             lines.append(current)
         current = word
-        if len(lines) >= max_lines:
-            break
 
-    if current and len(lines) < max_lines:
+    if current:
         lines.append(current)
+    return lines
 
-    if len(lines) == max_lines and len(" ".join(words)) > len(" ".join(lines)):
-        lines[-1] = lines[-1].rstrip(".") + "..."
-    return lines[:max_lines]
+
+def _bubble_texture_height(line_count):
+    font = _load_font(BUBBLE_TEXT_FONT_SIZE, bold=True)
+    bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), "Ag", font=font)
+    line_height = bbox[3] - bbox[1]
+    text_bottom_padding = 54
+    tail_height = 44
+    bottom_margin = 28
+    content_bottom = (
+        BUBBLE_TEXT_FIRST_LINE_Y_PX
+        + max(0, line_count - 1) * BUBBLE_TEXT_LINE_STEP_PX
+        + line_height
+        + text_bottom_padding
+    )
+    return max(BUBBLE_TEXTURE_MIN_HEIGHT_PX, content_bottom + tail_height + bottom_margin)
 
 
 class DialogBubbleNode(Node):
@@ -80,7 +172,7 @@ class DialogBubbleNode(Node):
                 ("bubble_yaw", 1.35),
                 ("bubble_width_m", 1.9),
                 ("bubble_height_m", 0.75),
-                ("bubble_lifetime_sec", 9.0),
+                ("bubble_lifetime_sec", 12.0),
                 ("pose_update_hz", 1.0),
                 ("max_chars_per_line", 34),
                 ("max_lines", 3),
@@ -208,10 +300,12 @@ class DialogBubbleNode(Node):
         lines = _wrap_text(
             text,
             int(self.get_parameter("max_chars_per_line").value),
-            int(self.get_parameter("max_lines").value),
         )
-        self.write_bubble_texture(texture_path, label, lines, anchor)
-        self.write_bubble_mesh(mesh_path, texture_path, entity_name)
+        _texture_width_px, texture_height_px = self.write_bubble_texture(
+            texture_path, label, lines, anchor
+        )
+        mesh_height = self.bubble_height_for_texture(texture_height_px)
+        self.write_bubble_mesh(mesh_path, texture_path, entity_name, mesh_height)
         sdf = self.build_bubble_sdf(entity_name, mesh_path)
         if not sdf.strip():
             self.get_logger().error(
@@ -407,13 +501,13 @@ class DialogBubbleNode(Node):
         return pose
 
     def write_bubble_texture(self, path, label, lines, anchor):
-        width, height = 1024, 448
+        width, height = BUBBLE_TEXTURE_WIDTH_PX, _bubble_texture_height(len(lines))
         image = np.full((height, width, 3), (255, 255, 255), dtype=np.uint8)
 
         fill = (255, 255, 255)
         border = (205, 211, 218)
-        label_color = (175, 82, 30) if anchor == "robot" else (70, 130, 48)
-        text_color = (34, 37, 41)
+        label_color = (0, 54, 140) if anchor == "robot" else (0, 92, 35)
+        text_color = (0, 0, 0)
 
         rect_left, rect_top = 28, 28
         rect_right, rect_bottom = width - 28, height - 72
@@ -434,30 +528,17 @@ class DialogBubbleNode(Node):
         cv2.fillConvexPoly(image, tail, fill, lineType=cv2.LINE_AA)
         cv2.polylines(image, [tail], True, border, 6, lineType=cv2.LINE_AA)
 
-        cv2.putText(
-            image,
-            label,
-            (72, 98),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.35,
-            label_color,
-            4,
-            lineType=cv2.LINE_AA,
-        )
-        y = 178
+        pil_image = Image.fromarray(image)
+        draw = ImageDraw.Draw(pil_image)
+        label_font = _load_font(BUBBLE_LABEL_FONT_SIZE, bold=True)
+        text_font = _load_font(BUBBLE_TEXT_FONT_SIZE, bold=True)
+        draw.text((BUBBLE_TEXT_X_PX, BUBBLE_LABEL_Y_PX), label, font=label_font, fill=label_color)
+        y = BUBBLE_TEXT_FIRST_LINE_Y_PX
         for line in lines:
-            cv2.putText(
-                image,
-                line,
-                (72, y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1.32,
-                text_color,
-                3,
-                lineType=cv2.LINE_AA,
-            )
-            y += 76
-        cv2.imwrite(str(path), image)
+            draw.text((BUBBLE_TEXT_X_PX, y), line, font=text_font, fill=text_color)
+            y += BUBBLE_TEXT_LINE_STEP_PX
+        pil_image.save(str(path))
+        return width, height
 
     @staticmethod
     def rounded_rectangle(
@@ -502,11 +583,13 @@ class DialogBubbleNode(Node):
         ):
             cv2.ellipse(image, center, (radius, radius), 0, start, end, color, thickness)
 
-    def write_bubble_mesh(self, path, texture_path, entity_name):
+    def bubble_height_for_texture(self, texture_height_px):
+        base_height = float(self.get_parameter("bubble_height_m").value)
+        return base_height * (float(texture_height_px) / float(BUBBLE_TEXTURE_MIN_HEIGHT_PX))
+
+    def write_bubble_mesh(self, path, texture_path, entity_name, height):
         width = float(self.get_parameter("bubble_width_m").value)
-        height = float(self.get_parameter("bubble_height_m").value)
         half_w = width * 0.5
-        half_h = height * 0.5
         texture_uri = escape(texture_path.resolve().as_uri(), quote=True)
         safe_id = re.sub(r"[^A-Za-z0-9_]+", "_", entity_name)
         image_id = f"{safe_id}_image"
@@ -582,10 +665,10 @@ class DialogBubbleNode(Node):
       <mesh>
         <source id="{positions_id}">
           <float_array id="{positions_array_id}" count="12">
-            0 {-half_w:.6f} {-half_h:.6f}
-            0 {half_w:.6f} {-half_h:.6f}
-            0 {half_w:.6f} {half_h:.6f}
-            0 {-half_w:.6f} {half_h:.6f}
+            0 {-half_w:.6f} 0.000000
+            0 {half_w:.6f} 0.000000
+            0 {half_w:.6f} {height:.6f}
+            0 {-half_w:.6f} {height:.6f}
           </float_array>
           <technique_common>
             <accessor source="#{positions_array_id}" count="4" stride="3">

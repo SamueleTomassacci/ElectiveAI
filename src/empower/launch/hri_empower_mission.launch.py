@@ -55,7 +55,7 @@ def generate_launch_description():
             DeclareLaunchArgument("skip_to_child_activity", default_value="false"),
             DeclareLaunchArgument("test_child_name", default_value="Luca"),
             DeclareLaunchArgument("test_activity_type", default_value="storytelling"),
-            DeclareLaunchArgument("test_task_description", default_value="Take the book"),
+            DeclareLaunchArgument("test_task_description", default_value="Take the book and give it to the child"),
             Node(
                 package="empower",
                 executable="models_cacher_node",
@@ -116,6 +116,7 @@ def generate_launch_description():
                         ),
                         "bubble_width_m": 1.9,
                         "bubble_height_m": 0.75,
+                        "bubble_lifetime_sec": 12.0,
                         "gazebo_command": "gz",
                         "gazebo_world_name": "scene",
                     },

@@ -7,22 +7,22 @@ import threading
 from pathlib import Path
 
 ACTIVITY_TO_TASK = {
-    "storytelling": "Take the book",
-    "mood_check_teddy": "Take the teddy bear",
-    "computer_emotion_recognition": "Take the computer",
+    "storytelling": "Take the book and give it to the child",
+    "mood_check_teddy": "Take the teddy bear and give it to the child",
+    "computer_emotion_recognition": "Take the computer and give it to the child",
 }
 
 TASK_KEYWORD_TO_ACTIVITY = [
-    (["book", "read", "story"], "storytelling", "Take the book"),
+    (["book", "read", "story"], "storytelling", "Take the book and give it to the child"),
     (
         ["teddy", "teddy bear", "plush", "peluche", "mood", "feelings", "how they feel"],
         "mood_check_teddy",
-        "Take the teddy bear",
+        "Take the teddy bear and give it to the child",
     ),
     (
         ["computer", "laptop", "emotion recognition", "recognize emotions", "emotion photos"],
         "computer_emotion_recognition",
-        "Take the computer",
+        "Take the computer and give it to the child",
     ),
 ]
 

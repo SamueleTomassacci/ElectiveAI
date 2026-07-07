@@ -1,8 +1,21 @@
 attention_monitor:
   ros__parameters:
-    attention_loss_threshold_sec: 2.5
+    attention_loss_threshold_sec: 5.0
     attention_cooldown_sec: 20.0
     emotion_smoothing_window_sec: 7.0
+    combined_recall_score_enabled: true
+    recall_attention_weight: 0.7
+    recall_emotion_weight: 0.3
+    recall_score_threshold: 0.8
+    emotion_recall_score:
+      happy: 0.0
+      surprise: 0.1
+      neutral: 0.2
+      unknown: 0.3
+      disgust: 0.5
+      sad: 0.5
+      angry: 0.6
+      fear: 0.6
     activity_target_map:
       storytelling: ["book", "robot"]
       mood_check_teddy: ["teddy bear", "robot"]

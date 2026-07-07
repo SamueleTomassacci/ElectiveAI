@@ -22,12 +22,42 @@ def overlay_heatmap(image_bgr, heatmap, alpha=0.35):
     return cv2.addWeighted(image_bgr, 1.0 - alpha, colored, alpha, 0)
 
 
+def emotion_overlay_text(emotion_status):
+    if not isinstance(emotion_status, dict):
+        return "Emotion: unknown"
+    emotion = str(emotion_status.get("emotion", "unknown") or "unknown")
+    if emotion_status.get("error"):
+        return f"Emotion: {emotion}"
+    confidence = emotion_status.get("confidence")
+    if isinstance(confidence, (float, int)) and emotion not in {"unknown", "no_face", "unavailable"}:
+        return f"Emotion: {emotion} ({confidence:.2f})"
+    return f"Emotion: {emotion}"
+
+
+def emotion_color(emotion_status):
+    if not isinstance(emotion_status, dict):
+        return (180, 180, 180)
+    emotion = str(emotion_status.get("emotion", "unknown") or "unknown")
+    if emotion in {"unknown", "no_face", "unavailable"}:
+        return (180, 180, 180)
+    return {
+        "happy": (0, 220, 0),
+        "surprise": (0, 220, 220),
+        "neutral": (220, 220, 220),
+        "sad": (255, 180, 0),
+        "angry": (0, 0, 255),
+        "fear": (180, 0, 255),
+        "disgust": (0, 140, 255),
+    }.get(emotion, (220, 220, 220))
+
+
 def draw_debug_overlay(
     frame_bgr,
     gaze_result=None,
     object_detections=None,
     status="LOOKING_ELSEWHERE",
     matched_object=None,
+    emotion_status=None,
     show_heatmap=True,
 ):
     image = frame_bgr.copy()
@@ -61,4 +91,17 @@ def draw_debug_overlay(
     status_color = (0, 220, 0) if status.startswith("LOOKING_AT_OBJECT") else (0, 0, 255)
     cv2.rectangle(image, (8, 8), (min(image.shape[1] - 8, 560), 42), (0, 0, 0), -1)
     cv2.putText(image, status, (16, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.72, status_color, 2)
+
+    emotion_text = emotion_overlay_text(emotion_status)
+    emotion_panel_width = min(image.shape[1] - 8, 360)
+    cv2.rectangle(image, (8, 48), (emotion_panel_width, 82), (0, 0, 0), -1)
+    cv2.putText(
+        image,
+        emotion_text,
+        (16, 72),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.68,
+        emotion_color(emotion_status),
+        2,
+    )
     return image

@@ -35,6 +35,7 @@ _ATTENTION_RECALL_SYSTEM_PROMPT = (
     "The child is not paying attention to the activity. "
     "Generate ONE short, warm, non-judgmental sentence (maximum 12 words) "
     "to gently redirect the child's attention back to {target}. "
+    "Follow the child's attention-recall preferences when provided. "
     "Do not scold. Do not mention that you are monitoring gaze or attention. "
     "Just be kind and playful."
 )
@@ -129,6 +130,76 @@ def child_memory_prompt_section(context):
     return f"\n\nChild personalization memory:\n{prompt_text}"
 
 
+def attention_recall_preferences(context):
+    memory_context = context.get("child_memory")
+    if not isinstance(memory_context, dict):
+        return {}
+    preferences = memory_context.get("attention_recall", {})
+    if not isinstance(preferences, dict):
+        return {}
+    return preferences
+
+
+def attention_recall_values(preferences, key):
+    values = preferences.get(key, [])
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def should_skip_attention_recall(context):
+    preferences = attention_recall_preferences(context)
+    strategies = [
+        value.lower().replace("-", "_").replace(" ", "_")
+        for value in attention_recall_values(preferences, "strategies")
+    ]
+    return any(
+        strategy in {
+            "continue_without_recall",
+            "no_recall",
+            "observe_only",
+            "do_not_interrupt",
+        }
+        for strategy in strategies
+    )
+
+
+def attention_recall_preference_text(context):
+    preferences = attention_recall_preferences(context)
+    if not preferences:
+        return ""
+    lines = []
+    strategies = attention_recall_values(preferences, "strategies")
+    styles = attention_recall_values(preferences, "styles")
+    guidance = attention_recall_values(preferences, "guidance")
+    if strategies:
+        lines.append(f"Preferred attention-recall strategy: {', '.join(strategies)}.")
+    if styles:
+        lines.append(f"Preferred attention-recall style: {', '.join(styles)}.")
+    lines.extend(guidance)
+    return "\n".join(lines)
+
+
+def personalized_attention_recall_fallback(activity_type, expected_target, context):
+    preferences = attention_recall_preferences(context)
+    child_name = str(context.get("child_name", "")).strip()
+    prefix = f"{child_name}, " if child_name else ""
+    styles = [
+        value.lower()
+        for value in attention_recall_values(preferences, "styles")
+    ]
+    strategies = [
+        value.lower()
+        for value in attention_recall_values(preferences, "strategies")
+    ]
+    if "gentle_recall" in strategies or any("gentle" in style for style in styles):
+        return f"{prefix}let's gently look at the {expected_target} together."
+    return _ATTENTION_RECALL_FALLBACKS.get(
+        activity_type,
+        _ATTENTION_RECALL_FALLBACKS["generic_child_activity"],
+    )
+
+
 def build_child_activity_system_prompt(activity_type, context):
     activity_description = context.get("activity_description", "")
     memory_section = child_memory_prompt_section(context)
@@ -137,6 +208,7 @@ def build_child_activity_system_prompt(activity_type, context):
             "You are TIAGo, a friendly social robot in a therapy session with a young child. "
             "You are doing an emotion recognition activity using pictures shown on a computer screen. "
             "The therapist asked you to help the child recognize emotions from photos. "
+            "Use basic english words, avoiding complex vocabulary, use standard english names, not too complex"
             "Your goal is to ask the child to look at a picture on the computer and identify the emotion. "
             "For sentence 1, give one tiny visual hint, one short praise, or one simple observation about the face. "
             "For sentence 2, ask the child to name the emotion or choose between at most two emotions. "
@@ -151,6 +223,7 @@ def build_child_activity_system_prompt(activity_type, context):
             "You are using a teddy bear to gently talk with the child about how they feel. "
             "The therapist asked you to ask the child about their emotional state. "
             "Use the teddy bear as a safe and friendly intermediary. "
+            "Use basic english words, avoiding complex vocabulary, use standard english names, not too complex"
             "Ask simple, non-pressuring questions about feelings. "
             "You may say that the teddy bear is curious, shy, happy, tired, or calm, but do not overdo it. "
             "For sentence 1, let the teddy bear make one gentle feeling comment or name one simple feeling. "
@@ -166,7 +239,7 @@ def build_child_activity_system_prompt(activity_type, context):
             "The therapist asked you to read a short story from a book. "
             "Imagine that the book contains many different child-friendly stories, and choose one of them to read aloud. "
             "Invent the story yourself, but present it as if you are reading it from the book. "
-            "Use simple, warm language. "
+            "Use basic english words, avoiding complex vocabulary, use standard english names, not too complex"
             "For sentence 1, continue the story with exactly one small new event. "
             "For sentence 2, ask one simple story question, such as what happens next, how a character feels, or whether to continue. "
             "Use warm encouragement when the child answers. "
@@ -346,12 +419,18 @@ class VoiceLlmNode(Node):
         self.declare_parameter("language", "en")
         self.declare_parameter("record_seconds", 4.0)
         self.declare_parameter("sample_rate", 16000)
-        self.declare_parameter("tts_provider", "pyttsx3")
-        self.declare_parameter("tts_timeout", 30.0)
+        self.declare_parameter("tts_provider", "piper")
+        self.declare_parameter("tts_timeout", 60.0)
         self.declare_parameter("dialog_bubble_sync_enabled", False)
         self.declare_parameter("dialog_bubble_ready_timeout_sec", 1.5)
-        self.declare_parameter("piper_model_path", "")
-        self.declare_parameter("piper_config_path", "")
+        self.declare_parameter(
+            "piper_model_path",
+            "/root/exchange/models/piper/en_GB-jenny_dioco-medium.onnx",
+        )
+        self.declare_parameter(
+            "piper_config_path",
+            "/root/exchange/models/piper/en_GB-jenny_dioco-medium.onnx.json",
+        )
         self.declare_parameter("system_prompt", DEFAULT_SYSTEM_PROMPT)
         self.declare_parameter("therapist_llm_replies", True)
         self.declare_parameter("therapist_input_enabled", True)
@@ -566,6 +645,10 @@ class VoiceLlmNode(Node):
             self.get_logger().warning(
                 f"No RDF child memory found for '{child_name}'; using a generic prompt."
             )
+        else:
+            canonical_name = str(memory_context.get("child_name", "")).strip()
+            if canonical_name:
+                context["child_name"] = canonical_name
         context["child_memory"] = memory_context
 
     def get_memory_store(self):
@@ -867,16 +950,43 @@ class VoiceLlmNode(Node):
 
         activity_type = alert.get("activity_type", "generic_child_activity")
         expected_target = alert.get("expected_target", "robot")
+        with self._mode_lock:
+            context = dict(self._child_activity_context)
+        child_name = str(context.get("child_name", "")).strip()
         self.get_logger().info(
             f"[ATTENTION_RECALL] Alert received: {alert}"
         )
 
+        if should_skip_attention_recall(context):
+            self.get_logger().info(
+                "[ATTENTION_RECALL] Skipping spoken recall due to child memory "
+                f"preference for {child_name or 'the child'}."
+            )
+            return
+
         recall_text = None
         if self._attention_llm is not None:
             system_prompt = _ATTENTION_RECALL_SYSTEM_PROMPT.format(target=expected_target)
+            preference_text = attention_recall_preference_text(context)
+            child_line = (
+                f"The child's name is {child_name}.\n"
+                if child_name else ""
+            )
+            preference_section = (
+                f"\nChild attention-recall memory:\n{preference_text}\n"
+                if preference_text else ""
+            )
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"The child is not looking at {expected_target} during {activity_type}."},
+                {
+                    "role": "user",
+                    "content": (
+                        f"{child_line}"
+                        f"The child is not looking at {expected_target} "
+                        f"during {activity_type}."
+                        f"{preference_section}"
+                    ),
+                },
             ]
             try:
                 recall_text = self._attention_llm.chat(
@@ -892,9 +1002,10 @@ class VoiceLlmNode(Node):
                 )
 
         if not recall_text:
-            recall_text = _ATTENTION_RECALL_FALLBACKS.get(
+            recall_text = personalized_attention_recall_fallback(
                 activity_type,
-                _ATTENTION_RECALL_FALLBACKS["generic_child_activity"],
+                expected_target,
+                context,
             )
 
         self.get_logger().info(f"[ATTENTION_RECALL] TIAGo: {recall_text}")

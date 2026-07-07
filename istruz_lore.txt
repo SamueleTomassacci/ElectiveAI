@@ -47,4 +47,4 @@ rm -rf /root/exchange/output/empower_output/therapy_task
 ros2 launch empower hri_empower_mission.launch.py \
   hri_params_file:=/root/exchange/src/llm_interaction/config/llm_config.yaml \
   hri_input_mode:=voice \
-  stt_device_index:=8
+  stt_device_index:=6

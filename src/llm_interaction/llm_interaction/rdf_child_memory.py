@@ -71,6 +71,9 @@ class RdfChildMemoryStore:
         str(HRI.needsSupportWithEmotion): "needs_support_with",
         str(HRI.likesEmotionRecognitionStimulus): "preferred_stimuli",
         str(HRI.prefersActivityType): "preferred_activity_types",
+        str(HRI.prefersAttentionRecallStrategy): "attention_recall_strategy",
+        str(HRI.prefersAttentionRecallStyle): "attention_recall_style",
+        str(HRI.attentionRecallGuidance): "attention_recall_guidance",
     }
 
     def __init__(self, rdf_path, seed_if_missing = True):
@@ -86,6 +89,12 @@ class RdfChildMemoryStore:
 
         if self.rdf_path.exists():
             self.graph.parse(self.rdf_path, format="turtle")
+            if seed_if_missing and self.ensure_default_child_aliases():
+                self.save()
+            if seed_if_missing and self.ensure_default_activity_preferences():
+                self.save()
+            if seed_if_missing and self.ensure_default_attention_recall_preferences():
+                self.save()
         elif seed_if_missing:
             self.rdf_path.parent.mkdir(parents=True, exist_ok=True)
             self.seed_graph()
@@ -112,6 +121,9 @@ class RdfChildMemoryStore:
             HRI.Emotion,
             HRI.EmotionRecognitionStimulus,
             HRI.ActivityType,
+            HRI.AttentionRecallStrategy,
+            HRI.AttentionRecallStyle,
+            HRI.AttentionRecallGuidance,
             HRI.Preference,
         ):
             self.graph.add((rdf_class, RDF.type, RDFS.Class))
@@ -127,9 +139,16 @@ class RdfChildMemoryStore:
             needs_support=["scared", "surprised"],
             recognition_stimuli=["clear face pictures", "cartoon faces"],
             activity_types=["storytelling"],
+            attention_recall_strategies=["continue_without_recall"],
+            attention_recall_styles=["do not interrupt for brief attention loss"],
+            attention_recall_guidance=[
+                "Luca is easily distracted but usually returns to the activity on "
+                "his own; continue the activity without an attention recall."
+            ],
         )
         self.add_child(
             "Sofia",
+            aliases=["Sophia"],
             story_themes=["animals", "magic forest", "teddy bear adventures"],
             story_characters=["teddy bear", "cat", "fairy"],
             story_settings=["enchanted world", "bedroom", "garden"],
@@ -138,8 +157,135 @@ class RdfChildMemoryStore:
             recognizes_well=["happy", "angry"],
             needs_support=["scared", "disgusted"],
             recognition_stimuli=["animal characters", "illustrated faces"],
-            activity_types=["mood_check_teddy"],
+            activity_types=["computer_emotion_recognition"],
+            attention_recall_strategies=["gentle_recall"],
+            attention_recall_styles=["gentle", "soft invitation"],
+            attention_recall_guidance=[
+                "Sofia benefits from a gentle attention recall when she loses focus."
+            ],
         )
+
+    def ensure_default_activity_preferences(self):
+        defaults = {
+            "Luca": ["storytelling"],
+            "Sofia": ["computer_emotion_recognition"],
+        }
+        changed = False
+        for display_name, activity_types in defaults.items():
+            child_uri = CHILD[slug(display_name)]
+            if (child_uri, RDF.type, HRI.Child) not in self.graph:
+                continue
+            existing = list(self.graph.objects(child_uri, HRI.prefersActivityType))
+            existing_labels = {self.value_label(value) for value in existing}
+            desired_labels = set(activity_types)
+            if existing_labels == desired_labels:
+                continue
+            if existing_labels and not self.should_replace_default_activity(
+                display_name,
+                existing_labels,
+            ):
+                continue
+            for value in existing:
+                self.graph.remove((child_uri, HRI.prefersActivityType, value))
+            self.add_values(
+                child_uri,
+                HRI.prefersActivityType,
+                activity_types,
+                HRI.ActivityType,
+            )
+            changed = True
+        return changed
+
+    @staticmethod
+    def should_replace_default_activity(display_name, existing_labels):
+        expected_seeded_values = {
+            "Luca": {"storytelling"},
+            "Sofia": {"mood_check_teddy"},
+        }
+        return existing_labels == expected_seeded_values.get(display_name, set())
+
+    def ensure_default_child_aliases(self):
+        defaults = {
+            "Sofia": ["Sophia"],
+        }
+        changed = False
+        for display_name, aliases in defaults.items():
+            child_uri = CHILD[slug(display_name)]
+            if (child_uri, RDF.type, HRI.Child) not in self.graph:
+                continue
+            existing = {
+                str(value).strip().lower()
+                for value in self.graph.objects(child_uri, HRI.aliasName)
+                if str(value).strip()
+            }
+            for alias in aliases:
+                if alias.lower() in existing:
+                    continue
+                self.graph.add((child_uri, HRI.aliasName, Literal(alias)))
+                changed = True
+        return changed
+
+    def ensure_default_attention_recall_preferences(self):
+        defaults = {
+            "Luca": {
+                "strategies": ["continue_without_recall"],
+                "styles": ["do not interrupt for brief attention loss"],
+                "guidance": [
+                    "Luca is easily distracted but usually returns to the activity on "
+                    "his own; continue the activity without an attention recall."
+                ],
+            },
+            "Sofia": {
+                "strategies": ["gentle_recall"],
+                "styles": ["gentle", "soft invitation"],
+                "guidance": [
+                    "Sofia benefits from a gentle attention recall when she loses focus."
+                ],
+            },
+        }
+        changed = False
+        for rdf_class in (
+            HRI.AttentionRecallStrategy,
+            HRI.AttentionRecallStyle,
+            HRI.AttentionRecallGuidance,
+        ):
+            if (rdf_class, RDF.type, RDFS.Class) not in self.graph:
+                self.graph.add((rdf_class, RDF.type, RDFS.Class))
+                changed = True
+        for display_name, values in defaults.items():
+            child_uri = CHILD[slug(display_name)]
+            if (child_uri, RDF.type, HRI.Child) not in self.graph:
+                continue
+            has_attention_recall = any(
+                any(True for _ in self.graph.objects(child_uri, predicate))
+                for predicate in (
+                    HRI.prefersAttentionRecallStrategy,
+                    HRI.prefersAttentionRecallStyle,
+                    HRI.attentionRecallGuidance,
+                )
+            )
+            if has_attention_recall:
+                continue
+            self.add_values(
+                child_uri,
+                HRI.prefersAttentionRecallStrategy,
+                values["strategies"],
+                HRI.AttentionRecallStrategy,
+            )
+            self.add_values(
+                child_uri,
+                HRI.prefersAttentionRecallStyle,
+                values["styles"],
+                HRI.AttentionRecallStyle,
+            )
+            self.add_values(
+                child_uri,
+                HRI.attentionRecallGuidance,
+                values["guidance"],
+                HRI.AttentionRecallGuidance,
+            )
+            changed = True
+        return changed
 
     def concept(self, label, rdf_class):
         uri = CONCEPT[slug(label)]
@@ -161,6 +307,7 @@ class RdfChildMemoryStore:
         self,
         display_name,
         *,
+        aliases=None,
         story_themes,
         story_characters,
         story_settings,
@@ -170,11 +317,20 @@ class RdfChildMemoryStore:
         needs_support,
         recognition_stimuli,
         activity_types,
+        attention_recall_strategies=None,
+        attention_recall_styles=None,
+        attention_recall_guidance=None,
     ):
+        aliases = aliases or []
+        attention_recall_strategies = attention_recall_strategies or []
+        attention_recall_styles = attention_recall_styles or []
+        attention_recall_guidance = attention_recall_guidance or []
         child_uri = CHILD[slug(display_name)]
         self.graph.add((child_uri, RDF.type, HRI.Child))
         self.graph.add((child_uri, HRI.displayName, Literal(display_name)))
         self.graph.add((child_uri, RDFS.label, Literal(display_name)))
+        for alias in aliases:
+            self.graph.add((child_uri, HRI.aliasName, Literal(alias)))
         self.add_values(child_uri, HRI.likesStoryTheme, story_themes, HRI.StoryTheme)
         self.add_values(
             child_uri,
@@ -194,6 +350,24 @@ class RdfChildMemoryStore:
             HRI.EmotionRecognitionStimulus,
         )
         self.add_values(child_uri, HRI.prefersActivityType, activity_types, HRI.ActivityType)
+        self.add_values(
+            child_uri,
+            HRI.prefersAttentionRecallStrategy,
+            attention_recall_strategies,
+            HRI.AttentionRecallStrategy,
+        )
+        self.add_values(
+            child_uri,
+            HRI.prefersAttentionRecallStyle,
+            attention_recall_styles,
+            HRI.AttentionRecallStyle,
+        )
+        self.add_values(
+            child_uri,
+            HRI.attentionRecallGuidance,
+            attention_recall_guidance,
+            HRI.AttentionRecallGuidance,
+        )
 
     def get_child_memory_context(
         self,
@@ -218,7 +392,11 @@ class RdfChildMemoryStore:
             WHERE {
                 ?child a hri:Child ;
                        hri:displayName ?displayName .
-                FILTER(LCASE(STR(?displayName)) = LCASE(STR(?requestedName)))
+                OPTIONAL { ?child hri:aliasName ?aliasName . }
+                FILTER(
+                    LCASE(STR(?displayName)) = LCASE(STR(?requestedName))
+                    || LCASE(STR(?aliasName)) = LCASE(STR(?requestedName))
+                )
                 OPTIONAL {
                     ?child ?predicate ?value .
                     VALUES ?predicate {
@@ -231,6 +409,9 @@ class RdfChildMemoryStore:
                         hri:needsSupportWithEmotion
                         hri:likesEmotionRecognitionStimulus
                         hri:prefersActivityType
+                        hri:prefersAttentionRecallStrategy
+                        hri:prefersAttentionRecallStyle
+                        hri:attentionRecallGuidance
                     }
                     OPTIONAL { ?value rdfs:label ?label }
                 }
@@ -260,6 +441,11 @@ class RdfChildMemoryStore:
                 "needs_support_with": [],
                 "preferred_stimuli": [],
             },
+            "attention_recall": {
+                "strategies": [],
+                "styles": [],
+                "guidance": [],
+            },
             "preferred_activity_types": [],
         }
 
@@ -272,6 +458,12 @@ class RdfChildMemoryStore:
             label = str(row.label) if row.label is not None else self.label_from_uri(row.value)
             if bucket in {"recognizes_well", "needs_support_with", "preferred_stimuli"}:
                 memory["emotion_recognition"][bucket].append(label)
+            elif bucket == "attention_recall_strategy":
+                memory["attention_recall"]["strategies"].append(label)
+            elif bucket == "attention_recall_style":
+                memory["attention_recall"]["styles"].append(label)
+            elif bucket == "attention_recall_guidance":
+                memory["attention_recall"]["guidance"].append(label)
             else:
                 memory[bucket].append(label)
 
@@ -282,6 +474,8 @@ class RdfChildMemoryStore:
         )
         for key, values in memory["emotion_recognition"].items():
             memory["emotion_recognition"][key] = unique_preserve_order(values)
+        for key, values in memory["attention_recall"].items():
+            memory["attention_recall"][key] = unique_preserve_order(values)
 
         memory["prompt_text"] = self.build_prompt_text(memory, activity_type, max_facts)
         return memory
@@ -290,6 +484,12 @@ class RdfChildMemoryStore:
     def label_from_uri(value):
         text = str(value).rstrip("/#").split("/")[-1].split("#")[-1]
         return text.replace("_", " ")
+
+    def value_label(self, value):
+        labels = list(self.graph.objects(value, RDFS.label))
+        if labels:
+            return str(labels[0])
+        return self.label_from_uri(value)
 
     def build_prompt_text(
         self,
@@ -301,6 +501,19 @@ class RdfChildMemoryStore:
         child_name = memory.get("child_name", "the child")
         facts_used = 0
         lines = [f"The child is {child_name}."]
+
+        attention_recall = memory.get("attention_recall", {})
+        recall_strategies = attention_recall.get("strategies", [])
+        recall_styles = attention_recall.get("styles", [])
+        recall_guidance = attention_recall.get("guidance", [])
+        if recall_strategies or recall_styles or recall_guidance:
+            lines.append("")
+            lines.append("Known attention-recall preferences:")
+            if recall_strategies:
+                lines.append(f"- strategy: {', '.join(recall_strategies)}")
+            if recall_styles:
+                lines.append(f"- style: {', '.join(recall_styles)}")
+            lines.extend(f"- {item}" for item in recall_guidance)
 
         def take(values):
             nonlocal facts_used
@@ -362,7 +575,7 @@ class RdfChildMemoryStore:
         )
         lines.append(
             "Use this memory only to personalize story content, examples, characters, "
-            "emotion vocabulary, and emotion-recognition scaffolding."
+            "emotion vocabulary, emotion-recognition scaffolding, and attention recalls."
         )
         lines.append("Do not say that you are reading from a memory database.")
         lines.append("Do not reveal private notes.")

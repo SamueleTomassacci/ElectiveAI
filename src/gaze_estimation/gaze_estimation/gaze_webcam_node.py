@@ -53,6 +53,11 @@ class GazeWebcamNode(Node):
         self.capture = None
         self.emotion_recognizer = None
         self._emotion_frame_count = 0
+        self._last_emotion_status = {
+            "emotion": "unknown",
+            "confidence": 0.0,
+            "timestamp": 0.0,
+        }
 
     def declare_node_parameters(self):
         self.declare_parameter("camera_index", 0)
@@ -287,7 +292,12 @@ class GazeWebcamNode(Node):
 
         if gaze_result is None:
             self.set_status("NO_FACE")
-            return draw_debug_overlay(frame_bgr, object_detections=object_detections, status="NO_FACE")
+            return draw_debug_overlay(
+                frame_bgr,
+                object_detections=object_detections,
+                status="NO_FACE",
+                emotion_status=self._last_emotion_status,
+            )
 
         inout_score = gaze_result.get("inout_score")
         if inout_score is not None and inout_score < self.params["gaze_inout_threshold"]:
@@ -297,6 +307,7 @@ class GazeWebcamNode(Node):
                 gaze_result=gaze_result,
                 object_detections=object_detections,
                 status="GAZE_OUT_OF_FRAME",
+                emotion_status=self._last_emotion_status,
             )
 
         if not object_detections:
@@ -306,6 +317,7 @@ class GazeWebcamNode(Node):
                 gaze_result=gaze_result,
                 object_detections=object_detections,
                 status="NO_TARGET_OBJECT",
+                emotion_status=self._last_emotion_status,
             )
 
         matched_object = None
@@ -334,6 +346,7 @@ class GazeWebcamNode(Node):
             object_detections=object_detections,
             status=status,
             matched_object=matched_object,
+            emotion_status=self._last_emotion_status,
         )
 
     def process_emotion(self, rgb_image, gaze_result):
@@ -388,6 +401,7 @@ class GazeWebcamNode(Node):
             payload["confidence"] = round(confidence, 4)
             if all_scores is not None:
                 payload["all_scores"] = {k: round(v, 4) for k, v in all_scores.items()}
+        self._last_emotion_status = dict(payload)
         msg = String()
         msg.data = json.dumps(payload)
         self.emotion_pub.publish(msg)

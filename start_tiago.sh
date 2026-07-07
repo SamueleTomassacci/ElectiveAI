@@ -4,6 +4,8 @@
 
 DOCKER_GPU_ARGS="--env DISPLAY \
   --env QT_X11_NO_MITSHM=1 \
+  --env NVIDIA_VISIBLE_DEVICES=all \
+  --env NVIDIA_DRIVER_CAPABILITIES=all \
   --env __NV_PRIME_RENDER_OFFLOAD=1 \
   --env __GLX_VENDOR_LIBRARY_NAME=nvidia \
   --volume=/tmp/.X11-unix:/tmp/.X11-unix:rw"
@@ -52,6 +54,7 @@ $DOCKER_COMMAND \
   $DOCKER_GPU_ARGS \
   $PULSE_ARGS \
   $MOUNT_ARGS \
+  --env "TIAGO_DISABLE_BASE_LIDAR=${TIAGO_DISABLE_BASE_LIDAR:-1}" \
   --net host \
   --privileged \
   --rm \

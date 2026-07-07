@@ -22,21 +22,22 @@ from empower.static_scene_graph import StaticSceneGraph, StaticSceneGraphError, 
 try:
     from llm_interaction.session_scores import (
         ACTIVITY_TO_TASK,
-        best_activity_for_child,
         infer_activity_and_task,
     )
 except ImportError:
     ACTIVITY_TO_TASK = {
-        "storytelling": "Take the book",
-        "mood_check_teddy": "Take the teddy bear",
-        "computer_emotion_recognition": "Take the computer",
+        "storytelling": "Take the book and give it to the child",
+        "mood_check_teddy": "Take the teddy bear and give it to the child",
+        "computer_emotion_recognition": "Take the computer and give it to the child",
     }
-
-    def best_activity_for_child(path, child_name):
-        return None
 
     def infer_activity_and_task(text):
         return None
+
+try:
+    from llm_interaction.rdf_child_memory import RdfChildMemoryStore
+except ImportError:
+    RdfChildMemoryStore = None
 
 
 class MissionState(str, Enum):
@@ -122,6 +123,7 @@ class MissionOrchestratorNode(Node):
         self._gaze_process_label = "gaze estimation"
         self._gaze_ready_event = threading.Event()
         self._gaze_error_message = ""
+        self._child_memory_store = None
         self.static_scene_graph = self.load_static_scene_graph()
 
         if bool(self.get_parameter("auto_start").value):
@@ -146,13 +148,22 @@ class MissionOrchestratorNode(Node):
         self.declare_parameter("wait_for_activity_timeout_sec", 120.0)
         self.declare_parameter("wait_for_child_name_timeout_sec", 120.0)
         self.declare_parameter("task_ack_text", "Okay, I understood the task.")
+        self.declare_parameter("task_ask_text", "What task should I do?")
+        self.declare_parameter(
+            "activity_ask_text",
+            "What activity should I do with the child?",
+        )
         self.declare_parameter(
             "activity_ack_text",
-            "Okay, I understood the activity. What is the child's name?",
+            "Okay, I understood the activity.",
         )
         self.declare_parameter(
             "child_name_ack_text",
-            "Okay, I will personalize the activity for {child_name}.",
+            "I know {child_name}.",
+        )
+        self.declare_parameter(
+            "unknown_child_name_text",
+            "I don't know {child_name}.",
         )
         self.declare_parameter("default_activity_type", "generic_child_activity")
         self.declare_parameter("auto_start", True)
@@ -178,21 +189,30 @@ class MissionOrchestratorNode(Node):
             "/root/exchange/output/interaction_output/session_scores.json",
         )
         self.declare_parameter(
+            "child_memory_rdf_path",
+            "/root/exchange/output/interaction_output/children_memory.ttl",
+        )
+        self.declare_parameter("child_memory_seed_if_missing", True)
+        self.declare_parameter(
             "child_name_ask_text",
             "Hello! Which child do we have today?",
         )
         self.declare_parameter(
             "no_history_text",
-            "I don't have any previous sessions with {child_name} yet. What would you like me to do?",
+            "I don't have a preferred activity in memory for {child_name} yet.",
         )
         self.declare_parameter(
             "proposal_text",
-            "Last time, {child_name} really enjoyed {activity_label}. Shall we do that again? Say something if you prefer a different activity.",
+            "I remember that {child_name} prefers {activity_label}. Is that okay for today?",
+        )
+        self.declare_parameter(
+            "proposal_rejected_text",
+            "Okay.",
         )
         self.declare_parameter("skip_to_child_activity", False)
         self.declare_parameter("test_child_name", "Luca")
         self.declare_parameter("test_activity_type", "storytelling")
-        self.declare_parameter("test_task_description", "Take the book")
+        self.declare_parameter("test_task_description", "Take the book and give it to the child")
 
     def task_callback(self, msg):
         text = msg.data.strip()
@@ -365,45 +385,47 @@ class MissionOrchestratorNode(Node):
             return
 
         self.transition(MissionState.ACK_CHILD_NAME)
-        self.say(self.child_name_ack_text())
+        child_memory = self.child_memory_for_activity_proposal(
+            self._interaction_spec.child_name
+        )
+        if child_memory is not None:
+            self.say(self.child_name_ack_text())
+        else:
+            self.say(self.unknown_child_name_text())
 
         self.transition(MissionState.PROPOSE_ACTIVITY)
-        proposal = self.propose_activity()
+        proposal = self.propose_activity(child_memory)
 
         if proposal is not None:
             self.transition(MissionState.WAIT_THERAPIST_OVERRIDE)
-            override = self.wait_for_therapist_override()
-            if override:
-                self.apply_therapist_override(override)
-                self.publish_feedback(
-                    f"Therapist override applied: task={self._interaction_spec.task_description}, "
-                    f"activity={self._interaction_spec.activity_type}"
+            response = self.wait_for_proposal_response()
+            if response == "yes":
+                self.publish_feedback("Therapist accepted the memory-based proposal")
+                self.transition(MissionState.ACK_PROPOSAL)
+                self.say(
+                    f"Okay! I will do {self._activity_label(self._interaction_spec.activity_type)} "
+                    f"with {self._interaction_spec.child_name}."
                 )
             else:
-                self.publish_feedback("Therapist accepted the proposal (silence/timeout)")
-
-            self.transition(MissionState.ACK_PROPOSAL)
-            self.say(
-                f"Okay! I will do {self._activity_label(self._interaction_spec.activity_type)} "
-                f"with {self._interaction_spec.child_name}."
-            )
+                if response == "no":
+                    self.publish_feedback("Therapist rejected the memory-based proposal")
+                else:
+                    self.publish_feedback(
+                        "No clear yes/no response for the proposal; asking for manual task and activity",
+                        log_level="warn",
+                    )
+                self.reset_task_and_activity()
+                self.say(str(self.get_parameter("proposal_rejected_text").value))
+                if not self.collect_manual_task_and_activity():
+                    return
         else:
             self.say(
                 str(self.get_parameter("no_history_text").value).format(
                     child_name=self._interaction_spec.child_name
                 )
             )
-            self.transition(MissionState.WAIT_TASK)
-            if not self.wait_for_task():
+            if not self.collect_manual_task_and_activity():
                 return
-            self.transition(MissionState.ACK_TASK)
-            self.say(str(self.get_parameter("task_ack_text").value))
-
-            self.transition(MissionState.WAIT_ACTIVITY)
-            if not self.wait_for_activity():
-                return
-            self.transition(MissionState.ACK_ACTIVITY)
-            self.say("Okay, I understood the activity.")
 
         self.transition(MissionState.GO_TO_SPAWN)
         if not self.navigate_to_pose(
@@ -458,12 +480,12 @@ class MissionOrchestratorNode(Node):
     def wait_for_task(self):
         timeout_sec = float(self.get_parameter("wait_for_task_timeout_sec").value)
         self.publish_feedback(
-            f"Waiting up to {timeout_sec:.1f}s for the physical task on /hri/user_utterance"
+            f"Waiting up to {timeout_sec:.1f}s for the task on /hri/user_utterance"
         )
         if self._task_event.wait(timeout=timeout_sec):
             return True
         self.publish_feedback(
-            "Timed out waiting for a physical task from /hri/user_utterance",
+            "Timed out waiting for a task from /hri/user_utterance",
             log_level="error",
         )
         return False
@@ -485,6 +507,10 @@ class MissionOrchestratorNode(Node):
         template = str(self.get_parameter("child_name_ack_text").value)
         return template.format(child_name=self._interaction_spec.child_name)
 
+    def unknown_child_name_text(self):
+        template = str(self.get_parameter("unknown_child_name_text").value)
+        return template.format(child_name=self._interaction_spec.child_name)
+
     def wait_for_activity(self):
         timeout_sec = float(self.get_parameter("wait_for_activity_timeout_sec").value)
         self.publish_feedback(
@@ -497,6 +523,31 @@ class MissionOrchestratorNode(Node):
             log_level="error",
         )
         return False
+
+    def collect_manual_task_and_activity(self):
+        self.transition(MissionState.WAIT_TASK)
+        self.say(str(self.get_parameter("task_ask_text").value))
+        if not self.wait_for_task():
+            return False
+        self.transition(MissionState.ACK_TASK)
+        self.say(str(self.get_parameter("task_ack_text").value))
+
+        self.transition(MissionState.WAIT_ACTIVITY)
+        self.say(str(self.get_parameter("activity_ask_text").value))
+        if not self.wait_for_activity():
+            return False
+        self.transition(MissionState.ACK_ACTIVITY)
+        self.say(str(self.get_parameter("activity_ack_text").value))
+        return True
+
+    def reset_task_and_activity(self):
+        self._interaction_spec.task_description = ""
+        self._interaction_spec.activity_description = ""
+        self._interaction_spec.activity_type = str(
+            self.get_parameter("default_activity_type").value
+        )
+        self._task_event.clear()
+        self._activity_event.clear()
 
     def say(self, text):
         payload = json.dumps({"command": "say", "text": text})
@@ -532,17 +583,18 @@ class MissionOrchestratorNode(Node):
             self.publish_feedback("Child activity timed out; stopping HRI", log_level="warn")
             self.publish(self.dialog_command_pub, json.dumps({"command": "stop"}))
 
-    def propose_activity(self):
-        scores_path = str(self.get_parameter("session_scores_path").value)
+    def propose_activity(self, memory=None):
         child_name = self._interaction_spec.child_name
-        result = best_activity_for_child(scores_path, child_name)
-        if result is None:
-            self.publish_feedback(f"No session history for {child_name}")
+        if memory is None:
+            self.publish_feedback(f"No child memory found for {child_name}")
             return None
 
-        activity_type = result["activity_type"]
-        task = result.get("task_description") or ACTIVITY_TO_TASK.get(activity_type, "")
-        avg_score = result.get("average_score", 0)
+        activity_type = self.preferred_activity_from_memory(memory)
+        if not activity_type:
+            self.publish_feedback(f"No preferred activity in child memory for {child_name}")
+            return None
+
+        task = ACTIVITY_TO_TASK.get(activity_type, "")
         self._interaction_spec.activity_type = activity_type
         self._interaction_spec.task_description = task
         self._interaction_spec.activity_description = self._activity_label(activity_type)
@@ -553,16 +605,127 @@ class MissionOrchestratorNode(Node):
         )
         self.say(proposal)
         self.publish_feedback(
-            f"Proposed {activity_type} (avg_score={avg_score}) for {child_name}"
+            f"Proposed {activity_type} from child memory for {child_name}"
         )
-        return result
+        return {
+            "activity_type": activity_type,
+            "task_description": task,
+            "source": "child_memory",
+        }
+
+    def child_memory_for_activity_proposal(self, child_name):
+        memory_store = self.get_child_memory_store()
+        if memory_store is None:
+            return None
+        try:
+            memory = memory_store.get_child_memory_context(
+                child_name=child_name,
+                activity_type=str(self.get_parameter("default_activity_type").value),
+                max_facts=12,
+            )
+        except Exception as exc:
+            self.publish_feedback(
+                f"Could not read child memory for activity proposal: {exc}",
+                log_level="warn",
+            )
+            return None
+        if not memory.get("found"):
+            return None
+        canonical_name = str(memory.get("child_name", "")).strip()
+        if canonical_name:
+            self._interaction_spec.child_name = canonical_name
+            self.child_name = canonical_name
+        return memory
+
+    def get_child_memory_store(self):
+        if self._child_memory_store is not None:
+            return self._child_memory_store
+        if RdfChildMemoryStore is None:
+            self.publish_feedback(
+                "RDF child memory is unavailable; cannot propose from memory",
+                log_level="warn",
+            )
+            return None
+        rdf_path = str(self.get_parameter("child_memory_rdf_path").value).strip()
+        if not rdf_path:
+            self.publish_feedback(
+                "child_memory_rdf_path is empty; cannot propose from memory",
+                log_level="warn",
+            )
+            return None
+        try:
+            self._child_memory_store = RdfChildMemoryStore(
+                rdf_path=rdf_path,
+                seed_if_missing=bool(
+                    self.get_parameter("child_memory_seed_if_missing").value
+                ),
+            )
+        except Exception as exc:
+            self.publish_feedback(
+                f"Failed to initialize child memory at {rdf_path}: {exc}",
+                log_level="warn",
+            )
+            self._child_memory_store = None
+        return self._child_memory_store
+
+    def preferred_activity_from_memory(self, memory):
+        for activity in memory.get("preferred_activity_types", []):
+            normalized = self.normalize_memory_activity_type(activity)
+            if normalized:
+                return normalized
+        return ""
+
+    def normalize_memory_activity_type(self, activity):
+        normalized = activity.strip().lower().replace("-", "_").replace(" ", "_")
+        if normalized in ACTIVITY_TO_TASK:
+            return normalized
+        inferred = infer_activity_and_task(activity)
+        if inferred:
+            return inferred[0]
+        return ""
+
+    def wait_for_proposal_response(self):
+        timeout_sec = float(self.get_parameter("proposal_acceptance_timeout_sec").value)
+        self._override_event.clear()
+        self._override_text = ""
+        self.publish_feedback(
+            f"Waiting {timeout_sec:.0f}s for therapist yes/no response to proposal"
+        )
+        if self._override_event.wait(timeout=timeout_sec):
+            return self.parse_proposal_response(self._override_text)
+        return None
+
+    @staticmethod
+    def parse_proposal_response(text):
+        normalized = text.strip().lower()
+        if not normalized:
+            return None
+        tokens = {
+            token.strip(".,!?;:")
+            for token in normalized.split()
+            if token.strip(".,!?;:")
+        }
+        yes_tokens = {
+            "yes", "yeah", "yep", "ok", "okay", "sure", "fine", "correct", "si", "sì",
+        }
+        no_tokens = {
+            "no", "nope", "not", "don't", "different", "change", "cambia",
+            "cambiamo", "diverso", "diversa",
+        }
+        yes_phrases = {"va bene"}
+        no_phrases = {"do not"}
+        if tokens & no_tokens or any(phrase in normalized for phrase in no_phrases):
+            return "no"
+        if tokens & yes_tokens or any(phrase in normalized for phrase in yes_phrases):
+            return "yes"
+        return None
 
     def wait_for_therapist_override(self):
         timeout_sec = float(self.get_parameter("proposal_acceptance_timeout_sec").value)
         self._override_event.clear()
         self._override_text = ""
         self.publish_feedback(
-            f"Waiting {timeout_sec:.0f}s for therapist override (silence = accept)"
+            f"Waiting {timeout_sec:.0f}s for therapist override"
         )
         if self._override_event.wait(timeout=timeout_sec):
             return self._override_text.strip()

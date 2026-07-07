@@ -31,7 +31,7 @@ setup(
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
     ],
-    install_requires=["setuptools", "rdflib"],
+    install_requires=["setuptools", "rdflib", "Pillow"],
     zip_safe=True,
     maintainer="HRAI",
     maintainer_email="student@example.com",

@@ -14,33 +14,63 @@
     <include>
       <uri>model://sun</uri>
     </include>
-    <light name="west_toy_fill_light" type="point">
-      <pose>-3.35 0.15 1.85 0 0 0</pose>
-      <diffuse>0.55 0.52 0.46 1</diffuse>
-      <specular>0.08 0.08 0.08 1</specular>
-      <attenuation>
-        <range>5.0</range>
-        <constant>0.55</constant>
-        <linear>0.18</linear>
-        <quadratic>0.03</quadratic>
-      </attenuation>
-      <cast_shadows>false</cast_shadows>
-    </light>
     <model name="scene_shell">
       <static>true</static>
       <link name="floor">
-        <pose>-0.6 -0.3 -0.025 0 0 0</pose>
+        <pose>-1.0 -0.3 -0.025 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>8.0 7.0 0.05</size>
+              <size>7.2 7.0 0.05</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>8.0 7.0 0.05</size>
+              <size>7.2 7.0 0.05</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.66 1</ambient>
+            <diffuse>0.70 0.70 0.66 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="floor_north_east_strip">
+        <pose>3.0 2.7 -0.025 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.8 1.0 0.05</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.8 1.0 0.05</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.66 1</ambient>
+            <diffuse>0.70 0.70 0.66 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="floor_south_east_strip">
+        <pose>3.0 -3.0 -0.025 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.8 1.6 0.05</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.8 1.6 0.05</size>
             </box>
           </geometry>
           <material>
@@ -50,18 +80,18 @@
         </visual>
       </link>
       <link name="side_room_floor">
-        <pose>5.5 0 -0.025 0 0 0</pose>
+        <pose>5.1 0 -0.025 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>4.2 4.4 0.05</size>
+              <size>5.0 4.4 0.05</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>4.2 4.4 0.05</size>
+              <size>5.0 4.4 0.05</size>
             </box>
           </geometry>
           <material>
@@ -113,18 +143,39 @@
         </visual>
       </link>
       <link name="east_wall_south">
-        <pose>3.4 -2.275 0.549 0 0 0</pose>
+        <pose>2.6 -1.475 0.549 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 3.05 1.098</size>
+              <size>0.12 1.45 1.098</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 3.05 1.098</size>
+              <size>0.12 1.45 1.098</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.86 0.86 0.82 1</ambient>
+            <diffuse>0.86 0.86 0.82 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="east_wall_south_outer">
+        <pose>3.4 -3.0 0.549 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.12 1.6 1.098</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.12 1.6 1.098</size>
             </box>
           </geometry>
           <material>
@@ -134,18 +185,39 @@
         </visual>
       </link>
       <link name="east_wall_north">
-        <pose>3.4 1.975 0.549 0 0 0</pose>
+        <pose>2.6 1.475 0.549 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 2.45 1.098</size>
+              <size>0.12 1.45 1.098</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 2.45 1.098</size>
+              <size>0.12 1.45 1.098</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.86 0.86 0.82 1</ambient>
+            <diffuse>0.86 0.86 0.82 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="east_wall_north_outer">
+        <pose>3.4 2.7 0.549 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.12 1.0 1.098</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.12 1.0 1.098</size>
             </box>
           </geometry>
           <material>
@@ -155,18 +227,18 @@
         </visual>
       </link>
       <link name="side_room_north_wall">
-        <pose>5.5 2.2 0.549 0 0 0</pose>
+        <pose>5.1 2.2 0.549 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>4.2 0.12 1.098</size>
+              <size>5.0 0.12 1.098</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>4.2 0.12 1.098</size>
+              <size>5.0 0.12 1.098</size>
             </box>
           </geometry>
           <material>
@@ -176,18 +248,18 @@
         </visual>
       </link>
       <link name="side_room_south_wall">
-        <pose>5.5 -2.2 0.549 0 0 0</pose>
+        <pose>5.1 -2.2 0.549 0 0 0</pose>
         <collision name="collision">
           <geometry>
             <box>
-              <size>4.2 0.12 1.098</size>
+              <size>5.0 0.12 1.098</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>4.2 0.12 1.098</size>
+              <size>5.0 0.12 1.098</size>
             </box>
           </geometry>
           <material>
