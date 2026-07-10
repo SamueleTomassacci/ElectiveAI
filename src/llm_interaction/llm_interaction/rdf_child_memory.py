@@ -389,7 +389,6 @@ class RdfChildMemoryStore:
         activity_type,
         max_facts = 12,
     ):
-        """Return child memory context using a case-insensitive SPARQL query."""
         requested_name = child_name.strip()
         if not requested_name:
             return {
@@ -652,7 +651,6 @@ def generate_child_memory_report(
     max_response_tokens = 400,
     now = None,
 ):
-    """Create a Markdown session report without modifying RDF memory."""
     now = now or datetime.now()
 
     child_name = str(context.get("child_name", "") or "unknown").strip() or "unknown"

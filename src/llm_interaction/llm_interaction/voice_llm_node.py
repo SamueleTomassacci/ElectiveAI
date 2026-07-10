@@ -1,5 +1,3 @@
-"""Node for a local STT -> LLM -> TTS dialogue loop."""
-
 import json
 import os
 import select
@@ -796,7 +794,6 @@ class VoiceLlmNode(Node):
         return self.stt.transcribe_push_to_talk()
 
     def read_child_text(self):
-        """Listen for child input. Uses auto-VAD in voice mode if enabled."""
         if bool(self.get_parameter("benchmark_child_utterances_enabled").value):
             # Benchmark turns through ROS
             self.publish_state("waiting_for_benchmark_child_utterance")
@@ -867,7 +864,6 @@ class VoiceLlmNode(Node):
 
     def run_therapist_turn(self):
 
-        """One STT/LLM/TTS cycle in therapist command mode. Returns False to stop the loop."""
         if not bool(self.get_parameter("therapist_input_enabled").value):
 
             time.sleep(0.1)

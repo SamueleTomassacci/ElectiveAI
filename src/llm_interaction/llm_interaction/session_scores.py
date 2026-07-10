@@ -1,6 +1,3 @@
-"""Session score calculation, persistence, and history queries."""
-
-
 import json
 import os
 import threading

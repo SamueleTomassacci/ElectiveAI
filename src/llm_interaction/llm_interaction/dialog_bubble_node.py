@@ -1,5 +1,3 @@
-"""Gazebo speech bubbles for the HRI dialogue topics."""
-
 import json
 import math
 import re
@@ -159,8 +157,6 @@ def bubble_texture_height(line_count):
 
 
 class DialogBubbleNode(Node):
-
-    """Render /hri utterances as speech bubbles inside Gazebo classic."""
 
     def __init__(self):
         super().__init__("dialog_bubble_node")

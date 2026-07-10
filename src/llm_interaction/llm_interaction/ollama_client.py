@@ -105,7 +105,6 @@ class OllamaClient:
         temperature,
         max_response_tokens,
     ):
-        """Generate one non-streaming response from the local model."""
         selected_model = self.select_model()
         options = {"temperature": temperature}
         if max_response_tokens > 0:

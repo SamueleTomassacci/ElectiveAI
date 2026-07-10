@@ -215,7 +215,6 @@ class TextToSpeech:
         print(f"TIAGo: {text}", flush=True)
 
     def speak(self, text):
-        """Speak text, applying local fallbacks and returning the backend used."""
         if self.provider == "piper":
 
             providers = [

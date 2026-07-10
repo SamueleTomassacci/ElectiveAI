@@ -9,7 +9,6 @@ class StaticSceneGraphError(ValueError):
 
 
 class StaticSceneGraph:
-    """Resolver for manually-authored static semantic pose graphs."""
 
     def __init__(self, data, source_path=""):
         self.source_path = source_path

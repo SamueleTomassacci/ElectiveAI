@@ -12,7 +12,6 @@ def cuda_available():
 
 
 def select_device(requested = "auto", warn = None):
-    """Select a torch device string without failing when CUDA is absent."""
     requested_normalized = (requested or "auto").strip().lower()
     has_cuda = cuda_available()
 
@@ -38,5 +37,4 @@ def select_device(requested = "auto", warn = None):
 
 
 def yolo_device_arg(device):
-    """Return the Ultralytics device argument matching the selected torch device."""
     return 0 if device == "cuda" else "cpu"
