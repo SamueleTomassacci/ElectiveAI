@@ -4,14 +4,17 @@ client = OpenAI()
 
 
 class Agents:
-    def __init__(self, image, task_description, child_context = ""):
-        if isinstance(image, (list, tuple)):
+    def __init__(self, image,task_description, child_context = ""):
+        if isinstance(image,(list, tuple)):
+
             self.encoded_images = [item for item in image if item]
         else:
             self.encoded_images = [image] if image else []
         self.encoded_image = self.encoded_images[0] if self.encoded_images else ""
         self.task_description = task_description
+
         self.child_context = child_context or ""
+
         self.visual_task_description = self.visual_only_task_description()
 
     def image_prompt_prefix(self):
@@ -26,10 +29,11 @@ class Agents:
 
     def image_content(self):
         content = []
+
         multiple = len(self.encoded_images) > 1
         for index, encoded_image in enumerate(self.encoded_images):
             if multiple:
-                content.append({"type": "text", "text": f"View {index}:"})
+                content.append({"type": "text","text": f"View {index}:"})
             content.append(
                 {
                     "type": "image_url",
@@ -58,7 +62,7 @@ class Agents:
             return self.task_description
 
         child_pattern = r"(?:the\s+)?(?:child|kid)"
-        parts = re.split(r"\s*,\s*|\s+\band\b\s+", self.task_description, flags=re.IGNORECASE)
+        parts = re.split(r"\s*,\s*|\s+\band\b\s+", self.task_description,flags=re.IGNORECASE)
         kept_parts = []
         for part in parts:
             cleaned = part.strip()
@@ -71,13 +75,14 @@ class Agents:
                     cleaned,
                     flags=re.IGNORECASE,
                 ).strip()
-                if re.fullmatch(r"(?:go|navigate|move|walk|give\s+it|bring\s+it)", cleaned, flags=re.IGNORECASE):
+                if re.fullmatch(r"(?:go|navigate|move|walk|give\s+it|bring\s+it)",cleaned, flags=re.IGNORECASE):
                     continue
             if cleaned and not self.mentions_child(cleaned):
                 kept_parts.append(cleaned)
 
-        visual_task = ", ".join(kept_parts).strip()
+        visual_task =", ".join(kept_parts).strip()
         if visual_task:
+
             return visual_task
 
         visual_task = re.sub(
@@ -88,9 +93,9 @@ class Agents:
         ).strip()
         return visual_task or "identify the visible objects needed for the task"
 
-    def mentions_child(self, text):
-        normalized = str(text).lower()
-        return re.search(r"\b(?:the\s+)?(?:child|kid)\b", normalized) is not None
+    def mentions_child(self,text):
+        normalized= str(text).lower()
+        return re.search(r"\b(?:the\s+)?(?:child|kid)\b",normalized) is not None
     
     def single_agent(self):
             agent = client.chat.completions.create(
@@ -101,7 +106,7 @@ class Agents:
                 "content": [
                     {
                     "type": "text",
-                       "text": self.image_prompt_prefix() + "You are a mobile robot with a base allow you to move around the environment.\n\
+                       "text": self.image_prompt_prefix() +"You are a mobile robot with a base allow you to move around the environment.\n\
                             You have a robotic arm with a gripper that allows you to pick up and place one object at time.\n\
                             You are also very capable in describing a scene provided an image in input.\n\
                             From the image, you need to produce in the output a set of relations in the in the form of a triple (subject, relation, object). \n\
@@ -138,7 +143,7 @@ class Agents:
             max_tokens=500,
             temperature=0,
             )
-            response = (agent.choices[0].message.content)
+            response=(agent.choices[0].message.content)
             return response
 
     def multi_agent_vision_planning(self):
@@ -152,7 +157,7 @@ class Agents:
                 "content": [
                     {
                     "type": "text",
-                        "text": self.image_prompt_prefix() + "You are an assistent which is able to accurately describe the content of the provided image or images. \n\
+                        "text": self.image_prompt_prefix()+"You are an assistent which is able to accurately describe the content of the provided image or images. \n\
                         In particular, you are able to capture the main objects present \
                         across all views and to provide all the relations that exist between them. \n\
                         These relations are described in the form of a triple (subject, relation, object) \
@@ -214,7 +219,7 @@ class Agents:
         agent = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-        {"role": "system", "content": 
+        {"role": "system","content":
             "You are a mobile robot with a base allow you to move around the environment.\n\
             You have a robotic arm with a gripper that allows you to pick up and place one object at time.\n\
             You know the detailed description of the scene and preliminar instructions that can help you in the definition of the plan \
@@ -242,10 +247,10 @@ class Agents:
         return enviroment_info,description_agent_info, agent.choices[0].message.content
 
     def plan_from_scene_description(self, scene_description):
-        agent = client.chat.completions.create(
+        agent =client.chat.completions.create(
         model="gpt-4o",
         messages=[
-        {"role": "system", "content":
+        {"role": "system","content":
             "You are a mobile robot with a base that allows you to move around the environment.\n"
             "You have a robotic arm with a gripper that allows you to pick up and place one object at a time.\n"
             "You are given a deduplicated global scene description from a multi-view RGB-D scan.\n"
@@ -253,7 +258,7 @@ class Agents:
             + self.non_visual_context_prompt()
             },
         {"role": "user", "content":
-            "The task is " + self.task_description + "\n\n"
+            "The task is "+ self.task_description + "\n\n"
             "Global scene:\n" + str(scene_description) + "\n\n"
             "You must use only the following actions for the plan and nothing else:\n"
             "NAVIGATE : for movement in the scene towards a point far from you, for example 'NAVIGATE to the table'\n"

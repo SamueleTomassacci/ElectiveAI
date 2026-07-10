@@ -1,5 +1,3 @@
-#Push-to-talk recording and local speech transcription
-
 import os
 import tempfile
 
@@ -8,27 +6,27 @@ import numpy as np
 from llm_interaction.terminal_io import read_terminal
 
 
-def resample(audio, orig_sr, target_sr):
+def resample(audio, orig_sr,target_sr):
     
     if orig_sr == target_sr:
         return audio
-    duration = len(audio) / orig_sr
-    target_len = int(duration * target_sr)
-    indices = np.linspace(0, len(audio) - 1, target_len)
-    return np.interp(indices, np.arange(len(audio)), audio.flatten()).astype(np.float32)
+    duration =len(audio)/ orig_sr
+    target_len= int(duration *target_sr)
+    indices= np.linspace(0,len(audio)- 1, target_len)
+    return np.interp(indices, np.arange(len(audio)),audio.flatten()).astype(np.float32)
 
 
 def get_device_samplerate(device_index, target_sr):
     
     try:
         import sounddevice as sd
-        sd.check_input_settings(device=device_index, samplerate=target_sr)
+        sd.check_input_settings(device=device_index,samplerate=target_sr)
         return target_sr
     except Exception:
         pass
     try:
         import sounddevice as sd
-        info = sd.query_devices(device_index, "input")
+        info = sd.query_devices(device_index,"input")
         return int(info["default_samplerate"])
     except Exception:
         return target_sr
@@ -49,7 +47,6 @@ class MockSpeechToText:
 
 
 class FasterWhisperSpeechToText:
-    #Record a short WAV and transcribe it locally on CPU
 
     def __init__(
         self,
@@ -76,15 +73,16 @@ class FasterWhisperSpeechToText:
         self.device_index = device_index if device_index >= 0 else None
         self.logger = logger
         self.state_callback = state_callback
-        self._model = None
+        self.model = None
 
     def set_state(self, state):
         if self.state_callback is not None:
             self.state_callback(state)
 
     def load_model(self):
-        if self._model is not None:
-            return self._model
+        if self.model is not None:
+            return self.model
+
         try:
             from faster_whisper import WhisperModel
         except ImportError as exc:
@@ -100,19 +98,21 @@ class FasterWhisperSpeechToText:
                 "see the README for preloading instructions."
             )
         try:
-            self._model = WhisperModel(
+
+            self.model = WhisperModel(
                 self.model_name,
                 device=self.device,
                 compute_type=self.compute_type,
             )
         except Exception as exc:
+
             raise SpeechToTextError(
                 f"Could not load faster-whisper model "
                 f"'{self.model_name}': {exc}"
             ) from exc
-        return self._model
+        return self.model
 
-    def record_wav(self, wav_path):
+    def record_wav(self,wav_path):
         try:
             import sounddevice as sd
             import soundfile as sf
@@ -122,11 +122,12 @@ class FasterWhisperSpeechToText:
                 "python3 -m pip install sounddevice soundfile"
             ) from exc
 
-        hw_rate = get_device_samplerate(self.device_index, self.sample_rate)
+        hw_rate = get_device_samplerate(self.device_index,self.sample_rate)
         frame_count = int(self.record_seconds * hw_rate)
         if frame_count <= 0:
             raise SpeechToTextError("record_seconds must be greater than zero.")
         try:
+
             self.set_state("recording")
             if self.logger is not None:
                 self.logger.info(
@@ -157,10 +158,13 @@ class FasterWhisperSpeechToText:
             "Press ENTER to record (or type /quit): "
         ).strip()
         if command:
+
             return command
+
         wav_path = ""
+
         try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_file:
+            with tempfile.NamedTemporaryFile(suffix=".wav",delete=False) as wav_file:
                 wav_path = wav_file.name
             self.record_wav(wav_path)
             self.set_state("transcribing")
@@ -196,17 +200,17 @@ class FasterWhisperSpeechToText:
                 "Automatic recording requires sounddevice, soundfile, and numpy."
             ) from exc
 
-        hw_rate = get_device_samplerate(self.device_index, self.sample_rate)
-        chunk_sec = 0.05  # 50 ms per chunk for responsive VAD
+        hw_rate = get_device_samplerate(self.device_index,self.sample_rate)
+        chunk_sec = 0.05
         chunk_frames = int(hw_rate * chunk_sec)
-        silence_chunks_needed = max(1, int(silence_duration_sec / chunk_sec))
-        max_chunks = int(max_duration_sec / chunk_sec)
-        min_speech_chunks = max(1, int(min_speech_sec / chunk_sec))
+        silence_chunks_needed = max(1,int(silence_duration_sec/chunk_sec))
+        max_chunks = int(max_duration_sec/chunk_sec)
+        min_speech_chunks = max(1,int(min_speech_sec / chunk_sec))
 
         recorded_chunks = []
         speech_started = False
         silence_count = 0
-        speech_chunk_count = 0
+        speech_chunk_count =0
 
         self.set_state("listening")
         if self.logger is not None:
@@ -223,16 +227,17 @@ class FasterWhisperSpeechToText:
                 device=self.device_index,
             ) as stream:
                 for _ in range(max_chunks):
-                    chunk, _ = stream.read(chunk_frames)
-                    rms = float(np.sqrt(np.mean(chunk ** 2)))
+                    chunk,_ = stream.read(chunk_frames)
+                    rms= float(np.sqrt(np.mean(chunk ** 2)))
 
                     if rms >= energy_threshold:
                         if not speech_started:
-                            speech_started = True
+
+                            speech_started= True
                             self.set_state("recording")
                             if self.logger is not None:
                                 self.logger.info("Voice detected, recording...")
-                        silence_count = 0
+                        silence_count= 0
                         speech_chunk_count += 1
                         recorded_chunks.append(chunk.copy())
                     elif speech_started:
@@ -251,14 +256,14 @@ class FasterWhisperSpeechToText:
 
         wav_path = ""
         try:
-            audio = np.concatenate(recorded_chunks, axis=0).flatten()
+            audio =np.concatenate(recorded_chunks,axis=0).flatten()
             if hw_rate != self.sample_rate:
-                audio = resample(audio, hw_rate, self.sample_rate)
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_file:
+                audio =resample(audio,hw_rate, self.sample_rate)
+            with tempfile.NamedTemporaryFile(suffix=".wav",delete=False) as wav_file:
                 wav_path = wav_file.name
-            sf.write(wav_path, audio, self.sample_rate, subtype="PCM_16")
+            sf.write(wav_path, audio,self.sample_rate, subtype="PCM_16")
             self.set_state("transcribing")
-            model = self.load_model()
+            model= self.load_model()
             segments, _ = model.transcribe(
                 wav_path,
                 language=self.language or None,

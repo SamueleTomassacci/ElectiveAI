@@ -1,7 +1,5 @@
-#Local LLM clients used by the HRI node
-
 import json
-from urllib import error, request
+from urllib import error,request
 
 
 class LlmError(RuntimeError):
@@ -9,7 +7,6 @@ class LlmError(RuntimeError):
 
 
 class OllamaClient:
-    #Small dependency-free client for Ollama's local HTTP API
 
     def __init__(
         self,
@@ -25,7 +22,7 @@ class OllamaClient:
         self.timeout = timeout
         self.logger = logger
 
-    def request_json(self, path, payload = None):
+    def request_json(self, path,payload = None):
         data = None
         headers = {"Accept": "application/json"}
         method = "GET"
@@ -44,7 +41,7 @@ class OllamaClient:
             with request.urlopen(http_request, timeout=self.timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            detail = exc.read().decode("utf-8",errors="replace")
             try:
                 detail = json.loads(detail).get("error", detail)
             except json.JSONDecodeError:
@@ -60,19 +57,20 @@ class OllamaClient:
             raise LlmError(
                 f"Ollama did not respond within {self.timeout:.0f} seconds."
             ) from exc
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        except (json.JSONDecodeError,UnicodeDecodeError) as exc:
             raise LlmError("Ollama returned an invalid response.") from exc
 
     def available_models(self):
         response = self.request_json("/api/tags")
+
         return [
-            item.get("name", "")
+            item.get("name","")
             for item in response.get("models", [])
             if item.get("name")
         ]
 
     @staticmethod
-    def matches_model(configured, available):
+    def matches_model(configured,available):
         if configured == available:
             return True
         if ":" not in configured and available == f"{configured}:latest":
@@ -121,14 +119,13 @@ class OllamaClient:
                 "options": options,
             },
         )
-        content = response.get("message", {}).get("content", "").strip()
+        content = response.get("message",{}).get("content", "").strip()
         if not content:
             raise LlmError("Ollama returned an empty response.")
         return content
 
 
 class MockLlmClient:
-    #Deterministic local provider for tests without Ollama
 
     def chat(
         self,
@@ -136,7 +133,7 @@ class MockLlmClient:
         temperature,
         max_response_tokens,
     ):
-        del temperature, max_response_tokens
+        del temperature,max_response_tokens
         user_text = next(
             (
                 message["content"]

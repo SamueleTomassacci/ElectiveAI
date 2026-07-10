@@ -13,20 +13,20 @@ ACTIVITY_TO_TASK = {
 }
 
 TASK_KEYWORD_TO_ACTIVITY = [
-    (["book", "read", "story"], "storytelling", "Take the book and give it to the child"),
+    (["book", "read","story"],"storytelling", "Take the book and give it to the child"),
     (
-        ["teddy", "teddy bear", "plush", "peluche", "mood", "feelings", "how they feel"],
+        ["teddy","teddy bear", "plush", "peluche","mood","feelings","how they feel"],
         "mood_check_teddy",
         "Take the teddy bear and give it to the child",
     ),
     (
-        ["computer", "laptop", "emotion recognition", "recognize emotions", "emotion photos"],
+        ["computer", "laptop","emotion recognition","recognize emotions", "emotion photos"],
         "computer_emotion_recognition",
         "Take the computer and give it to the child",
     ),
 ]
 
-_EMOTION_VALENCE = {
+EMOTION_VALENCE = {
     "happy": 100.0,
     "surprise": 80.0,
     "neutral": 60.0,
@@ -37,9 +37,9 @@ _EMOTION_VALENCE = {
     "fear": 15.0,
 }
 
-_ATTENTION_PENALTY_PER_ALERT_SEC = 5.0
+ATTENTION_PENALTY_PER_ALERT_SEC = 5.0
 
-_file_lock = threading.Lock()
+file_lock = threading.Lock()
 
 
 def compute_session_scores(
@@ -50,10 +50,10 @@ def compute_session_scores(
     expected_turns,
     duration_sec,
 ):
-    attention = _attention_score(attention_alert_count, duration_sec)
-    emotion = _emotion_score(emotion_samples)
-    participation = _participation_score(child_turns, expected_turns)
-    overall = round(0.4 * attention + 0.3 * emotion + 0.3 * participation, 1)
+    attention = attention_score(attention_alert_count,duration_sec)
+    emotion= emotion_score(emotion_samples)
+    participation = participation_score(child_turns, expected_turns)
+    overall= round(0.4 * attention + 0.3 * emotion + 0.3 * participation, 1)
     return {
         "attention": attention,
         "emotion": emotion,
@@ -62,46 +62,48 @@ def compute_session_scores(
     }
 
 
-def _attention_score(alert_count, duration_sec):
+def attention_score(alert_count,duration_sec):
     if duration_sec <= 0:
         return 50.0
-    penalty = alert_count * _ATTENTION_PENALTY_PER_ALERT_SEC
-    score = 100.0 * (1.0 - penalty / max(1.0, duration_sec))
-    return round(max(0.0, min(100.0, score)), 1)
+    penalty = alert_count * ATTENTION_PENALTY_PER_ALERT_SEC
+    score =100.0 * (1.0 - penalty / max(1.0,duration_sec))
+    return round(max(0.0,min(100.0,score)),1)
 
 
-def _emotion_score(samples):
+def emotion_score(samples):
     if not samples:
         return 50.0
-    total = 0.0
-    count = 0
-    for _, emotion in samples:
+    total=0.0
+    count= 0
+    for _,emotion in samples:
         em = emotion.lower().strip()
         if em in ("no_face", "unavailable"):
             continue
-        total += _EMOTION_VALENCE.get(em, 50.0)
+        total += EMOTION_VALENCE.get(em, 50.0)
         count += 1
     if count == 0:
         return 50.0
-    return round(total / count, 1)
+    return round(total/count, 1)
 
 
-def _participation_score(child_turns, expected_turns):
+def participation_score(child_turns,expected_turns):
     if expected_turns <= 0:
         return 100.0 if child_turns > 0 else 50.0
-    ratio = min(1.0, child_turns / max(1, expected_turns))
-    return round(100.0 * ratio, 1)
+    ratio = min(1.0, child_turns / max(1,expected_turns))
+    return round(100.0 * ratio,1)
 
 
 def load_score_history(path):
     if not path or not os.path.exists(path):
         return {"children": {}}
-    with _file_lock:
+    with file_lock:
+
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path,"r",encoding="utf-8") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError):
             return {"children": {}}
+
     if not isinstance(data, dict) or "children" not in data:
         return {"children": {}}
     return data
@@ -115,12 +117,14 @@ def save_session_score(
     key = child_name.strip().lower()
     if not key:
         return
-    with _file_lock:
+    with file_lock:
+
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
+
                     data = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError,OSError):
                 data = {"children": {}}
         else:
             data = {"children": {}}
@@ -128,14 +132,14 @@ def save_session_score(
         if not isinstance(data, dict) or "children" not in data:
             data = {"children": {}}
 
-        children = data["children"]
+        children= data["children"]
         if key not in children:
             children[key] = {"sessions": []}
         children[key]["sessions"].append(session_data)
 
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).parent.mkdir(parents=True,exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            json.dump(data,f, indent=2, ensure_ascii=False)
 
 
 def best_activity_for_child(
@@ -144,11 +148,11 @@ def best_activity_for_child(
 ):
     history = load_score_history(path)
     key = child_name.strip().lower()
-    child_data = history.get("children", {}).get(key)
+    child_data = history.get("children",{}).get(key)
     if not child_data:
         return None
 
-    sessions = child_data.get("sessions", [])
+    sessions= child_data.get("sessions",[])
     if not sessions:
         return None
 
@@ -158,7 +162,7 @@ def best_activity_for_child(
         atype = session.get("activity_type", "")
         overall = session.get("scores", {}).get("overall")
         if atype and overall is not None:
-            activity_scores.setdefault(atype, []).append(float(overall))
+            activity_scores.setdefault(atype,[]).append(float(overall))
             task = session.get("task_description", "")
             if task:
                 activity_tasks[atype] = task
@@ -168,12 +172,12 @@ def best_activity_for_child(
 
     best_type = max(activity_scores, key=lambda k: sum(activity_scores[k]) / len(activity_scores[k]))
     avg_score = sum(activity_scores[best_type]) / len(activity_scores[best_type])
-    task = activity_tasks.get(best_type, ACTIVITY_TO_TASK.get(best_type, ""))
+    task = activity_tasks.get(best_type,ACTIVITY_TO_TASK.get(best_type, ""))
 
     return {
         "activity_type": best_type,
         "task_description": task,
-        "average_score": round(avg_score, 1),
+        "average_score": round(avg_score,1),
         "session_count": len(activity_scores[best_type]),
     }
 
@@ -182,5 +186,5 @@ def infer_activity_and_task(text):
     lower = text.lower()
     for keywords, activity_type, task in TASK_KEYWORD_TO_ACTIVITY:
         if any(kw in lower for kw in keywords):
-            return activity_type, task
+            return activity_type,task
     return None

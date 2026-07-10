@@ -35,7 +35,7 @@ mission_orchestrator_node:
     storytelling_timeout_sec: 300.0
     child_activity_timeout_sec: 300.0
     gaze_estimation:
-      enabled: True
+      enabled: False
       camera_index: 0
       device: "auto"
       show_window: true

@@ -17,35 +17,39 @@ class ModelsCacherNode(Node):
 
     def __init__(self):
         super().__init__("empower_models_cacher")
-        self.declare_parameter("use_case", "therapy_task")
-        self.declare_parameter("task_description", "")
-        self.declare_parameter("output_root", "/root/exchange/output")
-        self.declare_parameter("config_dir", "")
-        self.declare_parameter("yolow_path", "")
+        self.declare_parameter("use_case","therapy_task")
+
+        self.declare_parameter("task_description","")
+
+        self.declare_parameter("output_root","/root/exchange/output")
+
+        self.declare_parameter("config_dir","")
+
+        self.declare_parameter("yolow_path","")
         self.declare_parameter("encoder_path", "")
         self.declare_parameter("decoder_path", "")
-        self.declare_parameter("spacy_model", "en_core_web_sm")
+        self.declare_parameter("spacy_model","en_core_web_sm")
         self.declare_parameter("word2vec_model", "word2vec-google-news-300")
         self.declare_parameter("server_host", "127.0.0.1")
         self.declare_parameter("server_port", 10000)
         self.declare_parameter("openai_api_key_file", "/root/exchange/openai_api_key.txt")
         self.declare_parameter("child_context.enabled", False)
-        self.declare_parameter("child_context.planner_description", "")
-        self.declare_parameter("child_context.aliases", ["child", "the child", "kid"])
-        self.declare_parameter("multi_view.enabled", False)
-        self.declare_parameter("multi_view.merge.default_distance_m", 0.35)
-        self.declare_parameter("multi_view.merge.small_object_distance_m", 0.25)
+        self.declare_parameter("child_context.planner_description","")
+        self.declare_parameter("child_context.aliases",["child","the child", "kid"])
+        self.declare_parameter("multi_view.enabled",False)
+        self.declare_parameter("multi_view.merge.default_distance_m",0.35)
+        self.declare_parameter("multi_view.merge.small_object_distance_m",0.25)
         self.declare_parameter("multi_view.merge.large_object_distance_m", 0.60)
         self.declare_parameter("multi_view.merge.z_threshold_m", 0.25)
         self.declare_parameter("multi_view.merge.min_detection_confidence", 0.15)
         self.declare_parameter("object_simulation.objects.book.aliases", ["book"])
         self.declare_parameter(
             "object_simulation.objects.computer.aliases",
-            ["computer", "laptop", "laptop computer"],
+            ["computer","laptop", "laptop computer"],
         )
         self.declare_parameter(
             "object_simulation.objects.peluche.aliases",
-            ["peluche", "teddy bear", "plush toy", "stuffed animal"],
+            ["peluche","teddy bear", "plush toy", "stuffed animal"],
         )
 
         package_share = get_package_share_directory("empower")
@@ -54,7 +58,7 @@ class ModelsCacherNode(Node):
             or os.environ.get("EMPOWER_CONFIG_DIR")
             or os.path.join(package_share, "config")
         )
-        output_root = self.get_parameter("output_root").value
+        output_root= self.get_parameter("output_root").value
         self.task_description = self.get_parameter("task_description").value
         self.load_openai_api_key()
 
@@ -84,9 +88,10 @@ class ModelsCacherNode(Node):
 
     def child_planner_context(self):
         if not bool(self.get_parameter("child_context.enabled").value):
+
             return ""
-        description = str(self.get_parameter("child_context.planner_description").value).strip()
-        aliases = [
+        description =str(self.get_parameter("child_context.planner_description").value).strip()
+        aliases=[
             str(alias).strip()
             for alias in self.get_parameter("child_context.aliases").value
             if str(alias).strip()
@@ -119,14 +124,16 @@ class ModelsCacherNode(Node):
 
     def object_aliases(self):
         aliases = {}
-        for name in ("book", "computer", "peluche"):
+        for name in ("book","computer", "peluche"):
             aliases[name] = list(
                 self.get_parameter(f"object_simulation.objects.{name}.aliases").value
             )
         return aliases
 
     def load_openai_api_key(self):
+
         if os.environ.get("OPENAI_API_KEY"):
+
             return
         key_path = self.get_parameter("openai_api_key_file").value
         if not key_path:
@@ -136,7 +143,7 @@ class ModelsCacherNode(Node):
                 f"OPENAI_API_KEY is not set and key file does not exist: {key_path}"
             )
             return
-        with open(key_path, "r", encoding="utf-8") as key_file:
+        with open(key_path,"r",encoding="utf-8") as key_file:
             api_key = key_file.read().strip()
         if not api_key:
             self.get_logger().warn(f"OpenAI API key file is empty: {key_path}")
@@ -147,15 +154,16 @@ class ModelsCacherNode(Node):
     def serve(self):
         host = self.get_parameter("server_host").value
         port = int(self.get_parameter("server_port").value)
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server_socket.bind((host, port))
+        with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as server_socket:
+            server_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR, 1)
+            server_socket.bind((host,port))
             server_socket.listen(1)
             self.get_logger().info(f"Listening for empower detection triggers on {host}:{port}")
             while rclpy.ok():
                 connection, _ = server_socket.accept()
                 with connection:
-                    message = connection.recv(65536).decode()
+
+                    message=connection.recv(65536).decode()
                     if not message:
                         continue
                     try:
@@ -167,6 +175,7 @@ class ModelsCacherNode(Node):
 
     def handle_message(self, message):
         task_description = self.task_description
+
         command = message
         try:
             payload = json.loads(message)
@@ -174,12 +183,13 @@ class ModelsCacherNode(Node):
             task_description = payload.get("task_description") or task_description
         except json.JSONDecodeError:
             pass
+
         if "detection" not in command:
             return
 
         detection = importlib.import_module("detection")
         importlib.reload(detection)
-        detection_instance = detection.Detection()
+        detection_instance= detection.Detection()
         if task_description:
             detection_instance.task_dict[self.loader.use_case] = task_description
         elif self.loader.use_case not in detection_instance.task_dict:
@@ -191,6 +201,7 @@ class ModelsCacherNode(Node):
 
 
 def main(args=None):
+
     rclpy.init(args=args)
     node = ModelsCacherNode()
     rclpy.spin(node)

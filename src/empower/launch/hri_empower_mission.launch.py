@@ -10,7 +10,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    mission_params = os.path.join(
+    mission_params= os.path.join(
         get_package_share_directory("empower"),
         "config",
         "task_config.yaml",
@@ -22,11 +22,13 @@ def generate_launch_description():
         "scenes",
         "therapy_room_scene_graph.json",
     )
-    hri_params = os.path.join(
+
+    hri_params =os.path.join(
         get_package_share_directory("llm_interaction"),
         "config",
         "llm_config.yaml",
     )
+
     use_sim_time = ParameterValue(
         LaunchConfiguration("use_sim_time"),
         value_type=bool,
@@ -38,24 +40,24 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument("mission_params_file", default_value=mission_params),
+            DeclareLaunchArgument("mission_params_file",default_value=mission_params),
             DeclareLaunchArgument("empower_params_file", default_value=empower_params),
-            DeclareLaunchArgument("static_scene_graph_path", default_value=static_scene_graph),
-            DeclareLaunchArgument("hri_params_file", default_value=hri_params),
-            DeclareLaunchArgument("start_hri", default_value="true"),
+            DeclareLaunchArgument("static_scene_graph_path",default_value=static_scene_graph),
+            DeclareLaunchArgument("hri_params_file",default_value=hri_params),
+            DeclareLaunchArgument("start_hri",default_value="true"),
             DeclareLaunchArgument("start_dialog_bubbles", default_value="true"),
-            DeclareLaunchArgument("dialog_bubble_yaw", default_value="1.35"),
+            DeclareLaunchArgument("dialog_bubble_yaw",default_value="1.35"),
             DeclareLaunchArgument("start_models_cacher", default_value="true"),
             DeclareLaunchArgument("hri_input_mode", default_value="voice"),
-            DeclareLaunchArgument("therapist_input_enabled", default_value="true"),
+            DeclareLaunchArgument("therapist_input_enabled",default_value="true"),
             DeclareLaunchArgument("benchmark_child_utterances_enabled", default_value="false"),
-            DeclareLaunchArgument("benchmark_child_utterance_timeout_sec", default_value="120.0"),
+            DeclareLaunchArgument("benchmark_child_utterance_timeout_sec",default_value="120.0"),
             DeclareLaunchArgument("stt_device_index", default_value="8"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
-            DeclareLaunchArgument("skip_to_child_activity", default_value="false"),
+            DeclareLaunchArgument("skip_to_child_activity",default_value="false"),
             DeclareLaunchArgument("test_child_name", default_value="Luca"),
-            DeclareLaunchArgument("test_activity_type", default_value="storytelling"),
-            DeclareLaunchArgument("test_task_description", default_value="Take the book and give it to the child"),
+            DeclareLaunchArgument("test_activity_type",default_value="storytelling"),
+            DeclareLaunchArgument("test_task_description",default_value="Take the book and give it to the child"),
             Node(
                 package="empower",
                 executable="models_cacher_node",
@@ -82,7 +84,7 @@ def generate_launch_description():
                         ),
                         "follow_mission_state_for_therapist_input": True,
                         "benchmark_child_utterances_enabled": ParameterValue(
-                            LaunchConfiguration("benchmark_child_utterances_enabled"), value_type=bool,
+                            LaunchConfiguration("benchmark_child_utterances_enabled"),value_type=bool,
                         ),
                         "benchmark_child_utterance_timeout_sec": ParameterValue(
                             LaunchConfiguration("benchmark_child_utterance_timeout_sec"), value_type=float,
@@ -107,10 +109,10 @@ def generate_launch_description():
                         "use_sim_time": use_sim_time,
                         "world_frame": "map",
                         "robot_frame": "base_footprint",
-                        "robot_offset_xyz": [0.0, 0.0, 2.15],
+                        "robot_offset_xyz": [0.0, 0.0,2.15],
                         "robot_anchor_xyz": [0.0, 0.0, 2.15],
-                        "adult_anchor_xyz": [0.0, -2.75, 2.15],
-                        "child_anchor_xyz": [0.0, 2.55, 1.75],
+                        "adult_anchor_xyz": [0.0, -2.75,2.15],
+                        "child_anchor_xyz": [0.0, 2.55,1.75],
                         "bubble_yaw": ParameterValue(
                             LaunchConfiguration("dialog_bubble_yaw"), value_type=float,
                         ),

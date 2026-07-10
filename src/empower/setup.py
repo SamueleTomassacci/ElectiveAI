@@ -8,14 +8,16 @@ package_name = "empower"
 
 
 def package_files(directory):
+
     paths = []
-    for path in glob(os.path.join(directory, "**"), recursive=True):
+    for path in glob(os.path.join(directory, "**"),recursive=True):
         if os.path.isfile(path):
             paths.append((os.path.join("share", package_name, os.path.dirname(path)), [path]))
     return paths
 
 
 def existing_files(paths):
+
     return [path for path in paths if os.path.isfile(path)]
 
 
@@ -28,14 +30,14 @@ setup(
         "efficientvit": "python/efficientvit",
         "yolo_world": "python/yolo_world",
     },
-    py_modules=["agents", "detection", "loader", "models", "paths"],
+    py_modules=["agents", "detection","loader", "models","paths"],
     data_files=[
-        ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
-        (f"share/{package_name}", existing_files(["package.xml", "README.md", "EMPOWER_LICENSE"])),
+        ("share/ament_index/resource_index/packages",[f"resource/{package_name}"]),
+        (f"share/{package_name}",existing_files(["package.xml","README.md", "EMPOWER_LICENSE"])),
         (f"share/{package_name}/launch", glob("launch/*.py")),
     ]
     + package_files("config"),
-    install_requires=["setuptools", "PyYAML"],
+    install_requires=["setuptools","PyYAML"],
     zip_safe=True,
     maintainer="HRAI",
     maintainer_email="student@example.com",

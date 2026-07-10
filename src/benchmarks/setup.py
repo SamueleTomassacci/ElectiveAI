@@ -1,7 +1,7 @@
 import os
 from glob import glob
 
-from setuptools import find_packages, setup
+from setuptools import find_packages,setup
 
 
 package_name = "benchmarks"
@@ -16,11 +16,11 @@ setup(
     version="0.1.0",
     packages=find_packages(exclude=["test"]),
     data_files=[
-        ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
+        ("share/ament_index/resource_index/packages",[f"resource/{package_name}"]),
         (f"share/{package_name}", existing_files(["package.xml"])),
-        (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+        (os.path.join("share",package_name,"config"), glob("config/*.yaml")),
     ],
-    install_requires=["setuptools", "PyYAML"],
+    install_requires=["setuptools","PyYAML"],
     zip_safe=True,
     maintainer="HRAI",
     maintainer_email="student@example.com",

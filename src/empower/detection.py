@@ -14,10 +14,10 @@ class Detection:
 
     def __init__(self):
         task_description_order = "move the objects on the table to have the objects ordered by height from the highest to lowest"
-        task_description_exit = "exit the room"
+        task_description_exit ="exit the room"
         task_description_diff = "throw away the objects in the corresponding recycling bin"
         task_description_shelf = "move the objects in the shelf in order to have for each level of the shelf only the objects made of the same material"
-        task_description_shelf2 = "move the objects in the shelf in order to have exactly two objects for level"
+        task_description_shelf2 ="move the objects in the shelf in order to have exactly two objects for level"
         task_description_jacket = "give me the green jacket from the clothing rack"
 
         self.task_dict = {
@@ -40,8 +40,9 @@ class Detection:
         if len(encoded_images) > 1:
             print(f"Passing {len(encoded_images)} multi-view images to the EMPOWER planning agents")
 
-        child_context = getattr(self.loader_instance, "child_planner_context", "")
+        child_context = getattr(self.loader_instance, "child_planner_context","")
         if child_context:
+
             print("Passing non-visual child context to the EMPOWER planning agent")
         agents = Agents(
             image_payload,
@@ -50,7 +51,7 @@ class Detection:
         )
         # self.single_agent_info = agents.single_agent() 
 
-        environment_agent_info, description_agent_info, planning_agent_info = agents.multi_agent_vision_planning()
+        environment_agent_info,description_agent_info,planning_agent_info = agents.multi_agent_vision_planning()
 
         self.results_multi = {
             "environment_agent_info": environment_agent_info,
@@ -59,7 +60,7 @@ class Detection:
         }
 
         with open(self.loader_instance.DUMP_DIR+"planning.pkl",'wb') as f:
-            pickle.dump(self.results_multi, f, protocol=2)
+            pickle.dump(self.results_multi,f,protocol=2)
         
         with open(self.loader_instance.DUMP_DIR+"planning.txt",'w') as f:
             f.write(self.results_multi["planning_agent_info"])
@@ -69,23 +70,24 @@ class Detection:
         self.loader_instance = loader_instance
         self.run_experiment()
         if self.multi_view_enabled() and os.path.exists(self.views_manifest_path()):
+
             self.run_multi_view_images()
         else:
             self.run_image(image_path=self.loader_instance.SCAN_DIR+"scan.jpg")
 
     def multi_view_enabled(self):
-        return bool(getattr(self.loader_instance, "multi_view_enabled", False))
+        return bool(getattr(self.loader_instance,"multi_view_enabled",False))
 
     def views_manifest_path(self):
         return os.path.join(self.loader_instance.DUMP_DIR, "views_manifest.json")
 
     def planning_image_paths(self):
         if self.multi_view_enabled() and os.path.exists(self.views_manifest_path()):
-            with open(self.views_manifest_path(), "r", encoding="utf-8") as manifest_file:
-                manifest = json.load(manifest_file)
-            view_paths = [
+            with open(self.views_manifest_path(),"r",encoding="utf-8") as manifest_file:
+                manifest =json.load(manifest_file)
+            view_paths= [
                 view.get("rgb_path")
-                for view in manifest.get("views", [])
+                for view in manifest.get("views",[])
                 if view.get("rgb_path") and os.path.exists(view.get("rgb_path"))
             ]
             if view_paths:
@@ -99,9 +101,9 @@ class Detection:
             return legacy_scan
         manifest_path = self.views_manifest_path()
         if os.path.exists(manifest_path):
-            with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+            with open(manifest_path, "r",encoding="utf-8") as manifest_file:
                 manifest = json.load(manifest_file)
-            views = manifest.get("views", [])
+            views = manifest.get("views",[])
             if views:
                 return views[0]["rgb_path"]
         return legacy_scan
@@ -111,23 +113,26 @@ class Detection:
         words = words.lower()
         doc = self.loader_instance.nlp(words)
         for token in doc:
-            if token.pos_ == "AUX" or (token.pos_ in ("NOUN", "PROPN") and token.dep_ in ["dobj","ROOT","nsubj","compound"]) or token.pos_ == "VERB":
+
+            if token.pos_ == "AUX" or (token.pos_ in ("NOUN","PROPN") and token.dep_ in ["dobj","ROOT","nsubj","compound"]) or token.pos_ == "VERB":
                 splitted_word.append(token.text)
         return splitted_word
 
     def compare_two_words(self,list1, list2):
-        word1 = list1.copy()
+        word1= list1.copy()
         word2 = list2.copy()
         min_1 = len(word1)
-        min_2 = len(word2)
+        min_2= len(word2)
         sim_word = []
         if min_1 > min_2:
+
             for index in range(min_1):
                 found = False
                 sim = 0
-                min_2 = len(word2)
+                min_2= len(word2)
                 for index_2 in range(min_2):
-                    sim = (self.loader_instance.wv.similarity(word1[index], word2[index_2]))
+
+                    sim = (self.loader_instance.wv.similarity(word1[index],word2[index_2]))
                     if sim > 0.708:
                         found = True
                         sim_word.append(sim)
@@ -141,14 +146,17 @@ class Detection:
                 sim = 0
                 min_1 = len(word1)
                 for index_2 in range(min_1):
-                    sim = (self.loader_instance.wv.similarity(word2[index], word1[index_2]))
+                    sim = (self.loader_instance.wv.similarity(word2[index],word1[index_2]))
                     if sim > 0.708:
-                        found = True
+
+                        found =True
                         sim_word.append(sim)
+
                         word1.pop(index_2)
                         break
                 if not found:
                     sim_word.append(sim)
+
         if sim_word == []:
             return None
         sim_word =  np.mean(sim_word)
@@ -156,7 +164,7 @@ class Detection:
 
     def is_in_list(self,word,list):
         for obj in list:
-            if self.compare_two_words(word, obj) != None and self.compare_two_words(word, obj) > 0.708:
+            if self.compare_two_words(word,obj) != None and self.compare_two_words(word,obj) > 0.708:
                 return True
         return False
 
@@ -172,10 +180,12 @@ class Detection:
         return getattr(self.loader_instance, "child_aliases", ["child", "the child", "kid"])
 
     def normalize_child_label(self, label):
+
         label = str(label).lower().strip()
-        label = re.sub(r"[^a-z0-9 ]+", " ", label)
-        label = re.sub(r"\s+", " ", label).strip()
-        return re.sub(r"^the\s+", "", label)
+        label = re.sub(r"[^a-z0-9 ]+"," ",label)
+        label = re.sub(r"\s+"," ", label).strip()
+
+        return re.sub(r"^the\s+","",label)
 
     def is_child_label(self, label):
         normalized = self.normalize_child_label(label)
@@ -185,17 +195,20 @@ class Detection:
         }
 
     def relation_parts(self, relation):
-        relation = re.sub(r"^\s*\d+[\).:-]\s*", "", relation.strip())
-        match = re.match(r"^\((.*?),\s*(.*?),\s*(.*?)\)\s*$", relation)
+        relation = re.sub(r"^\s*\d+[\).:-]\s*", "",relation.strip())
+
+        match= re.match(r"^\((.*?),\s*(.*?),\s*(.*?)\)\s*$",relation)
+
         if not match:
             return None
         return [part.strip() for part in match.groups()]
 
-    def filter_child_relations(self, object_relations):
+    def filter_child_relations(self,object_relations):
         filtered = []
         for relation in object_relations:
             parts = self.relation_parts(relation)
             if parts and (self.is_child_label(parts[0]) or self.is_child_label(parts[2])):
+
                 print(f"Skipping non-visual child relation during visual grounding: {relation}")
                 continue
             filtered.append(relation)
@@ -223,6 +236,7 @@ class Detection:
                 continue
             relation_object_first = parts[0]
             relation_object_second = parts[2]
+
             if self.is_child_label(relation_object_first) or self.is_child_label(relation_object_second):
                 continue
             word_1 = self.split_word(relation_object_first)
@@ -234,21 +248,22 @@ class Detection:
 
         return self.list_to_yoloworld(relation_list)
 
-    def show_mask(self,mask, random_color = True):
+    def show_mask(self,mask,random_color = True):
         if random_color:
             color = np.concatenate([np.random.random(3)], axis=0)
         else:
-            color = np.array([30 / 255, 144 / 255, 255 / 255])
+            color =np.array([30/255, 144 / 255, 255 /255])
         h, w = mask.shape[-2:]
-        mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
+        mask_image = mask.reshape(h,w,1) * color.reshape(1,1, -1)
         mask_image = mask_image.numpy() * 255
         mask_image = mask_image.astype(np.uint8)
         return mask_image
 
     def find_bb_relation(self,relation_object):
-        index_ = []
-        for index, detection in self.dict_detections.items():
+        index_= []
+        for index,detection in self.dict_detections.items():
             if detection['label'].lower() in relation_object.lower():
+
                 index_.append(index)
         return index_
 
@@ -260,14 +275,16 @@ class Detection:
             index_first = None
             index_second = None
             min_distance = float("inf")
+
             for key_first in position_in_image_first.keys():
                 for key_second in position_in_image_second.keys():
                     dis_x = abs(position_in_image_first[key_first]['x'] - position_in_image_second[key_second]['x'])
-                    dis_y = abs(position_in_image_first[key_first]['y'] - position_in_image_second[key_second]['y'])
-                    distance = math.sqrt((dis_x*dis_x + dis_y*dis_y))
+                    dis_y = abs(position_in_image_first[key_first]['y']-position_in_image_second[key_second]['y'])
+                    distance = math.sqrt((dis_x*dis_x+dis_y*dis_y))
                     if min_distance > distance:
                         index_first = key_first
                         index_second = key_second
+
                         min_distance = distance
 
             if index_first is not None and index_second is not None:
@@ -276,13 +293,14 @@ class Detection:
        
         if "left" in relation:
             index_first = None
-            index_second = None
+            index_second=None
             min_distance_x = 30000
             min_distance_y = 10000
             for key_first in position_in_image_first.keys():
                 for key_second in position_in_image_second.keys():
-                    min_distance_x_bb = abs(position_in_image_first[key_first]['x'] - position_in_image_second[key_second]['x'])//2
-                    min_distance_y_bb = abs(position_in_image_first[key_first]['y'] - position_in_image_second[key_second]['y'])//2
+
+                    min_distance_x_bb= abs(position_in_image_first[key_first]['x'] - position_in_image_second[key_second]['x'])//2
+                    min_distance_y_bb = abs(position_in_image_first[key_first]['y']- position_in_image_second[key_second]['y'])//2
                     if min_distance_x_bb < min_distance_x and min_distance_x_bb != 0 and min_distance_y > min_distance_y_bb :
                         index_first = key_first
                         index_second = key_second
@@ -297,31 +315,35 @@ class Detection:
 
         if "right" in relation:
             index_first = None
+
             index_second = None
+
             min_distance_x = 30000
             min_distance_y = 10000
             for key_first in position_in_image_first.keys():
                 for key_second in position_in_image_second.keys():
-                    min_distance_x_bb = abs(position_in_image_first[key_first]['x'] - position_in_image_second[key_second]['x'])//2
-                    min_distance_y_bb = abs(position_in_image_first[key_first]['y'] - position_in_image_second[key_second]['y'])//2
+                    min_distance_x_bb = abs(position_in_image_first[key_first]['x']-position_in_image_second[key_second]['x'])//2
+                    min_distance_y_bb = abs(position_in_image_first[key_first]['y']- position_in_image_second[key_second]['y'])//2
                     if min_distance_x_bb < min_distance_x and min_distance_x_bb != 0 and min_distance_y > min_distance_y_bb and min_distance_y_bb != 0:
                         
                         index_first = key_first
-                        index_second = key_second
-                        min_distance_x = min_distance_x_bb
+                        index_second =key_second
+                        min_distance_x =min_distance_x_bb
                         min_distance_y = min_distance_y_bb
             if index_first is not None and index_second is not None:
                 self.data_reordered[index_first]['label'] = object_first
+
                 self.data_reordered[index_second]['label'] = object_second
-                self.dict_detections.pop(index_first, None)
+                self.dict_detections.pop(index_first,None)
                 self.dict_detections.pop(index_second, None)
 
         
 
     def obtain_bb_grounded(self,index_first,index_second,relation,object_first,object_second):
-            detection_data = self.dict_detections
-            position_in_image_first = {}
+            detection_data =self.dict_detections
+            position_in_image_first ={}
             position_in_image_second = {}
+
             for i in range(len(index_first)):
                 if index_first[i] not in position_in_image_first.keys():
                     position_in_image_first[index_first[i]] = {'x':None,'y':None}
@@ -330,22 +352,24 @@ class Detection:
             for i in range(len(index_second)):
                 if index_second[i] not in position_in_image_second.keys():
                     position_in_image_second[index_second[i]] = {'x':None,'y':None}
-                position_in_image_second[index_second[i]]['x'] = (detection_data[index_second[i]]['bbox'][0] + detection_data[index_second[i]]['bbox'][2]) //2
+                position_in_image_second[index_second[i]]['x'] = (detection_data[index_second[i]]['bbox'][0] + detection_data[index_second[i]]['bbox'][2])//2
                 position_in_image_second[index_second[i]]['y'] = (detection_data[index_second[i]]['bbox'][1] + detection_data[index_second[i]]['bbox'][3]) //2
             self.compare_two_list_of_objects(position_in_image_first,position_in_image_second,relation,object_first,object_second)
 
 
-    def run_image(self,image_path, output_dir=None):
+    def run_image(self,image_path,output_dir=None):
         index_detection = 0
         print("Running detection")
+
         output_dir = output_dir or self.loader_instance.DUMP_DIR
         os.makedirs(output_dir, exist_ok=True)
         object_relations = self.results_multi['environment_agent_info'].split('\n')
+
         object_relations = self.filter_child_relations(object_relations)
 
         # print("Time")
         # start = time.time()
-        labels = self.get_classes(object_relations)
+        labels= self.get_classes(object_relations)
         labels = self.filter_child_detection_labels(labels)
 
         # print("end vocabulary : " + str(time.time() -start))
@@ -361,37 +385,41 @@ class Detection:
 
         #YOLOW inference
         # start = time.time()
-        bboxs, scores, labels_idx = self.loader_instance.yolow_model(image_path)
+        bboxs,scores,labels_idx = self.loader_instance.yolow_model(image_path)
         # print("detection: " + str(time.time()- start))
         # start = time.time()
-        for i, (bbox,score,cls_id) in enumerate(zip(bboxs[0], scores, labels_idx[0])):
+        for i,(bbox,score,cls_id) in enumerate(zip(bboxs[0], scores,labels_idx[0])):
             x1,y1,x2,y2 = bbox
 
             if score > 0.1:
 
                 label = self.loader_instance.yolow_model.get_class_name(cls_id)
+
                 masks, _ = self.loader_instance.vit_sam_model(masked_image, bbox)
                
                 if index_detection not in self.dict_detections.keys():
                     self.dict_detections[index_detection] = {'bbox':None,'label':None}
                     self.dict_detections[index_detection]['bbox'] = bbox
                     self.dict_detections[index_detection]['label'] = label
+
                     self.dict_detections[index_detection]['score'] = float(score)
-                    cv2.rectangle(image_yolow, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 1)
-                    cv2.putText(image_yolow, f"{label}: {score:.2f}", (int(x1), int(y1)-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 1)
+
+                    cv2.rectangle(image_yolow,(int(x1),int(y1)), (int(x2),int(y2)),(255, 0, 0), 1)
+                    cv2.putText(image_yolow,f"{label}: {score:.2f}",(int(x1), int(y1)-10),cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,255,0),1)
                     
                 # Convert binary mask to 3-channel image
                 for mask in masks:
                     binary_mask = self.show_mask(mask)
-                    overlay = masked_image
+                    overlay= masked_image
                     self.dict_detections[index_detection]['mask'] = binary_mask
-                    overlay = cv2.addWeighted(overlay, 1, binary_mask, 0.5, 0)
-                    cv2.imwrite(os.path.join(output_dir, f"rgb_{index_detection}.jpg"), overlay)
-                    overlay_ = cv2.addWeighted(overlay_, 1, binary_mask, 0.5, 0)
+                    overlay = cv2.addWeighted(overlay,1,binary_mask,0.5,0)
+                    cv2.imwrite(os.path.join(output_dir,f"rgb_{index_detection}.jpg"), overlay)
+                    overlay_ = cv2.addWeighted(overlay_,1, binary_mask, 0.5, 0)
+
                 index_detection += 1
         
         # print("mask : " + str(i) + " : " + str(time.time() -start))
-        cv2.imwrite(os.path.join(output_dir, "mask.jpg"), overlay_)
+        cv2.imwrite(os.path.join(output_dir,"mask.jpg"), overlay_)
         cv2.imwrite(os.path.join(output_dir, "yolo.jpg"), image_yolow)
 
         self.data_reordered = self.dict_detections.copy()
@@ -409,26 +437,26 @@ class Detection:
                     self.obtain_bb_grounded(index_bounding_box_first,index_bounding_box_second,relation_type,relation_object_first,relation_object_second)
 
         # print("grounfing : " + str(time.time() -start))
-        for i, value in self.data_reordered.items():
-            cv2.rectangle(image_with_bbox, (int(value['bbox'][0]), int(value['bbox'][1])), (int(value['bbox'][2]), int(value['bbox'][3])), (255, 0, 0), 1 )
-            cv2.putText(image_with_bbox, value['label'], (int(value['bbox'][0]+10), int(value['bbox'][1]+20)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        for i,value in self.data_reordered.items():
+            cv2.rectangle(image_with_bbox,(int(value['bbox'][0]), int(value['bbox'][1])),(int(value['bbox'][2]), int(value['bbox'][3])),(255, 0, 0), 1 )
+            cv2.putText(image_with_bbox, value['label'],(int(value['bbox'][0]+10), int(value['bbox'][1]+20)),cv2.FONT_HERSHEY_SIMPLEX, 0.5,(0, 255,0),1)
 
         with open(os.path.join(output_dir, "detection.pkl"), 'wb') as f:
-            pickle.dump(self.data_reordered, f, protocol=2)
+            pickle.dump(self.data_reordered, f,protocol=2)
 
         with open(os.path.join(output_dir, "detections.json"), "w", encoding="utf-8") as f:
-            json.dump(self.detections_json(self.data_reordered), f, indent=2)
+            json.dump(self.detections_json(self.data_reordered),f, indent=2)
 
-        cv2.imwrite(os.path.join(output_dir, "scan_with_bb.jpg"), image_with_bbox)
+        cv2.imwrite(os.path.join(output_dir,"scan_with_bb.jpg"), image_with_bbox)
         os.system(f'rm -rf {self.loader_instance.YOLOW_PATH}/logs/')
 
-    def detections_json(self, detections):
-        serializable = {}
+    def detections_json(self,detections):
+        serializable ={}
         for key, detection in detections.items():
-            item = {
+            item ={
                 "label": detection.get("label"),
                 "bbox": self.json_ready(detection.get("bbox")),
-                "score": float(detection.get("score", 0.0)),
+                "score": float(detection.get("score",0.0)),
             }
             mask = detection.get("mask")
             if mask is not None:
@@ -437,20 +465,21 @@ class Detection:
             serializable[str(key)] = item
         return serializable
 
-    def json_ready(self, value):
-        if hasattr(value, "tolist"):
+    def json_ready(self,value):
+        if hasattr(value,"tolist"):
             return value.tolist()
         if isinstance(value, (list, tuple)):
             return [self.json_ready(item) for item in value]
+
         return value
 
     def run_multi_view_images(self):
         print("Running multi-view detection")
-        with open(self.views_manifest_path(), "r", encoding="utf-8") as manifest_file:
+        with open(self.views_manifest_path(), "r",encoding="utf-8") as manifest_file:
             manifest = json.load(manifest_file)
         for view in manifest.get("views", []):
             output_dir = os.path.dirname(view["rgb_path"])
-            self.run_image(image_path=view["rgb_path"], output_dir=output_dir)
+            self.run_image(image_path=view["rgb_path"],output_dir=output_dir)
         self.aggregate_multi_view_results()
 
     def aggregate_multi_view_results(self):
@@ -458,10 +487,11 @@ class Detection:
             from empower.multi_view_aggregator import run_aggregation
         except ImportError as exc:
             print(f"Multi-view aggregation unavailable: {exc}")
+
             return
 
-        merge_config = getattr(self.loader_instance, "multi_view_config", {}).get("merge", {})
-        result = run_aggregation(
+        merge_config = getattr(self.loader_instance,"multi_view_config", {}).get("merge",{})
+        result =run_aggregation(
             os.path.dirname(self.loader_instance.OUTPUT.rstrip("/")),
             self.loader_instance.use_case,
             merge_config=merge_config,
@@ -471,10 +501,10 @@ class Detection:
         self.rewrite_plan_from_global_scene(result)
 
     def rewrite_plan_from_global_scene(self, result):
-        scene_path = os.path.join(self.loader_instance.DUMP_DIR, "global_scene_description.txt")
+        scene_path= os.path.join(self.loader_instance.DUMP_DIR, "global_scene_description.txt")
         if not os.path.exists(scene_path):
             return
-        with open(scene_path, "r", encoding="utf-8") as scene_file:
+        with open(scene_path,"r",encoding="utf-8") as scene_file:
             global_scene = scene_file.read()
         if not global_scene.strip() or not result.get("objects"):
             print("Multi-view aggregation produced no objects; keeping original plan")
@@ -485,13 +515,15 @@ class Detection:
         agents = Agents(
             encoded_image,
             self.task_dict[self.loader_instance.use_case],
-            child_context=getattr(self.loader_instance, "child_planner_context", ""),
+            child_context=getattr(self.loader_instance,"child_planner_context",""),
         )
         planning_agent_info = agents.plan_from_scene_description(global_scene)
         self.results_multi["description_agent_info"] = global_scene
         self.results_multi["planning_agent_info"] = planning_agent_info
         with open(self.loader_instance.DUMP_DIR+"planning.pkl",'wb') as f:
-            pickle.dump(self.results_multi, f, protocol=2)
+
+            pickle.dump(self.results_multi,f, protocol=2)
         with open(self.loader_instance.DUMP_DIR+"planning.txt",'w') as f:
             f.write(planning_agent_info)
+
         print("Rewrote planning.txt from deduplicated multi-view global scene")

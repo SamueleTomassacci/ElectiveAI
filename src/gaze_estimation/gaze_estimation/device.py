@@ -7,6 +7,7 @@ def cuda_available():
 
         return bool(torch.cuda.is_available())
     except Exception:
+
         return False
 
 
@@ -21,6 +22,7 @@ def select_device(requested = "auto", warn = None):
     if requested_normalized == "cuda":
         if has_cuda:
             return "cuda"
+
         message = "CUDA was requested, but torch.cuda.is_available() is false. Falling back to CPU."
         if warn is not None:
             warn(message)

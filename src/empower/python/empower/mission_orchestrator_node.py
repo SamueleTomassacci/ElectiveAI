@@ -14,10 +14,10 @@ from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile
+from rclpy.qos import DurabilityPolicy,QoSProfile
 from std_msgs.msg import String
 
-from empower.static_scene_graph import StaticSceneGraph, StaticSceneGraphError, default_scene_graph_path
+from empower.static_scene_graph import StaticSceneGraph,StaticSceneGraphError, default_scene_graph_path
 
 try:
     from llm_interaction.session_scores import (
@@ -48,6 +48,7 @@ class MissionState(str, Enum):
     WAIT_THERAPIST_OVERRIDE = "WAIT_THERAPIST_OVERRIDE"
     ACK_PROPOSAL = "ACK_PROPOSAL"
     WAIT_TASK = "WAIT_TASK"
+
     ACK_TASK = "ACK_TASK"
     WAIT_ACTIVITY = "WAIT_ACTIVITY"
     ACK_ACTIVITY = "ACK_ACTIVITY"
@@ -71,12 +72,12 @@ class MissionInteractionSpec:
     ):
         self.task_description = task_description
         self.activity_description = activity_description
+
         self.activity_type = activity_type
         self.child_name = child_name
 
 
 class MissionOrchestratorNode(Node):
-    #Node which orchestrates the entire pipeline
 
     def __init__(self):
         super().__init__("mission_orchestrator_node")
@@ -84,19 +85,19 @@ class MissionOrchestratorNode(Node):
 
         status_qos = QoSProfile(depth=1)
         status_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
-        self.state_pub = self.create_publisher(String, "/mission/state", status_qos)
-        self.feedback_pub = self.create_publisher(String, "/mission/feedback", 10)
+        self.state_pub = self.create_publisher(String,"/mission/state",status_qos)
+        self.feedback_pub = self.create_publisher(String,"/mission/feedback", 10)
         self.task_pub = self.create_publisher(String, "/mission/task_description", status_qos)
         self.child_ready_pub = self.create_publisher(String, "/mission/child_ready", status_qos)
-        self.dialog_command_pub = self.create_publisher(String, "/hri/dialog_command", 10)
+        self.dialog_command_pub = self.create_publisher(String, "/hri/dialog_command",10)
 
-        self.create_subscription(String, "/hri/user_utterance", self.task_callback, 10)
-        self.create_subscription(String, "/hri/dialog_complete", self.dialog_complete_callback, 10)
-        self.create_subscription(String, "/mission/gaze_command", self.gaze_command_callback, 10)
-        self.create_subscription(String, "/gaze/node_status", self.gaze_node_status_callback, 10)
+        self.create_subscription(String,"/hri/user_utterance", self.task_callback,10)
+        self.create_subscription(String, "/hri/dialog_complete", self.dialog_complete_callback,10)
+        self.create_subscription(String,"/mission/gaze_command", self.gaze_command_callback, 10)
+        self.create_subscription(String,"/gaze/node_status", self.gaze_node_status_callback, 10)
 
-        self._skip_mode = bool(self.get_parameter("skip_to_child_activity").value)
-        if not self._skip_mode:
+        self.skip_mode = bool(self.get_parameter("skip_to_child_activity").value)
+        if not self.skip_mode:
             self.nav_client = ActionClient(
                 self,
                 NavigateToPose,
@@ -104,51 +105,54 @@ class MissionOrchestratorNode(Node):
             )
         else:
             self.nav_client = None
-        self._state_lock = threading.Lock()
-        self._state = None
-        self._interaction_spec = MissionInteractionSpec(
+        self.state_lock = threading.Lock()
+        self.state = None
+        self.interaction_spec = MissionInteractionSpec(
             activity_type=str(self.get_parameter("default_activity_type").value)
         )
-        self._task_event = threading.Event()
-        self._activity_event = threading.Event()
-        self._child_name_event = threading.Event()
-        self._override_event = threading.Event()
-        self._override_text = ""
+        self.task_event = threading.Event()
+        self.activity_event = threading.Event()
+        self.child_name_event = threading.Event()
+        self.override_event = threading.Event()
+        self.override_text = ""
         self.child_name = ""
-        self._stop_event = threading.Event()
-        self._dialog_complete_event = threading.Event()
-        self._dialog_complete_payload = ""
-        self._mission_thread = None
-        self._gaze_process = None
-        self._gaze_process_label = "gaze estimation"
-        self._gaze_ready_event = threading.Event()
-        self._gaze_error_message = ""
-        self._child_memory_store = None
+        self.stop_event = threading.Event()
+        self.dialog_complete_event = threading.Event()
+
+        self.dialog_complete_payload = ""
+        self.mission_thread = None
+        self.gaze_process = None
+        self.gaze_process_label = "gaze estimation"
+        self.gaze_ready_event = threading.Event()
+        self.gaze_error_message = ""
+        self.child_memory_store = None
         self.static_scene_graph = self.load_static_scene_graph()
 
         if bool(self.get_parameter("auto_start").value):
-            self._mission_thread = threading.Thread(
+            self.mission_thread = threading.Thread(
                 target=self.run_mission,
                 name="hri_empower_mission",
                 daemon=True,
             )
-            self._mission_thread.start()
+            self.mission_thread.start()
         else:
             self.publish_feedback("Mission orchestrator ready; auto_start is disabled")
 
     def declare_node_parameters(self):
-        self.declare_parameter("map_frame", "map")
-        self.declare_parameter("static_scene_graph_path", default_scene_graph_path())
+        self.declare_parameter("map_frame","map")
+        self.declare_parameter("static_scene_graph_path",default_scene_graph_path())
         self.declare_parameter("nav_action_name", "navigate_to_pose")
         self.declare_parameter(
             "params_file",
             "/root/exchange/src/empower/config/empower_config.yaml",
         )
+
         self.declare_parameter("wait_for_task_timeout_sec", 120.0)
-        self.declare_parameter("wait_for_activity_timeout_sec", 120.0)
-        self.declare_parameter("wait_for_child_name_timeout_sec", 120.0)
-        self.declare_parameter("task_ack_text", "Okay, I understood the task.")
+        self.declare_parameter("wait_for_activity_timeout_sec",120.0)
+        self.declare_parameter("wait_for_child_name_timeout_sec",120.0)
+        self.declare_parameter("task_ack_text","Okay, I understood the task.")
         self.declare_parameter("task_ask_text", "What task should I do?")
+
         self.declare_parameter(
             "activity_ask_text",
             "What activity should I do with the child?",
@@ -161,27 +165,30 @@ class MissionOrchestratorNode(Node):
             "child_name_ack_text",
             "I know {child_name}.",
         )
+
         self.declare_parameter(
             "unknown_child_name_text",
             "I don't know {child_name}.",
         )
         self.declare_parameter("default_activity_type", "generic_child_activity")
-        self.declare_parameter("auto_start", True)
-        self.declare_parameter("action_server_timeout_sec", 20.0)
-        self.declare_parameter("nav_result_timeout_sec", 300.0)
+        self.declare_parameter("auto_start",True)
+        self.declare_parameter("action_server_timeout_sec",20.0)
+        self.declare_parameter("nav_result_timeout_sec",300.0)
         self.declare_parameter("empower_process_timeout_sec", 0.0)
-        self.declare_parameter("capture_timeout_sec", 60.0)
+        self.declare_parameter("capture_timeout_sec",60.0)
         self.declare_parameter("capture_before_empower", True)
         self.declare_parameter("execute_empower_plan", True)
-        self.declare_parameter("child_delivery_handled_by_empower", False)
-        self.declare_parameter("use_case", "therapy_task")
-        self.declare_parameter("output_root", "/root/exchange/output")
+
+        self.declare_parameter("child_delivery_handled_by_empower",False)
+        self.declare_parameter("use_case","therapy_task")
+        self.declare_parameter("output_root","/root/exchange/output")
+
         self.declare_parameter("storytelling_timeout_sec", 300.0)
         self.declare_parameter("child_activity_timeout_sec", 300.0)
         self.declare_parameter("gaze_estimation.enabled", True)
-        self.declare_parameter("gaze_estimation.camera_index", 0)
+        self.declare_parameter("gaze_estimation.camera_index",0)
         self.declare_parameter("gaze_estimation.device", "auto")
-        self.declare_parameter("gaze_estimation.show_window", True)
+        self.declare_parameter("gaze_estimation.show_window",True)
         self.declare_parameter("gaze_estimation.startup_timeout_sec", 30.0)
         self.declare_parameter("proposal_acceptance_timeout_sec", 15.0)
         self.declare_parameter(
@@ -210,6 +217,7 @@ class MissionOrchestratorNode(Node):
             "Okay.",
         )
         self.declare_parameter("skip_to_child_activity", False)
+
         self.declare_parameter("test_child_name", "Luca")
         self.declare_parameter("test_activity_type", "storytelling")
         self.declare_parameter("test_task_description", "Take the book and give it to the child")
@@ -219,13 +227,13 @@ class MissionOrchestratorNode(Node):
         if not text:
             return
         state = self.current_state()
-        _INPUT_STATES = {
+        INPUT_STATES = {
             MissionState.WAIT_CHILD_NAME,
             MissionState.WAIT_TASK,
             MissionState.WAIT_ACTIVITY,
             MissionState.WAIT_THERAPIST_OVERRIDE,
         }
-        if state not in _INPUT_STATES:
+        if state not in INPUT_STATES:
             self.publish_feedback(
                 f"Ignoring HRI utterance outside therapist input capture: {text}",
                 log_level="debug",
@@ -241,52 +249,55 @@ class MissionOrchestratorNode(Node):
             self.capture_child_activity(text)
             return
         if state == MissionState.WAIT_THERAPIST_OVERRIDE:
-            self._override_text = text
-            self._override_event.set()
+            self.override_text = text
+            self.override_event.set()
 
     def capture_physical_task(self, text):
-        if self._interaction_spec.task_description:
+        if self.interaction_spec.task_description:
+
             self.publish_feedback(
                 f"Ignoring extra HRI utterance after task capture: {text}",
                 log_level="debug",
             )
             return
-        self._interaction_spec.task_description = text
+        self.interaction_spec.task_description = text
         self.publish(self.task_pub, text)
         self.publish_feedback(f"Received physical task: {text}")
-        self._task_event.set()
+        self.task_event.set()
 
-    def capture_child_activity(self, text):
-        if self._interaction_spec.activity_description:
+    def capture_child_activity(self,text):
+
+        if self.interaction_spec.activity_description:
             self.publish_feedback(
                 f"Ignoring extra HRI utterance after activity capture: {text}",
                 log_level="debug",
             )
             return
-        self._interaction_spec.activity_description = text
-        self._interaction_spec.activity_type = self.normalize_activity_type(text)
+        self.interaction_spec.activity_description = text
+        self.interaction_spec.activity_type = self.normalize_activity_type(text)
         self.publish_feedback(f"Received child activity: {text}")
         self.publish_feedback(
-            f"Normalized activity type: {self._interaction_spec.activity_type}"
+            f"Normalized activity type: {self.interaction_spec.activity_type}"
         )
-        self._activity_event.set()
+        self.activity_event.set()
 
     def capture_child_name(self, text):
-        if self._interaction_spec.child_name:
+        if self.interaction_spec.child_name:
+
             self.publish_feedback(
                 f"Ignoring extra HRI utterance after child name capture: {text}",
                 log_level="debug",
             )
             return
         child_name = text.strip().strip(".!?;:,")
-        self._interaction_spec.child_name = child_name
+        self.interaction_spec.child_name = child_name
         self.child_name = child_name
         self.publish_feedback(f"Received child name: {child_name}")
-        self._child_name_event.set()
+        self.child_name_event.set()
 
-    def dialog_complete_callback(self, msg):
-        self._dialog_complete_payload = msg.data
-        self._dialog_complete_event.set()
+    def dialog_complete_callback(self,msg):
+        self.dialog_complete_payload = msg.data
+        self.dialog_complete_event.set()
 
     def run_mission(self):
         try:
@@ -303,12 +314,14 @@ class MissionOrchestratorNode(Node):
 
     def run_mission_skip_to_child(self):
         child_name = str(self.get_parameter("test_child_name").value)
-        activity_type = str(self.get_parameter("test_activity_type").value)
+        activity_type= str(self.get_parameter("test_activity_type").value)
         task_desc = str(self.get_parameter("test_task_description").value)
-        self._interaction_spec.child_name = child_name
-        self._interaction_spec.activity_type = activity_type
-        self._interaction_spec.task_description = task_desc
-        self._interaction_spec.activity_description = self._activity_label(activity_type)
+
+        # Test mode skips therapist dialogue
+        self.interaction_spec.child_name = child_name
+        self.interaction_spec.activity_type = activity_type
+        self.interaction_spec.task_description = task_desc
+        self.interaction_spec.activity_description = self.activity_label(activity_type)
         self.child_name = child_name
 
         self.publish_feedback(
@@ -333,13 +346,14 @@ class MissionOrchestratorNode(Node):
         self.stop_gaze_process()
 
         self.transition(MissionState.MISSION_COMPLETE)
+
         self.publish_feedback("Mission complete")
 
     def simulate_drop_on_child_table(self, task_desc):
         params_file = str(self.get_parameter("params_file").value)
-        drop_pose = self.static_scene_graph.resolve_drop_pose(role="child_delivery_drop")
+        drop_pose =self.static_scene_graph.resolve_drop_pose(role="child_delivery_drop")
         if drop_pose is None:
-            self.publish_feedback("No child delivery drop pose in scene graph", log_level="warn")
+            self.publish_feedback("No child delivery drop pose in scene graph",log_level="warn")
             return
         task_lower = task_desc.lower()
         object_keys = {
@@ -350,50 +364,58 @@ class MissionOrchestratorNode(Node):
             "laptop": "laptop_computer_on_right_table",
         }
         entity = None
+
         drop_z = 0.01
-        for keyword, gazebo_entity in object_keys.items():
+        for keyword,gazebo_entity in object_keys.items():
             if keyword in task_lower:
+
                 entity = gazebo_entity
                 break
         if entity is None:
-            self.publish_feedback(f"No matching Gazebo object for task: {task_desc}", log_level="warn")
+            self.publish_feedback(f"No matching Gazebo object for task: {task_desc}",log_level="warn")
             return
-        gz_cmd = self.empower_param(params_file, "object_simulation.gz_command", "gz")
-        gz_world = self.empower_param(params_file, "object_simulation.gz_world_name", "scene")
-        x, y, z = drop_pose["x"], drop_pose["y"], drop_pose["z"]
+
+        gz_cmd = self.empower_param(params_file,"object_simulation.gz_command", "gz")
+        gz_world = self.empower_param(params_file,"object_simulation.gz_world_name", "scene")
+        x,y,z = drop_pose["x"],drop_pose["y"],drop_pose["z"]
         cmd = [
-            gz_cmd, "model", "-w", gz_world, "-m", entity,
-            "--pose", f"{x},{y},{z + drop_z},0,0,0",
+            gz_cmd,"model", "-w",gz_world, "-m", entity,
+            "--pose",f"{x},{y},{z+ drop_z},0,0,0",
         ]
         self.publish_feedback(f"[TEST MODE] Dropping {entity} at child table ({x}, {y}, {z})")
         try:
-            subprocess.run(cmd, timeout=10.0, check=False)
+            subprocess.run(cmd, timeout=10.0,check=False)
         except Exception as exc:
             self.publish_feedback(f"Gazebo drop failed: {exc}", log_level="warn")
 
     def run_mission_full(self):
+
         self.transition(MissionState.GO_TO_THERAPIST)
         if not self.navigate_to_pose(
             "therapist",
-            self.static_nav_pose("therapist", "receive_instruction"),
+            self.static_nav_pose("therapist","receive_instruction"),
         ):
+
             return
 
         self.transition(MissionState.WAIT_CHILD_NAME)
         self.say(str(self.get_parameter("child_name_ask_text").value))
+
         if not self.wait_for_child_name():
             return
 
         self.transition(MissionState.ACK_CHILD_NAME)
         child_memory = self.child_memory_for_activity_proposal(
-            self._interaction_spec.child_name
+            self.interaction_spec.child_name
         )
         if child_memory is not None:
             self.say(self.child_name_ack_text())
         else:
+
             self.say(self.unknown_child_name_text())
 
         self.transition(MissionState.PROPOSE_ACTIVITY)
+        # Memory before manual input
         proposal = self.propose_activity(child_memory)
 
         if proposal is not None:
@@ -403,8 +425,8 @@ class MissionOrchestratorNode(Node):
                 self.publish_feedback("Therapist accepted the memory-based proposal")
                 self.transition(MissionState.ACK_PROPOSAL)
                 self.say(
-                    f"Okay! I will do {self._activity_label(self._interaction_spec.activity_type)} "
-                    f"with {self._interaction_spec.child_name}."
+                    f"Okay! I will do {self.activity_label(self.interaction_spec.activity_type)} "
+                    f"with {self.interaction_spec.child_name}."
                 )
             else:
                 if response == "no":
@@ -415,13 +437,14 @@ class MissionOrchestratorNode(Node):
                         log_level="warn",
                     )
                 self.reset_task_and_activity()
+
                 self.say(str(self.get_parameter("proposal_rejected_text").value))
                 if not self.collect_manual_task_and_activity():
                     return
         else:
             self.say(
                 str(self.get_parameter("no_history_text").value).format(
-                    child_name=self._interaction_spec.child_name
+                    child_name=self.interaction_spec.child_name
                 )
             )
             if not self.collect_manual_task_and_activity():
@@ -430,19 +453,21 @@ class MissionOrchestratorNode(Node):
         self.transition(MissionState.GO_TO_SPAWN)
         if not self.navigate_to_pose(
             "spawn",
-            self.static_nav_pose("center", "capture_origin"),
+            self.static_nav_pose("center","capture_origin"),
         ):
             return
 
         self.transition(MissionState.RUN_EMPOWER)
-        if not self.run_empower(self._interaction_spec.task_description):
+        if not self.run_empower(self.interaction_spec.task_description):
             return
 
+        # Delivery already in plan
         if bool(self.get_parameter("child_delivery_handled_by_empower").value):
             self.publish_feedback(
                 "Skipping hardcoded GO_TO_CHILD because EMPOWER handles child delivery"
             )
         else:
+
             self.transition(MissionState.GO_TO_CHILD)
             if not self.navigate_to_pose(
                 "child",
@@ -455,6 +480,7 @@ class MissionOrchestratorNode(Node):
         self.publish_feedback("Child interaction can start")
 
         if not self.start_gaze_process():
+
             self.publish_feedback(
                 "Gaze estimation failed to start; aborting mission",
                 log_level="error",
@@ -470,7 +496,7 @@ class MissionOrchestratorNode(Node):
         self.transition(MissionState.GO_BACK_TO_THERAPIST)
         self.navigate_to_pose(
             "therapist",
-            self.static_nav_pose("therapist", "receive_instruction"),
+            self.static_nav_pose("therapist","receive_instruction"),
         )
         self.say(self.build_activity_summary())
 
@@ -482,7 +508,7 @@ class MissionOrchestratorNode(Node):
         self.publish_feedback(
             f"Waiting up to {timeout_sec:.1f}s for the task on /hri/user_utterance"
         )
-        if self._task_event.wait(timeout=timeout_sec):
+        if self.task_event.wait(timeout=timeout_sec):
             return True
         self.publish_feedback(
             "Timed out waiting for a task from /hri/user_utterance",
@@ -495,8 +521,9 @@ class MissionOrchestratorNode(Node):
         self.publish_feedback(
             f"Waiting up to {timeout_sec:.1f}s for the child name on /hri/user_utterance"
         )
-        if self._child_name_event.wait(timeout=timeout_sec):
+        if self.child_name_event.wait(timeout=timeout_sec):
             return True
+
         self.publish_feedback(
             "Timed out waiting for the child name from /hri/user_utterance",
             log_level="error",
@@ -505,18 +532,19 @@ class MissionOrchestratorNode(Node):
 
     def child_name_ack_text(self):
         template = str(self.get_parameter("child_name_ack_text").value)
-        return template.format(child_name=self._interaction_spec.child_name)
+        return template.format(child_name=self.interaction_spec.child_name)
 
     def unknown_child_name_text(self):
         template = str(self.get_parameter("unknown_child_name_text").value)
-        return template.format(child_name=self._interaction_spec.child_name)
+        return template.format(child_name=self.interaction_spec.child_name)
 
     def wait_for_activity(self):
+
         timeout_sec = float(self.get_parameter("wait_for_activity_timeout_sec").value)
         self.publish_feedback(
             f"Waiting up to {timeout_sec:.1f}s for the child activity on /hri/user_utterance"
         )
-        if self._activity_event.wait(timeout=timeout_sec):
+        if self.activity_event.wait(timeout=timeout_sec):
             return True
         self.publish_feedback(
             "Timed out waiting for a child activity from /hri/user_utterance",
@@ -525,8 +553,10 @@ class MissionOrchestratorNode(Node):
         return False
 
     def collect_manual_task_and_activity(self):
+
         self.transition(MissionState.WAIT_TASK)
         self.say(str(self.get_parameter("task_ask_text").value))
+
         if not self.wait_for_task():
             return False
         self.transition(MissionState.ACK_TASK)
@@ -536,72 +566,80 @@ class MissionOrchestratorNode(Node):
         self.say(str(self.get_parameter("activity_ask_text").value))
         if not self.wait_for_activity():
             return False
+
         self.transition(MissionState.ACK_ACTIVITY)
         self.say(str(self.get_parameter("activity_ack_text").value))
         return True
 
     def reset_task_and_activity(self):
-        self._interaction_spec.task_description = ""
-        self._interaction_spec.activity_description = ""
-        self._interaction_spec.activity_type = str(
+        self.interaction_spec.task_description = ""
+        self.interaction_spec.activity_description = ""
+        self.interaction_spec.activity_type = str(
             self.get_parameter("default_activity_type").value
         )
-        self._task_event.clear()
-        self._activity_event.clear()
+        self.task_event.clear()
+        self.activity_event.clear()
 
     def say(self, text):
-        payload = json.dumps({"command": "say", "text": text})
+
+        payload =json.dumps({"command": "say","text": text})
         self.publish(self.dialog_command_pub, payload)
         self.publish_feedback(f"Requested robot speech: {text}")
 
     def run_child_activity(self):
-        self._dialog_complete_event.clear()
+        self.dialog_complete_event.clear()
+        # Context for voice node
         context = {
-            "child_name": self._interaction_spec.child_name,
-            "task": self._interaction_spec.task_description,
-            "activity_description": self._interaction_spec.activity_description,
-            "activity_type": self._interaction_spec.activity_type,
+            "child_name": self.interaction_spec.child_name,
+            "task": self.interaction_spec.task_description,
+            "activity_description": self.interaction_spec.activity_description,
+            "activity_type": self.interaction_spec.activity_type,
         }
-        payload = json.dumps({"command": "start_child_activity", "context": context})
-        self.publish(self.dialog_command_pub, payload)
+        payload =json.dumps({"command": "start_child_activity","context": context})
+
+        self.publish(self.dialog_command_pub,payload)
         self.publish_feedback(f"Starting child activity: {payload}")
 
         timeout_sec = float(self.get_parameter("child_activity_timeout_sec").value)
+
         if timeout_sec <= 0:
+
             timeout_sec = float(self.get_parameter("storytelling_timeout_sec").value)
         self.publish_feedback(
             f"Waiting up to {timeout_sec:.0f}s for child activity to complete"
         )
-        completed = self._dialog_complete_event.wait(
+        completed = self.dialog_complete_event.wait(
             timeout=timeout_sec if timeout_sec > 0 else None
         )
         if completed:
             self.publish_feedback(
-                f"Child activity complete: {self._dialog_complete_payload}"
+                f"Child activity complete: {self.dialog_complete_payload}"
             )
         else:
             self.publish_feedback("Child activity timed out; stopping HRI", log_level="warn")
-            self.publish(self.dialog_command_pub, json.dumps({"command": "stop"}))
 
-    def propose_activity(self, memory=None):
-        child_name = self._interaction_spec.child_name
+            self.publish(self.dialog_command_pub,json.dumps({"command": "stop"}))
+
+    def propose_activity(self,memory=None):
+        child_name = self.interaction_spec.child_name
         if memory is None:
             self.publish_feedback(f"No child memory found for {child_name}")
             return None
 
         activity_type = self.preferred_activity_from_memory(memory)
+
         if not activity_type:
             self.publish_feedback(f"No preferred activity in child memory for {child_name}")
             return None
 
-        task = ACTIVITY_TO_TASK.get(activity_type, "")
-        self._interaction_spec.activity_type = activity_type
-        self._interaction_spec.task_description = task
-        self._interaction_spec.activity_description = self._activity_label(activity_type)
+        task = ACTIVITY_TO_TASK.get(activity_type,"")
+        self.interaction_spec.activity_type = activity_type
+        self.interaction_spec.task_description = task
+        self.interaction_spec.activity_description = self.activity_label(activity_type)
 
         proposal = str(self.get_parameter("proposal_text").value).format(
             child_name=child_name,
-            activity_label=self._activity_label(activity_type),
+            activity_label=self.activity_label(activity_type),
         )
         self.say(proposal)
         self.publish_feedback(
@@ -633,13 +671,13 @@ class MissionOrchestratorNode(Node):
             return None
         canonical_name = str(memory.get("child_name", "")).strip()
         if canonical_name:
-            self._interaction_spec.child_name = canonical_name
+            self.interaction_spec.child_name = canonical_name
             self.child_name = canonical_name
         return memory
 
     def get_child_memory_store(self):
-        if self._child_memory_store is not None:
-            return self._child_memory_store
+        if self.child_memory_store is not None:
+            return self.child_memory_store
         if RdfChildMemoryStore is None:
             self.publish_feedback(
                 "RDF child memory is unavailable; cannot propose from memory",
@@ -647,6 +685,7 @@ class MissionOrchestratorNode(Node):
             )
             return None
         rdf_path = str(self.get_parameter("child_memory_rdf_path").value).strip()
+
         if not rdf_path:
             self.publish_feedback(
                 "child_memory_rdf_path is empty; cannot propose from memory",
@@ -654,7 +693,7 @@ class MissionOrchestratorNode(Node):
             )
             return None
         try:
-            self._child_memory_store = RdfChildMemoryStore(
+            self.child_memory_store = RdfChildMemoryStore(
                 rdf_path=rdf_path,
                 seed_if_missing=bool(
                     self.get_parameter("child_memory_seed_if_missing").value
@@ -665,18 +704,20 @@ class MissionOrchestratorNode(Node):
                 f"Failed to initialize child memory at {rdf_path}: {exc}",
                 log_level="warn",
             )
-            self._child_memory_store = None
-        return self._child_memory_store
+            self.child_memory_store = None
 
-    def preferred_activity_from_memory(self, memory):
-        for activity in memory.get("preferred_activity_types", []):
-            normalized = self.normalize_memory_activity_type(activity)
+        return self.child_memory_store
+
+    def preferred_activity_from_memory(self,memory):
+        for activity in memory.get("preferred_activity_types",[]):
+
+            normalized= self.normalize_memory_activity_type(activity)
             if normalized:
                 return normalized
         return ""
 
     def normalize_memory_activity_type(self, activity):
-        normalized = activity.strip().lower().replace("-", "_").replace(" ", "_")
+        normalized = activity.strip().lower().replace("-", "_").replace(" ","_")
         if normalized in ACTIVITY_TO_TASK:
             return normalized
         inferred = infer_activity_and_task(activity)
@@ -685,14 +726,14 @@ class MissionOrchestratorNode(Node):
         return ""
 
     def wait_for_proposal_response(self):
-        timeout_sec = float(self.get_parameter("proposal_acceptance_timeout_sec").value)
-        self._override_event.clear()
-        self._override_text = ""
+        timeout_sec =float(self.get_parameter("proposal_acceptance_timeout_sec").value)
+        self.override_event.clear()
+        self.override_text = ""
         self.publish_feedback(
             f"Waiting {timeout_sec:.0f}s for therapist yes/no response to proposal"
         )
-        if self._override_event.wait(timeout=timeout_sec):
-            return self.parse_proposal_response(self._override_text)
+        if self.override_event.wait(timeout=timeout_sec):
+            return self.parse_proposal_response(self.override_text)
         return None
 
     @staticmethod
@@ -706,15 +747,16 @@ class MissionOrchestratorNode(Node):
             if token.strip(".,!?;:")
         }
         yes_tokens = {
-            "yes", "yeah", "yep", "ok", "okay", "sure", "fine", "correct", "si", "sì",
+            "yes","yeah", "yep","ok", "okay","sure","fine", "correct", "si","sì",
         }
         no_tokens = {
-            "no", "nope", "not", "don't", "different", "change", "cambia",
-            "cambiamo", "diverso", "diversa",
+            "no","nope", "not","don't", "different","change","cambia",
+            "cambiamo", "diverso","diversa",
         }
         yes_phrases = {"va bene"}
         no_phrases = {"do not"}
         if tokens & no_tokens or any(phrase in normalized for phrase in no_phrases):
+
             return "no"
         if tokens & yes_tokens or any(phrase in normalized for phrase in yes_phrases):
             return "yes"
@@ -722,31 +764,32 @@ class MissionOrchestratorNode(Node):
 
     def wait_for_therapist_override(self):
         timeout_sec = float(self.get_parameter("proposal_acceptance_timeout_sec").value)
-        self._override_event.clear()
-        self._override_text = ""
+        self.override_event.clear()
+        self.override_text = ""
         self.publish_feedback(
             f"Waiting {timeout_sec:.0f}s for therapist override"
         )
-        if self._override_event.wait(timeout=timeout_sec):
-            return self._override_text.strip()
+        if self.override_event.wait(timeout=timeout_sec):
+            return self.override_text.strip()
         return None
 
     def apply_therapist_override(self, text):
         inferred = infer_activity_and_task(text)
         if inferred:
-            activity_type, task = inferred
-            self._interaction_spec.activity_type = activity_type
-            self._interaction_spec.task_description = task
-            self._interaction_spec.activity_description = text
+            activity_type,task = inferred
+            self.interaction_spec.activity_type = activity_type
+            self.interaction_spec.task_description = task
+            self.interaction_spec.activity_description = text
         else:
-            self._interaction_spec.activity_type = self.normalize_activity_type(text)
-            task = ACTIVITY_TO_TASK.get(self._interaction_spec.activity_type, "")
+
+            self.interaction_spec.activity_type = self.normalize_activity_type(text)
+            task = ACTIVITY_TO_TASK.get(self.interaction_spec.activity_type,"")
             if task:
-                self._interaction_spec.task_description = task
-            self._interaction_spec.activity_description = text
+                self.interaction_spec.task_description = task
+            self.interaction_spec.activity_description = text
 
     @staticmethod
-    def _activity_label(activity_type):
+    def activity_label(activity_type):
         labels = {
             "storytelling": "storytelling with the book",
             "mood_check_teddy": "a mood check with the teddy bear",
@@ -757,14 +800,16 @@ class MissionOrchestratorNode(Node):
 
     def build_activity_summary(self):
         try:
-            payload = json.loads(self._dialog_complete_payload)
-        except (json.JSONDecodeError, TypeError):
+            payload = json.loads(self.dialog_complete_payload)
+        except (json.JSONDecodeError,TypeError):
             return "The activity is complete."
         scores = payload.get("scores", {})
         child_name = payload.get("child_name", "the child")
         activity_type = payload.get("activity_type", "activity")
-        overall = scores.get("overall", "N/A")
+
+        overall= scores.get("overall","N/A")
         reason = payload.get("reason", "completed")
+
         return (
             f"The {activity_type} session with {child_name} is complete. "
             f"Reason: {reason}. Overall engagement score: {overall}."
@@ -774,7 +819,9 @@ class MissionOrchestratorNode(Node):
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
+
             return
+
         if payload.get("command") == "stop_gaze":
             self.publish_feedback("Gaze stop requested via /mission/gaze_command")
             self.stop_gaze_process()
@@ -784,16 +831,17 @@ class MissionOrchestratorNode(Node):
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
             return
-        state = payload.get("state", "")
+        state = payload.get("state","")
         if state == "READY":
-            self._gaze_ready_event.set()
+            self.gaze_ready_event.set()
         elif state == "ERROR":
-            self._gaze_error_message = payload.get("message", "unknown error")
-            self._gaze_ready_event.set()
+            self.gaze_error_message = payload.get("message", "unknown error")
+            self.gaze_ready_event.set()
 
     def start_gaze_process(self):
         if not bool(self.get_parameter("gaze_estimation.enabled").value):
             self.publish_feedback("Gaze estimation disabled by parameter")
+
             return True
 
         camera_index = str(self.get_parameter("gaze_estimation.camera_index").value)
@@ -801,47 +849,49 @@ class MissionOrchestratorNode(Node):
         show_window = str(self.get_parameter("gaze_estimation.show_window").value).lower()
 
         command = [
-            "ros2", "launch", "gaze_estimation", "gaze_with_attention.launch.py",
+            "ros2","launch","gaze_estimation", "gaze_with_attention.launch.py",
             f"camera_index:={camera_index}",
             f"device:={device}",
             f"show_window:={show_window}",
         ]
 
-        self._gaze_ready_event.clear()
-        self._gaze_error_message = ""
-        self._gaze_process, _ = self.start_process(command, self._gaze_process_label)
+        self.gaze_ready_event.clear()
+        self.gaze_error_message = ""
+        self.gaze_process, _ = self.start_process(command,self.gaze_process_label)
 
-        timeout_sec = float(self.get_parameter("gaze_estimation.startup_timeout_sec").value)
+        # Ready from gaze node status
+        timeout_sec=float(self.get_parameter("gaze_estimation.startup_timeout_sec").value)
         self.publish_feedback(
             f"Waiting up to {timeout_sec:.1f}s for gaze estimation to become ready"
         )
 
         deadline = time.monotonic() + timeout_sec
-        while rclpy.ok() and not self._stop_event.is_set():
-            if self._gaze_ready_event.is_set():
+        while rclpy.ok() and not self.stop_event.is_set():
+            if self.gaze_ready_event.is_set():
                 break
-            if self._gaze_process.poll() is not None:
+            if self.gaze_process.poll() is not None:
                 self.publish_feedback(
                     f"Gaze estimation process exited early with code "
-                    f"{self._gaze_process.returncode}",
+                    f"{self.gaze_process.returncode}",
                     log_level="error",
                 )
-                self._gaze_process = None
+                self.gaze_process = None
+
                 return False
             if time.monotonic() >= deadline:
                 self.publish_feedback(
-                    "Gaze estimation startup timed out", log_level="error"
+                    "Gaze estimation startup timed out",log_level="error"
                 )
                 self.stop_gaze_process()
                 return False
-            if self._skip_mode:
-                self._gaze_ready_event.wait(timeout=0.2)
+            if self.skip_mode:
+                self.gaze_ready_event.wait(timeout=0.2)
             else:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-        if self._gaze_error_message:
+        if self.gaze_error_message:
             self.publish_feedback(
-                f"Gaze estimation failed to start: {self._gaze_error_message}",
+                f"Gaze estimation failed to start: {self.gaze_error_message}",
                 log_level="error",
             )
             self.stop_gaze_process()
@@ -851,13 +901,13 @@ class MissionOrchestratorNode(Node):
         return True
 
     def stop_gaze_process(self):
-        if self._gaze_process is not None:
-            self.stop_process(self._gaze_process, self._gaze_process_label)
-            self._gaze_process = None
+        if self.gaze_process is not None:
+            self.stop_process(self.gaze_process, self.gaze_process_label)
+            self.gaze_process = None
 
-    def normalize_activity_type(self, activity_description):
+    def normalize_activity_type(self,activity_description):
         text = activity_description.lower()
-        rules = [
+        rules =[
             (
                 "computer_emotion_recognition",
                 [
@@ -905,7 +955,7 @@ class MissionOrchestratorNode(Node):
                 return activity_type
         return str(self.get_parameter("default_activity_type").value)
 
-    def navigate_to_pose(self, label, pose_values):
+    def navigate_to_pose(self,label,pose_values):
         pose = self.make_pose_stamped(pose_values)
         self.publish_feedback(
             f"Navigating to {label}: "
@@ -934,10 +984,10 @@ class MissionOrchestratorNode(Node):
 
         goal_handle = send_future.result()
         if goal_handle is None or not goal_handle.accepted:
-            self.publish_feedback(f"Nav2 rejected {label} goal", log_level="error")
+            self.publish_feedback(f"Nav2 rejected {label} goal",log_level="error")
             return False
 
-        result_future = goal_handle.get_result_async()
+        result_future=goal_handle.get_result_async()
         if not self.wait_for_future(
             result_future,
             float(self.get_parameter("nav_result_timeout_sec").value),
@@ -960,11 +1010,12 @@ class MissionOrchestratorNode(Node):
         path = str(self.get_parameter("static_scene_graph_path").value).strip()
         if not path:
             message = "static_scene_graph_path is empty"
-            self.publish_feedback(message, log_level="error")
+            self.publish_feedback(message,log_level="error")
             raise RuntimeError(message)
         if not os.path.exists(path):
             message = f"Static scene graph not found at {path}"
-            self.publish_feedback(message, log_level="error")
+            self.publish_feedback(message,log_level="error")
+
             raise RuntimeError(message)
         try:
             graph = StaticSceneGraph.from_json(path)
@@ -982,18 +1033,19 @@ class MissionOrchestratorNode(Node):
         self.publish_feedback(f"Loaded static scene graph: {path}")
         return graph
 
-    def static_nav_pose(self, target, role):
+    def static_nav_pose(self,target, role):
         pose = self.static_scene_graph.resolve_nav_pose(target, role=role)
         if pose is None:
             raise RuntimeError(
                 f"Static scene graph has no nav pose for target '{target}' role '{role}'"
             )
-        return [pose["x"], pose["y"], pose["yaw"]]
+        return [pose["x"],pose["y"],pose["yaw"]]
 
     def run_empower(self, task_description):
         params_file = str(self.get_parameter("params_file").value)
         if not params_file:
             self.publish_feedback("params_file is empty; cannot run EMPOWER", log_level="error")
+
             return False
         if not os.path.exists(params_file):
             self.publish_feedback(
@@ -1024,15 +1076,17 @@ class MissionOrchestratorNode(Node):
             return True
         return self.run_empower_execution(params_file)
 
-    def run_capture(self, params_file):
+    def run_capture(self,params_file):
         paths = self.capture_output_paths(params_file)
+
         capture_executable = (
             "multi_view_capture_node"
             if self.multi_view_enabled(params_file)
             else "scene_capture_node"
         )
+
         start_time = time.time()
-        process, label = self.start_process(
+        process,label = self.start_process(
             [
                 "ros2",
                 "run",
@@ -1048,8 +1102,8 @@ class MissionOrchestratorNode(Node):
         )
         try:
             timeout_sec = float(self.get_parameter("capture_timeout_sec").value)
-            deadline = time.monotonic() + timeout_sec
-            while rclpy.ok() and not self._stop_event.is_set():
+            deadline = time.monotonic()+timeout_sec
+            while rclpy.ok() and not self.stop_event.is_set():
                 if self.files_ready(paths, start_time):
                     self.publish_feedback("EMPOWER scene capture completed")
                     return True
@@ -1063,6 +1117,7 @@ class MissionOrchestratorNode(Node):
                         log_level="error",
                     )
                     return False
+
                 if time.monotonic() >= deadline:
                     missing = [path for path in paths if not os.path.exists(path)]
                     self.publish_feedback(
@@ -1074,55 +1129,58 @@ class MissionOrchestratorNode(Node):
                 time.sleep(0.2)
             return False
         finally:
-            self.stop_process(process, label)
+            self.stop_process(process,label)
 
-    def capture_output_paths(self, params_file):
-        use_case = self.empower_param(params_file, "use_case", self.get_parameter("use_case").value)
+    def capture_output_paths(self,params_file):
+        use_case = self.empower_param(params_file, "use_case",self.get_parameter("use_case").value)
         output_root = self.empower_param(
             params_file,
             "output_root",
             self.get_parameter("output_root").value,
         )
         if self.multi_view_enabled(params_file):
-            output_subdir = self.empower_param(params_file, "multi_view.output_subdir", "views")
+            output_subdir = self.empower_param(params_file,"multi_view.output_subdir","views")
             return [
-                os.path.join(output_root, "empower_output", use_case, "views_manifest.json"),
-                os.path.join(output_root, "empower_output", use_case, output_subdir, "view_000", "rgb.jpg"),
-                os.path.join(output_root, "empower_output", use_case, output_subdir, "view_000", "depth.npy"),
-                os.path.join(output_root, "empower_output", use_case, output_subdir, "view_000", "camera_pose_map.json"),
+                os.path.join(output_root,"empower_output",use_case,"views_manifest.json"),
+                os.path.join(output_root,"empower_output",use_case, output_subdir, "view_000", "rgb.jpg"),
+                os.path.join(output_root,"empower_output", use_case,output_subdir, "view_000", "depth.npy"),
+                os.path.join(output_root, "empower_output", use_case, output_subdir, "view_000","camera_pose_map.json"),
             ]
+
         return [
-            os.path.join(output_root, "empower_output", use_case, "scan.jpg"),
+            os.path.join(output_root,"empower_output", use_case,"scan.jpg"),
             os.path.join(output_root, "empower_output", use_case, "depth.npy"),
-            os.path.join(output_root, "empower_output", use_case, "depth_pointcloud.pcd"),
-            os.path.join(output_root, "empower_output", use_case, "camera_info.json"),
+            os.path.join(output_root, "empower_output", use_case,"depth_pointcloud.pcd"),
+            os.path.join(output_root, "empower_output",use_case,"camera_info.json"),
         ]
 
     def multi_view_enabled(self, params_file):
-        return bool(self.empower_param(params_file, "multi_view.enabled", False))
+        return bool(self.empower_param(params_file,"multi_view.enabled", False))
 
-    def empower_param(self, params_file, name, default):
+    def empower_param(self,params_file,name, default):
         try:
-            with open(params_file, "r", encoding="utf-8") as params_stream:
+            with open(params_file, "r",encoding="utf-8") as params_stream:
                 data = yaml.safe_load(params_stream) or {}
         except OSError:
             return default
         for section in data.values():
-            if not isinstance(section, dict):
+            if not isinstance(section,dict):
+
                 continue
-            ros_parameters = section.get("ros__parameters", {})
-            found, value = self.nested_param(ros_parameters, name)
+            ros_parameters = section.get("ros__parameters",{})
+            found,value = self.nested_param(ros_parameters,name)
             if found:
                 return value
+
         return default
 
-    def nested_param(self, ros_parameters, name):
+    def nested_param(self,ros_parameters,name):
         if name in ros_parameters:
-            return True, ros_parameters[name]
+            return True,ros_parameters[name]
         current = ros_parameters
         for part in str(name).split("."):
             if not isinstance(current, dict) or part not in current:
-                return False, None
+                return False,None
             current = current[part]
         return True, current
 
@@ -1132,9 +1190,10 @@ class MissionOrchestratorNode(Node):
                 return False
             if os.path.getmtime(path) < start_time:
                 return False
+
         return True
 
-    def run_empower_execution(self, params_file):
+    def run_empower_execution(self,params_file):
         low_level_command = [
             "ros2",
             "run",
@@ -1191,6 +1250,7 @@ class MissionOrchestratorNode(Node):
             )
             time.sleep(1.0)
             for process, label in helpers:
+
                 if process.poll() is not None:
                     self.publish_feedback(
                         f"{label} exited early with code {process.returncode}",
@@ -1199,22 +1259,22 @@ class MissionOrchestratorNode(Node):
                     return False
             return self.run_checked(low_level_command, "EMPOWER low-level execution")
         finally:
-            for process, label in reversed(helpers):
-                self.stop_process(process, label)
+            for process,label in reversed(helpers):
+                self.stop_process(process,label)
 
-    def start_process(self, command, label):
+    def start_process(self, command,label):
         self.publish_feedback(f"Starting {label}: {' '.join(command)}")
         return (
             subprocess.Popen(command, start_new_session=True),
             label,
         )
 
-    def stop_process(self, process, label):
+    def stop_process(self, process,label):
         if process.poll() is not None:
             return
         self.publish_feedback(f"Stopping {label}")
         try:
-            os.killpg(process.pid, signal.SIGTERM)
+            os.killpg(process.pid,signal.SIGTERM)
             process.wait(timeout=5.0)
         except ProcessLookupError:
             return
@@ -1225,7 +1285,7 @@ class MissionOrchestratorNode(Node):
             except ProcessLookupError:
                 return
 
-    def run_checked(self, command, label):
+    def run_checked(self,command,label):
         self.publish_feedback(f"Running {label}: {' '.join(command)}")
         try:
             subprocess.run(
@@ -1234,6 +1294,7 @@ class MissionOrchestratorNode(Node):
                 timeout=self.process_timeout(),
             )
         except subprocess.TimeoutExpired:
+
             self.publish_feedback(f"{label} timed out", log_level="error")
             return False
         except subprocess.CalledProcessError as exc:
@@ -1246,50 +1307,52 @@ class MissionOrchestratorNode(Node):
         return True
 
     def process_timeout(self):
-        timeout = float(self.get_parameter("empower_process_timeout_sec").value)
+        timeout =float(self.get_parameter("empower_process_timeout_sec").value)
         return timeout if timeout > 0.0 else None
 
     def use_sim_time_value(self):
         return str(bool(self.get_parameter("use_sim_time").value)).lower()
 
-    def wait_for_future(self, future, timeout_sec, description):
-        deadline = time.monotonic() + timeout_sec
-        while rclpy.ok() and not self._stop_event.is_set():
+    def wait_for_future(self,future,timeout_sec, description):
+        deadline = time.monotonic()+timeout_sec
+        while rclpy.ok() and not self.stop_event.is_set():
             if future.done():
                 return True
             if time.monotonic() >= deadline:
-                self.publish_feedback(f"Timed out while {description}", log_level="error")
+                self.publish_feedback(f"Timed out while {description}",log_level="error")
                 return False
             time.sleep(0.05)
         return False
 
     def make_pose_stamped(self, values):
         x, y, yaw = values
-        qz = math.sin(yaw * 0.5)
+        qz = math.sin(yaw*0.5)
         qw = math.cos(yaw * 0.5)
-        pose = PoseStamped()
+        pose =PoseStamped()
         pose.header.frame_id = str(self.get_parameter("map_frame").value)
         pose.header.stamp = self.get_clock().now().to_msg()
         pose.pose.position.x = x
+
         pose.pose.position.y = y
         pose.pose.position.z = 0.0
         pose.pose.orientation.z = qz
         pose.pose.orientation.w = qw
         return pose
 
-    def transition(self, state):
-        with self._state_lock:
-            self._state = state
-        self.publish(self.state_pub, state.value)
+    def transition(self,state):
+        with self.state_lock:
+            self.state = state
+        self.publish(self.state_pub,state.value)
         self.get_logger().info(f"Mission state: {state.value}")
 
     def current_state(self):
-        with self._state_lock:
-            return self._state
+        with self.state_lock:
+            return self.state
 
-    def publish_feedback(self, text, log_level="info"):
+    def publish_feedback(self,text,log_level="info"):
         self.publish(self.feedback_pub, text)
         logger = self.get_logger()
+
         if log_level == "error":
             logger.error(text)
         elif log_level == "warn":
@@ -1299,13 +1362,13 @@ class MissionOrchestratorNode(Node):
         else:
             logger.info(text)
 
-    def publish(self, publisher, text):
+    def publish(self,publisher,text):
         msg = String()
         msg.data = str(text)
         publisher.publish(msg)
 
-    def goal_status_name(self, status):
-        names = {
+    def goal_status_name(self,status):
+        names ={
             GoalStatus.STATUS_UNKNOWN: "UNKNOWN",
             GoalStatus.STATUS_ACCEPTED: "ACCEPTED",
             GoalStatus.STATUS_EXECUTING: "EXECUTING",
@@ -1314,10 +1377,11 @@ class MissionOrchestratorNode(Node):
             GoalStatus.STATUS_CANCELED: "CANCELED",
             GoalStatus.STATUS_ABORTED: "ABORTED",
         }
+
         return names.get(status, str(status))
 
     def destroy_node(self):
-        self._stop_event.set()
+        self.stop_event.set()
         self.stop_gaze_process()
         return super().destroy_node()
 

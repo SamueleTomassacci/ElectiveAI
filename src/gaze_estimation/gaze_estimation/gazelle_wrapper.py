@@ -26,9 +26,10 @@ class GazelleEstimator:
         self.model, self.transform = get_gazelle_model("gazelle_dinov2_vitl14_inout")
 
         try:
-            state_dict = torch.load(gazelle_checkpoint_path, map_location=device, weights_only=True)
+            state_dict = torch.load(gazelle_checkpoint_path, map_location=device,weights_only=True)
         except TypeError:
-            state_dict = torch.load(gazelle_checkpoint_path, map_location=device)
+
+            state_dict= torch.load(gazelle_checkpoint_path, map_location=device)
         self.model.load_gazelle_state_dict(state_dict)
         self.model.eval()
         self.model.to(self.device)
@@ -37,28 +38,28 @@ class GazelleEstimator:
 
     def detect_faces(self, rgb_image):
         height, width = rgb_image.shape[:2]
-        results = self.face_detector.predict(rgb_image, verbose=False, device=0 if self.device == "cuda" else "cpu")
+        results = self.face_detector.predict(rgb_image, verbose=False,device=0 if self.device == "cuda" else "cpu")
         detections = []
         for result in results:
             boxes = result.boxes.cpu().numpy()
             for box in boxes:
-                x1, y1, x2, y2 = [float(v) for v in box.xyxy[0]]
+                x1,y1,x2,y2 = [float(v) for v in box.xyxy[0]]
                 detections.append(
                     {
-                        "bbox_px": [x1, y1, x2, y2],
+                        "bbox_px": [x1, y1,x2,y2],
                         "bbox_norm": [
                             x1 / float(width),
-                            y1 / float(height),
+                            y1/float(height),
                             x2 / float(width),
-                            y2 / float(height),
+                            y2/float(height),
                         ],
                         "confidence": float(box.conf[0]),
                     }
                 )
-        detections.sort(key=lambda item: self.area(item["bbox_px"]), reverse=True)
+        detections.sort(key=lambda item: self.area(item["bbox_px"]),reverse=True)
         return detections
 
-    def estimate(self, rgb_image):
+    def estimate(self,rgb_image):
         faces = self.detect_faces(rgb_image)
         if not faces:
             return []
@@ -71,22 +72,24 @@ class GazelleEstimator:
         }
 
         with self.torch.no_grad():
+
             output = self.model(model_input)
 
         heatmaps = output["heatmap"][0]
         inout_scores = output["inout"][0] if output.get("inout") is not None else None
 
         results = []
-        image_height, image_width = rgb_image.shape[:2]
-        for index, face in enumerate(faces):
+        image_height,image_width = rgb_image.shape[:2]
+        for index,face in enumerate(faces):
             heatmap = heatmaps[index].detach().cpu().numpy()
             inout_score = None
+
             if inout_scores is not None:
                 inout_score = float(inout_scores[index].detach().cpu().item())
 
             max_index = np.unravel_index(np.argmax(heatmap), heatmap.shape)
-            gaze_x = float(max_index[1] / heatmap.shape[1] * image_width)
-            gaze_y = float(max_index[0] / heatmap.shape[0] * image_height)
+            gaze_x = float(max_index[1]/heatmap.shape[1] *image_width)
+            gaze_y= float(max_index[0] / heatmap.shape[0]*image_height)
 
             results.append(
                 {
@@ -97,9 +100,10 @@ class GazelleEstimator:
                     "inout_score": inout_score,
                 }
             )
+
         return results
 
     @staticmethod
     def area(bbox):
-        x1, y1, x2, y2 = bbox
-        return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        x1,y1, x2, y2 = bbox
+        return max(0.0,x2 - x1) * max(0.0,y2 - y1)

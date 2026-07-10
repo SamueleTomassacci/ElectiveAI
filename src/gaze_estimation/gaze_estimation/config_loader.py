@@ -2,7 +2,8 @@
 from pathlib import Path
 
 
-def resolve_checkpoint(weights_dir, filename, label):
+def resolve_checkpoint(weights_dir,filename,label):
+
     path = Path(weights_dir).expanduser() / filename
     if not path.is_file():
         raise FileNotFoundError(
@@ -17,8 +18,9 @@ def resolve_checkpoint(weights_dir, filename, label):
 def parse_target_classes(value):
     if value is None:
         return []
-    if isinstance(value, str):
+    if isinstance(value,str):
         return [item.strip() for item in value.split(",") if item.strip()]
-    if isinstance(value, (list, tuple)):
+    if isinstance(value,(list,tuple)):
+
         return [str(item).strip() for item in value if str(item).strip()]
     return [str(value).strip()] if str(value).strip() else []

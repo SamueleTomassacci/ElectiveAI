@@ -9,13 +9,13 @@ import time
 import xml.etree.ElementTree as ET
 
 import rclpy
-from geometry_msgs.msg import Pose, PoseStamped, Quaternion
+from geometry_msgs.msg import Pose, PoseStamped,Quaternion
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
-from tf2_ros import Buffer, TransformException, TransformListener
+from tf2_ros import Buffer, TransformException,TransformListener
 from visualization_msgs.msg import MarkerArray
 
 from empower.plan_parser import parse_symbolic_plan
@@ -26,74 +26,77 @@ from empower.static_scene_graph import StaticSceneGraph, StaticSceneGraphError, 
 NAVIGATE = "NAVIGATE"
 GRAB = "GRAB"
 DROP = "DROP"
-UNIMPLEMENTED_ACTIONS = {"PUSH", "PULL"}
-SIMULATED_OBJECTS = ("book", "computer", "peluche")
+UNIMPLEMENTED_ACTIONS = {"PUSH","PULL"}
+SIMULATED_OBJECTS = ("book", "computer","peluche")
 
 
 class LowLevelExecutionNode(Node):
-    #Implementation of low level actions
 
     def __init__(self):
         super().__init__("empower_low_level_execution")
+
         self.declare_parameter("use_case", "therapy_task")
-        self.declare_parameter("output_root", "/root/exchange/output")
-        self.declare_parameter("plan_json_path", "")
-        self.declare_parameter("plan_txt_path", "")
-        self.declare_parameter("centroids_topic", "/pcl_centroids")
-        self.declare_parameter("names_topic", "/pcl_names")
-        self.declare_parameter("map_frame", "map")
+
+        self.declare_parameter("output_root","/root/exchange/output")
+        self.declare_parameter("plan_json_path","")
+        self.declare_parameter("plan_txt_path","")
+        self.declare_parameter("centroids_topic","/pcl_centroids")
+        self.declare_parameter("names_topic","/pcl_names")
+        self.declare_parameter("map_frame","map")
         self.declare_parameter("static_scene_graph_path", default_scene_graph_path())
         self.declare_parameter("base_frame", "base_footprint")
-        self.declare_parameter("nav_action_name", "navigate_to_pose")
-        self.declare_parameter("marker_timeout_sec", 30.0)
+        self.declare_parameter("nav_action_name","navigate_to_pose")
+        self.declare_parameter("marker_timeout_sec",30.0)
         self.declare_parameter("tf_timeout_sec", 2.0)
-        self.declare_parameter("action_server_timeout_sec", 20.0)
-        self.declare_parameter("nav_result_timeout_sec", 300.0)
+        self.declare_parameter("action_server_timeout_sec",20.0)
+        self.declare_parameter("nav_result_timeout_sec",300.0)
         self.declare_parameter("standoff_distance", 0.7)
-        self.declare_parameter("continue_on_nav_failure", False)
+        self.declare_parameter("continue_on_nav_failure",False)
         self.declare_parameter("object_simulation.enabled", False)
-        self.declare_parameter("object_simulation.drop_distance", 0.75)
-        self.declare_parameter("object_simulation.hidden_x", -3.8)
+        self.declare_parameter("object_simulation.drop_distance",0.75)
+        self.declare_parameter("object_simulation.hidden_x",-3.8)
         self.declare_parameter("object_simulation.hidden_y", 2.4)
         self.declare_parameter("object_simulation.hidden_z", 0.02)
+
         self.declare_parameter("object_simulation.world_frame", "world")
-        self.declare_parameter("object_simulation.robot_base_frame", "base_footprint")
+        self.declare_parameter("object_simulation.robot_base_frame","base_footprint")
         self.declare_parameter("object_simulation.fixed_drop.enabled", False)
-        self.declare_parameter("object_simulation.fixed_drop.x", 0.0)
-        self.declare_parameter("object_simulation.fixed_drop.y", 1.8)
-        self.declare_parameter("object_simulation.fixed_drop.z", -1.0)
-        self.declare_parameter("object_simulation.fixed_drop.yaw", 1.5708)
-        self.declare_parameter("object_simulation.gz_command", "gz")
+        self.declare_parameter("object_simulation.fixed_drop.x",0.0)
+        self.declare_parameter("object_simulation.fixed_drop.y",1.8)
+        self.declare_parameter("object_simulation.fixed_drop.z",-1.0)
+        self.declare_parameter("object_simulation.fixed_drop.yaw",1.5708)
+        self.declare_parameter("object_simulation.gz_command","gz")
         self.declare_parameter("object_simulation.gz_world_name", "scene")
-        self.declare_parameter("object_simulation.gz_cli_timeout_sec", 10.0)
+        self.declare_parameter("object_simulation.gz_cli_timeout_sec",10.0)
         self.declare_parameter("object_simulation.world_sdf_path", "")
         self.declare_parameter(
             "object_simulation.objects.book.gazebo_entity",
             "clear_red_book_on_right_table",
         )
-        self.declare_parameter("object_simulation.objects.book.aliases", ["book"])
-        self.declare_parameter("object_simulation.objects.book.drop_z", 0.02)
+        self.declare_parameter("object_simulation.objects.book.aliases",["book"])
+        self.declare_parameter("object_simulation.objects.book.drop_z",0.02)
         self.declare_parameter(
             "object_simulation.objects.computer.gazebo_entity",
             "laptop_computer_on_right_table",
         )
         self.declare_parameter(
             "object_simulation.objects.computer.aliases",
-            ["computer", "laptop", "laptop computer"],
+            ["computer","laptop", "laptop computer"],
         )
         self.declare_parameter("object_simulation.objects.computer.drop_z", 0.12)
+
         self.declare_parameter(
             "object_simulation.objects.peluche.gazebo_entity",
             "teddy_bear_on_right_table",
         )
         self.declare_parameter(
             "object_simulation.objects.peluche.aliases",
-            ["peluche", "teddy bear", "plush toy", "stuffed animal"],
+            ["peluche","teddy bear","plush toy", "stuffed animal"],
         )
         self.declare_parameter("object_simulation.objects.peluche.drop_z", 0.04)
 
-        self._centroids = None
-        self._names = None
+        self.centroids = None
+        self.names = None
         self.static_scene_graph = self.load_static_scene_graph()
         self.held_object = None
         self.last_navigation_target_is_child = False
@@ -103,8 +106,11 @@ class LowLevelExecutionNode(Node):
         self.object_mapping = self.load_object_simulation_mapping()
         self.object_aliases = self.load_object_aliases()
         self.object_sdf_xml = {}
+
+        # TF only for dynamic drops
         self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.tf_listener = TransformListener(self.tf_buffer,self)
+
         self.nav_client = ActionClient(
             self,
             NavigateToPose,
@@ -130,13 +136,14 @@ class LowLevelExecutionNode(Node):
         finally:
             rclpy.shutdown()
 
-    def centroids_callback(self, msg):
-        self._centroids = msg
+    def centroids_callback(self,msg):
+        self.centroids = msg
 
-    def names_callback(self, msg):
-        self._names = msg
+    def names_callback(self,msg):
+        self.names = msg
 
     def load_static_scene_graph(self):
+
         path = str(self.get_parameter("static_scene_graph_path").value).strip()
         if not path:
             raise RuntimeError("static_scene_graph_path is empty")
@@ -144,7 +151,7 @@ class LowLevelExecutionNode(Node):
             raise RuntimeError(f"Static scene graph not found at {path}")
         try:
             graph = StaticSceneGraph.from_json(path)
-        except (OSError, StaticSceneGraphError, json.JSONDecodeError) as exc:
+        except (OSError,StaticSceneGraphError,json.JSONDecodeError) as exc:
             raise RuntimeError(f"Cannot load static scene graph {path}: {exc}") from exc
         if graph.frame_id != str(self.get_parameter("map_frame").value):
             raise RuntimeError(
@@ -156,6 +163,7 @@ class LowLevelExecutionNode(Node):
 
     def run(self):
         plan = self.load_plan()
+
         if not plan:
             self.get_logger().warn("No symbolic plan steps found; nothing to execute")
             return
@@ -163,8 +171,10 @@ class LowLevelExecutionNode(Node):
         nav_steps = [
             step
             for step in plan
-            if str(step.get("action", "")).upper() == NAVIGATE
+            if str(step.get("action","")).upper() == NAVIGATE
         ]
+
+        # Markers only for visual targets
         if any(
             not self.is_static_scene_navigation_step(step)
             and not self.can_resolve_global_navigation_step(step)
@@ -176,7 +186,7 @@ class LowLevelExecutionNode(Node):
                 return
 
             self.get_logger().info(
-                "Loaded EMPOWER object centroids: " + ", ".join(sorted(objects.keys()))
+                "Loaded EMPOWER object centroids: "+ ", ".join(sorted(objects.keys()))
             )
         else:
             self.get_logger().info(
@@ -185,6 +195,7 @@ class LowLevelExecutionNode(Node):
         for step in plan:
             action = str(step.get("action", "")).upper()
             description = step.get("description") or self.format_step(step)
+
             if action == NAVIGATE:
                 ok = self.execute_navigate(step)
                 if not ok and not self.get_parameter("continue_on_nav_failure").value:
@@ -204,7 +215,7 @@ class LowLevelExecutionNode(Node):
     def load_object_simulation_mapping(self):
         mapping = {}
         for symbolic_name in SIMULATED_OBJECTS:
-            entity = str(
+            entity =str(
                 self.get_parameter(
                     f"object_simulation.objects.{symbolic_name}.gazebo_entity"
                 ).value
@@ -217,6 +228,7 @@ class LowLevelExecutionNode(Node):
                 "gazebo_entity": entity,
                 "drop_z": drop_z,
             }
+
         return mapping
 
     def load_object_aliases(self):
@@ -228,6 +240,7 @@ class LowLevelExecutionNode(Node):
                 ).value
             )
             for alias in [symbolic_name, *configured_aliases]:
+
                 normalized = self.clean_manipulation_label(alias)
                 if normalized:
                     aliases[normalized] = symbolic_name
@@ -265,28 +278,34 @@ class LowLevelExecutionNode(Node):
                     f"No <model> named '{gazebo_entity}' found in {world_sdf_path}"
                 )
                 continue
-            model_copy = copy.deepcopy(model)
+            # Reusable model for later spawns
+            model_copy =copy.deepcopy(model)
             self.neutralize_model_pose(model_copy)
             model_xml = ET.tostring(model_copy, encoding="unicode")
             self.object_sdf_xml[gazebo_entity] = f'<sdf version="1.6">{model_xml}</sdf>'
             self.get_logger().info(f"Cached SDF XML for {symbolic_name} -> {gazebo_entity}")
 
-    def resolve_world_sdf_path(self, configured_path):
+    def resolve_world_sdf_path(self,configured_path):
+
         path = str(configured_path).strip()
+
         if not path or os.path.exists(path):
             return path
 
         candidates = []
-        exchange_prefix = "/root/exchange/"
+        exchange_prefix ="/root/exchange/"
+        # Container and local paths
         if path.startswith(exchange_prefix):
             suffix = path[len(exchange_prefix) :]
-            candidates.append(os.path.join(os.getcwd(), suffix))
-            candidates.append(os.path.join(os.getcwd(), "exchange", os.path.basename(path)))
+
+            candidates.append(os.path.join(os.getcwd(),suffix))
+            candidates.append(os.path.join(os.getcwd(),"exchange", os.path.basename(path)))
 
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
-        candidates.append(os.path.join(repo_root, "exchange", os.path.basename(path)))
+        candidates.append(os.path.join(repo_root,"exchange",os.path.basename(path)))
 
         for candidate in candidates:
+
             if os.path.exists(candidate):
                 self.get_logger().info(
                     f"Resolved object_simulation.world_sdf_path '{path}' to '{candidate}'"
@@ -294,16 +313,16 @@ class LowLevelExecutionNode(Node):
                 return candidate
         return path
 
-    def neutralize_model_pose(self, model):
+    def neutralize_model_pose(self,model):
         for child in list(model):
             if child.tag == "pose":
                 child.text = "0 0 0 0 0 0"
                 return
-        pose = ET.Element("pose")
+        pose =ET.Element("pose")
         pose.text = "0 0 0 0 0 0"
-        model.insert(0, pose)
+        model.insert(0,pose)
 
-    def execute_grab(self, step):
+    def execute_grab(self,step):
         target = self.manipulation_target(step)
         normalized = self.normalize_manipulation_target(target)
         self.get_logger().info(f"GRAB target received='{target}', normalized='{normalized}'")
@@ -313,6 +332,7 @@ class LowLevelExecutionNode(Node):
                 "is not implemented"
             )
             return False
+
         if normalized not in self.object_mapping:
             self.get_logger().warn(
                 f"Cannot GRAB unknown target '{target}'. Known targets: "
@@ -327,7 +347,7 @@ class LowLevelExecutionNode(Node):
             return False
 
         object_info = self.object_mapping[normalized]
-        gazebo_entity = object_info["gazebo_entity"]
+        gazebo_entity= object_info["gazebo_entity"]
         sdf_xml = self.object_sdf_xml.get(gazebo_entity)
         if not sdf_xml:
             self.get_logger().error(
@@ -336,6 +356,7 @@ class LowLevelExecutionNode(Node):
             )
             return False
         self.get_logger().info(f"GRAB {normalized}: resolved Gazebo entity '{gazebo_entity}'")
+        # Simulated grasp through Gazebo delete
         if not self.delete_with_gz_cli(gazebo_entity):
             return False
 
@@ -370,16 +391,20 @@ class LowLevelExecutionNode(Node):
             self.get_logger().warn(
                 f"Cannot DROP {normalized}: currently holding {self.held_object['symbolic_name']}"
             )
+
             return False
         drop_pose = self.compute_drop_pose(self.held_object)
+
         if drop_pose is None:
+
             return False
 
-        if not self.spawn_with_gz_cli(self.held_object, drop_pose):
+        if not self.spawn_with_gz_cli(self.held_object,drop_pose):
             return False
 
         dropped = self.held_object
         self.held_object = None
+
         dropped_gazebo_entity = dropped.get(
             "dropped_gazebo_entity",
             dropped["gazebo_entity"],
@@ -390,22 +415,22 @@ class LowLevelExecutionNode(Node):
         self.get_logger().info("Current held object: none")
         return True
 
-    def manipulation_target(self, step):
+    def manipulation_target(self,step):
         if step.get("target"):
             return str(step["target"])
-        description = str(step.get("description", "")).strip()
-        return re.sub(r"^\s*\w+\s+", "", description).strip()
+        description= str(step.get("description","")).strip()
+        return re.sub(r"^\s*\w+\s+","", description).strip()
 
-    def normalize_manipulation_target(self, target):
+    def normalize_manipulation_target(self,target):
         normalized = self.clean_manipulation_label(target)
         return self.object_aliases.get(normalized, normalized)
 
-    def clean_manipulation_label(self, target):
+    def clean_manipulation_label(self,target):
         normalized = str(target).lower().strip()
-        normalized = re.sub(r"[^a-z0-9 ]+", " ", normalized)
-        normalized = re.sub(r"\s+", " ", normalized).strip()
+        normalized = re.sub(r"[^a-z0-9 ]+"," ",normalized)
+        normalized = re.sub(r"\s+"," ",normalized).strip()
         normalized = re.sub(r"^the\s+", "", normalized)
-        return re.sub(r"\s+\d+$", "", normalized).strip()
+        return re.sub(r"\s+\d+$", "",normalized).strip()
 
     def gz_model_base_command(self):
         command = [
@@ -414,10 +439,10 @@ class LowLevelExecutionNode(Node):
         ]
         world_name = str(self.get_parameter("object_simulation.gz_world_name").value).strip()
         if world_name:
-            command.extend(["-w", world_name])
+            command.extend(["-w",world_name])
         return command
 
-    def run_gz_command(self, command, label):
+    def run_gz_command(self,command, label):
         timeout_sec = float(self.get_parameter("object_simulation.gz_cli_timeout_sec").value)
         self.get_logger().info(f"{label} Gazebo command: {' '.join(command)}")
         try:
@@ -429,6 +454,7 @@ class LowLevelExecutionNode(Node):
                 timeout=timeout_sec,
             )
         except FileNotFoundError:
+
             self.get_logger().error(
                 f"{label} failed: '{command[0]}' command was not found"
             )
@@ -447,34 +473,36 @@ class LowLevelExecutionNode(Node):
             self.get_logger().error(
                 f"{label} Gazebo command failed with exit code {result.returncode}"
             )
+
             return False
         self.get_logger().info(f"{label} Gazebo command succeeded")
         return True
 
     def delete_with_gz_cli(self, gazebo_entity):
         command = self.gz_model_base_command()
-        command.extend(["-m", gazebo_entity, "-d"])
+        command.extend(["-m", gazebo_entity,"-d"])
         self.get_logger().info(f"Deleting Gazebo model '{gazebo_entity}'")
-        return self.run_gz_command(command, "DeleteEntity")
+        return self.run_gz_command(command,"DeleteEntity")
 
-    def hide_with_gz_cli(self, gazebo_entity):
+    def hide_with_gz_cli(self,gazebo_entity):
         pose = Pose()
         pose.position.x = float(self.get_parameter("object_simulation.hidden_x").value)
         pose.position.y = float(self.get_parameter("object_simulation.hidden_y").value)
         pose.position.z = float(self.get_parameter("object_simulation.hidden_z").value)
         pose.orientation = self.quaternion_from_yaw(0.0)
+
         self.get_logger().info(
             f"Hiding Gazebo model '{gazebo_entity}' at "
             f"x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}"
         )
-        return self.move_with_gz_cli(gazebo_entity, pose, label="HideEntity")
+        return self.move_with_gz_cli(gazebo_entity, pose,label="HideEntity")
 
-    def set_entity_pose(self, gazebo_entity, pose, label="MoveEntity"):
+    def set_entity_pose(self, gazebo_entity,pose, label="MoveEntity"):
         return self.move_with_gz_cli(gazebo_entity, pose, label=label)
 
-    def move_with_gz_cli(self, gazebo_entity, pose, label="MoveEntity"):
+    def move_with_gz_cli(self,gazebo_entity,pose,label="MoveEntity"):
         yaw = self.yaw_from_quaternion(pose.orientation)
-        command = self.gz_model_base_command()
+        command =self.gz_model_base_command()
         command.extend(
             [
                 "-m",
@@ -498,12 +526,13 @@ class LowLevelExecutionNode(Node):
             f"x={pose.position.x:.3f}, y={pose.position.y:.3f}, "
             f"z={pose.position.z:.3f}, yaw={yaw:.3f}"
         )
-        return self.run_gz_command(command, label)
+        return self.run_gz_command(command,label)
 
-    def spawn_with_gz_cli(self, held_object, drop_pose):
+    def spawn_with_gz_cli(self,held_object,drop_pose):
         yaw = self.yaw_from_quaternion(drop_pose.orientation)
+
         dropped_name = self.dropped_entity_name(held_object["gazebo_entity"])
-        spawn_sdf_xml = self.sdf_xml_with_model_name_and_pose(
+        spawn_sdf_xml= self.sdf_xml_with_model_name_and_pose(
             held_object["sdf_xml"],
             dropped_name,
             drop_pose.position.x,
@@ -520,8 +549,9 @@ class LowLevelExecutionNode(Node):
                 prefix=f"{held_object['symbolic_name']}_",
                 delete=False,
             ) as sdf_file:
+
                 sdf_file.write(spawn_sdf_xml)
-                temp_path = sdf_file.name
+                temp_path= sdf_file.name
 
             command = self.gz_model_base_command()
             command.extend(
@@ -545,7 +575,7 @@ class LowLevelExecutionNode(Node):
                 f"x={drop_pose.position.x:.3f}, y={drop_pose.position.y:.3f}, "
                 f"z={drop_pose.position.z:.3f}, yaw={yaw:.3f}"
             )
-            if not self.run_gz_command(command, "SpawnEntity"):
+            if not self.run_gz_command(command,"SpawnEntity"):
                 return False
 
             held_object["dropped_gazebo_entity"] = dropped_name
@@ -557,32 +587,35 @@ class LowLevelExecutionNode(Node):
                 except OSError as exc:
                     self.get_logger().warn(f"Failed to remove temporary SDF {temp_path}: {exc}")
 
-    def dropped_entity_name(self, gazebo_entity):
+    def dropped_entity_name(self,gazebo_entity):
+
         return f"{gazebo_entity}_dropped_{int(time.time() * 1000)}"
 
-    def sdf_xml_with_model_name_and_pose(self, sdf_xml, model_name, x, y, z, yaw):
+    def sdf_xml_with_model_name_and_pose(self, sdf_xml, model_name, x,y,z,yaw):
         try:
             root = ET.fromstring(sdf_xml)
         except ET.ParseError as exc:
+
             self.get_logger().warn(
                 f"Failed to update spawn SDF, using cached SDF XML unchanged: {exc}"
             )
             return sdf_xml
 
-        model = root.find("model")
+        model =root.find("model")
         if model is None:
             self.get_logger().warn("Spawn SDF has no <model>, using cached SDF XML unchanged")
             return sdf_xml
 
-        model.set("name", model_name)
+        model.set("name",model_name)
         pose = model.find("pose")
         if pose is None:
             pose = ET.Element("pose")
-            model.insert(0, pose)
+            model.insert(0,pose)
         pose.text = f"{x:.6f} {y:.6f} {z:.6f} 0 0 {yaw:.6f}"
         return ET.tostring(root, encoding="unicode")
 
     def compute_drop_pose(self, held_object):
+        # Explicit poses before TF
         fixed_pose = self.fixed_drop_pose(held_object)
         if fixed_pose is not None:
             return fixed_pose
@@ -590,21 +623,22 @@ class LowLevelExecutionNode(Node):
         if child_table_pose is not None:
             return child_table_pose
 
-        world_frame = str(self.get_parameter("object_simulation.world_frame").value)
+        world_frame =str(self.get_parameter("object_simulation.world_frame").value)
         robot_base_frame = str(self.get_parameter("object_simulation.robot_base_frame").value)
-        robot_pose = self.current_robot_pose_for_drop(world_frame, robot_base_frame)
+        robot_pose = self.current_robot_pose_for_drop(world_frame,robot_base_frame)
         if robot_pose is None:
             self.get_logger().error(
                 f"Cannot DROP {held_object['symbolic_name']}: TF pose could not be obtained"
             )
+
             return None
 
         yaw = self.yaw_from_quaternion(robot_pose.pose.orientation)
         drop_distance = float(self.get_parameter("object_simulation.drop_distance").value)
         drop_pose = Pose()
         drop_pose.position.x = robot_pose.pose.position.x + drop_distance * math.cos(yaw)
-        drop_pose.position.y = robot_pose.pose.position.y + drop_distance * math.sin(yaw)
-        z = self.drop_z_for_current_destination(held_object)
+        drop_pose.position.y = robot_pose.pose.position.y +drop_distance * math.sin(yaw)
+        z= self.drop_z_for_current_destination(held_object)
         if z is None:
             return None
         drop_pose.position.z = z
@@ -619,7 +653,7 @@ class LowLevelExecutionNode(Node):
 
     def drop_z_for_current_destination(self, held_object):
         if self.last_navigation_target_is_child:
-            drop_pose = self.static_scene_graph.resolve_drop_pose(role="child_delivery_drop")
+            drop_pose =self.static_scene_graph.resolve_drop_pose(role="child_delivery_drop")
             if drop_pose is None:
                 self.get_logger().error(
                     "Static scene graph has no drop pose with role 'child_delivery_drop'"
@@ -639,16 +673,20 @@ class LowLevelExecutionNode(Node):
             self.get_logger().error(
                 "Static scene graph has no drop pose with role 'child_delivery_drop'"
             )
+
             return None
 
         yaw = float(graph_drop_pose["yaw"])
         x = float(graph_drop_pose["x"])
         y = float(graph_drop_pose["y"])
-        z = float(graph_drop_pose["z"])
+
+        z =float(graph_drop_pose["z"])
 
         drop_pose = Pose()
         drop_pose.position.x = x
+
         drop_pose.position.y = y
+
         drop_pose.position.z = z
         drop_pose.orientation = self.quaternion_from_yaw(yaw)
         self.get_logger().info(
@@ -666,9 +704,11 @@ class LowLevelExecutionNode(Node):
         z = configured_z if configured_z >= 0.0 else self.drop_z_for_current_destination(held_object)
         if z is None:
             return None
+
         yaw = float(self.get_parameter("object_simulation.fixed_drop.yaw").value)
         drop_pose = Pose()
         drop_pose.position.x = float(self.get_parameter("object_simulation.fixed_drop.x").value)
+
         drop_pose.position.y = float(self.get_parameter("object_simulation.fixed_drop.y").value)
         drop_pose.position.z = z
         drop_pose.orientation = self.quaternion_from_yaw(yaw)
@@ -679,12 +719,15 @@ class LowLevelExecutionNode(Node):
         )
         return drop_pose
 
-    def current_robot_pose_for_drop(self, preferred_frame, robot_base_frame):
+    def current_robot_pose_for_drop(self, preferred_frame,robot_base_frame):
         frames = []
-        for frame in (preferred_frame, self.get_parameter("map_frame").value):
+        for frame in (preferred_frame,self.get_parameter("map_frame").value):
             if frame and frame not in frames:
+
                 frames.append(frame)
+        # Gazebo frame before map
         for frame in frames:
+
             try:
                 transform = self.tf_buffer.lookup_transform(
                     frame,
@@ -696,39 +739,43 @@ class LowLevelExecutionNode(Node):
                 self.get_logger().warn(
                     f"Cannot read robot pose from TF {frame}->{robot_base_frame}: {exc}"
                 )
+
                 continue
             if frame != preferred_frame:
                 self.get_logger().warn(
                     f"Using TF frame '{frame}' for DROP pose; assuming it is aligned "
                     f"with Gazebo frame '{preferred_frame}'"
                 )
-            pose = PoseStamped()
+            pose= PoseStamped()
             pose.header.frame_id = frame
             pose.header.stamp = self.get_clock().now().to_msg()
             pose.pose.position.x = transform.transform.translation.x
             pose.pose.position.y = transform.transform.translation.y
             pose.pose.position.z = transform.transform.translation.z
+
             pose.pose.orientation = transform.transform.rotation
             return pose
         return None
 
     def load_plan(self):
+
         dump_dir = self.dump_dir()
-        plan_json_path = self.get_parameter("plan_json_path").value
+        plan_json_path =self.get_parameter("plan_json_path").value
         plan_txt_path = self.get_parameter("plan_txt_path").value
         if not plan_json_path:
-            plan_json_path = os.path.join(dump_dir, "planning.json")
+            plan_json_path = os.path.join(dump_dir,"planning.json")
         if not plan_txt_path:
             plan_txt_path = os.path.join(dump_dir, "planning.txt")
 
         if os.path.exists(plan_json_path):
-            with open(plan_json_path, "r", encoding="utf-8") as plan_file:
+
+            with open(plan_json_path,"r",encoding="utf-8") as plan_file:
                 plan = json.load(plan_file)
             self.get_logger().info(f"Loaded parsed plan from {plan_json_path}")
             return plan
 
         if os.path.exists(plan_txt_path):
-            with open(plan_txt_path, "r", encoding="utf-8") as plan_file:
+            with open(plan_txt_path, "r",encoding="utf-8") as plan_file:
                 plan_text = plan_file.read()
             self.get_logger().info(f"Loaded symbolic plan text from {plan_txt_path}")
             return parse_symbolic_plan(plan_text)
@@ -746,24 +793,29 @@ class LowLevelExecutionNode(Node):
         timeout_sec = float(self.get_parameter("marker_timeout_sec").value)
         deadline = time.monotonic() + timeout_sec
         while rclpy.ok() and time.monotonic() < deadline:
-            if self._centroids is not None and self._names is not None:
-                objects = self.objects_from_markers(self._names, self._centroids)
+
+            # Names and centroids arrive separately
+            if self.centroids is not None and self.names is not None:
+                objects = self.objects_from_markers(self.names,self.centroids)
                 if objects:
+
                     return objects
+
             rclpy.spin_once(self, timeout_sec=0.1)
+
         return {}
 
-    def objects_from_markers(self, name_list, centroid_list):
+    def objects_from_markers(self,name_list, centroid_list):
         objects = {}
         map_frame = self.get_parameter("map_frame").value
-        for name_marker, centroid_marker in zip(name_list.markers, centroid_list.markers):
-            label = name_marker.text.strip()
+        for name_marker, centroid_marker in zip(name_list.markers,centroid_list.markers):
+            label =name_marker.text.strip()
             if not label:
                 continue
             try:
-                pose = self.marker_to_pose_stamped(centroid_marker, map_frame)
+                pose= self.marker_to_pose_stamped(centroid_marker,map_frame)
             except RuntimeError as exc:
-                self.get_logger().warn(str(exc), throttle_duration_sec=2.0)
+                self.get_logger().warn(str(exc),throttle_duration_sec=2.0)
                 return {}
             map_marker = copy.deepcopy(centroid_marker)
             map_marker.header.frame_id = map_frame
@@ -775,16 +827,18 @@ class LowLevelExecutionNode(Node):
                     throttle_duration_sec=5.0,
                 )
             objects[label] = map_marker
-        self._objects = objects
+        self.objects = objects
         return objects
 
-    def execute_navigate(self, step):
+    def execute_navigate(self,step):
         if self.is_child_target_step(step):
+
             nav_goal = self.child_static_nav_pose()
             if nav_goal is None:
                 return False
             for waypoint_goal in self.child_via_waypoint_poses():
                 waypoint_goal.header.stamp = self.get_clock().now().to_msg()
+
                 self.get_logger().info(
                     "Navigating to child via static scene graph waypoint "
                     f"({waypoint_goal.pose.position.x:.3f}, "
@@ -836,6 +890,7 @@ class LowLevelExecutionNode(Node):
 
         global_label, target_pose = self.resolve_global_target_pose(step)
         if target_pose is not None:
+            # Visual targets need standoff
             robot_pose = self.wait_for_current_robot_pose()
             if robot_pose is None:
                 self.get_logger().error(
@@ -853,7 +908,7 @@ class LowLevelExecutionNode(Node):
                 f"Executing NAVIGATE to '{global_label}' from global_detections.json "
                 f"({target_pose.pose.position.x:.3f}, {target_pose.pose.position.y:.3f})"
             )
-            ok = navigate(
+            ok= navigate(
                 self,
                 self.nav_client,
                 nav_goal,
@@ -866,6 +921,7 @@ class LowLevelExecutionNode(Node):
 
         target_label, marker = self.resolve_target_marker(step)
         if marker is None:
+
             self.get_logger().error(
                 f"Cannot execute NAVIGATE: target '{step.get('target')}' was not found"
             )
@@ -876,6 +932,7 @@ class LowLevelExecutionNode(Node):
         except RuntimeError as exc:
             self.get_logger().error(str(exc))
             return False
+
         robot_pose = self.wait_for_current_robot_pose()
         if robot_pose is None:
             self.get_logger().error(
@@ -910,11 +967,12 @@ class LowLevelExecutionNode(Node):
             return []
         try:
             with open(path, "r", encoding="utf-8") as file_obj:
-                data = json.load(file_obj)
+                data= json.load(file_obj)
         except (OSError, json.JSONDecodeError) as exc:
             self.get_logger().warn(f"Cannot load global detections from {path}: {exc}")
             return []
-        objects = data.get("objects", [])
+
+        objects =data.get("objects",[])
         if objects:
             self.get_logger().info(
                 f"Loaded {len(objects)} global objects from global_detections.json"
@@ -922,14 +980,16 @@ class LowLevelExecutionNode(Node):
         return objects
 
     def can_resolve_global_navigation_step(self, step):
-        return self.resolve_global_target_pose(step, log_ambiguity=False)[1] is not None
+        return self.resolve_global_target_pose(step,log_ambiguity=False)[1] is not None
 
     def resolve_global_target_pose(self, step, log_ambiguity=True):
         if not self.global_objects:
-            return None, None
+
+            return None,None
+
         matches = []
         for candidate in self.target_candidates(step):
-            normalized = self.normalize_label(candidate)
+            normalized =self.normalize_label(candidate)
             for obj in self.global_objects:
                 if normalized in self.global_object_names(obj):
                     matches.append(obj)
@@ -941,10 +1001,12 @@ class LowLevelExecutionNode(Node):
                 seen.add(object_id)
                 deduped.append(obj)
         if not deduped:
-            return None, None
+            return None,None
         if len(deduped) > 1:
+
             if log_ambiguity:
-                names = ", ".join(obj.get("id", obj.get("label", "object")) for obj in deduped)
+                names = ", ".join(obj.get("id", obj.get("label","object")) for obj in deduped)
+
                 self.get_logger().error(
                     f"Ambiguous global visual target '{step.get('target')}': matches {names}"
                 )
@@ -952,7 +1014,8 @@ class LowLevelExecutionNode(Node):
         obj = deduped[0]
         centroid = obj.get("centroid_map")
         if not centroid or len(centroid) < 3:
-            return None, None
+
+            return None,None
         pose = PoseStamped()
         pose.header.frame_id = self.get_parameter("map_frame").value
         pose.header.stamp = self.get_clock().now().to_msg()
@@ -962,7 +1025,7 @@ class LowLevelExecutionNode(Node):
         pose.pose.orientation.w = 1.0
         return obj.get("id") or obj.get("label"), pose
 
-    def global_object_names(self, obj):
+    def global_object_names(self,obj):
         names = set()
         aliases = obj.get("aliases") or []
         for value in [obj.get("id"), obj.get("label"), *aliases]:
@@ -973,26 +1036,26 @@ class LowLevelExecutionNode(Node):
         return names
 
     def resolve_target_marker(self, step):
-        normalized_objects = {
-            self.normalize_label(label): (label, marker)
-            for label, marker in getattr(self, "_objects", {}).items()
+        normalized_objects ={
+            self.normalize_label(label): (label,marker)
+            for label,marker in getattr(self, "objects",{}).items()
         }
         for candidate in self.target_candidates(step):
             normalized = self.normalize_label(candidate)
             if normalized in normalized_objects:
                 return normalized_objects[normalized]
-        return None, None
+        return None,None
 
-    def is_child_target_step(self, step):
+    def is_child_target_step(self,step):
         return any(self.is_child_alias(candidate) for candidate in self.target_candidates(step))
 
     def is_person_target_step(self, step):
         return any(self.is_person_alias(candidate) for candidate in self.target_candidates(step))
 
-    def is_static_scene_navigation_step(self, step):
+    def is_static_scene_navigation_step(self,step):
         return self.is_child_target_step(step) or self.is_person_target_step(step)
 
-    def is_child_alias(self, label):
+    def is_child_alias(self,label):
         return self.static_scene_graph.is_alias_of(label, "child")
 
     def is_person_alias(self, label):
@@ -1032,27 +1095,29 @@ class LowLevelExecutionNode(Node):
         pose.header.stamp = self.get_clock().now().to_msg()
         pose.pose.position.x = float(graph_pose["x"])
         pose.pose.position.y = float(graph_pose["y"])
-        pose.pose.position.z = float(graph_pose.get("z", 0.0))
+        pose.pose.position.z = float(graph_pose.get("z",0.0))
         pose.pose.orientation = self.quaternion_from_yaw(float(graph_pose["yaw"]))
         return pose
 
     def target_candidates(self, step):
         fields = []
-        for key in ("target", "reference"):
+        for key in ("target","reference"):
             value = step.get(key)
             if value:
                 fields.append(str(value))
         description = step.get("description")
-        if description:
-            fields.append(re.sub(r"^\s*\w+\s+", "", str(description)).strip())
 
-        candidates = []
+        if description:
+            fields.append(re.sub(r"^\s*\w+\s+", "",str(description)).strip())
+
+        candidates= []
         for field in fields:
-            cleaned = re.sub(r"^to\s+", "", field.strip(), flags=re.IGNORECASE)
+            cleaned = re.sub(r"^to\s+","", field.strip(),flags=re.IGNORECASE)
             candidates.append(cleaned)
             tokens = cleaned.split()
-            for length in range(len(tokens), 0, -1):
-                for start in range(0, len(tokens) - length + 1):
+            for length in range(len(tokens),0, -1):
+
+                for start in range(0,len(tokens)-length+1):
                     candidates.append(" ".join(tokens[start : start + length]))
 
         deduped = []
@@ -1064,21 +1129,23 @@ class LowLevelExecutionNode(Node):
                 deduped.append(candidate)
         return deduped
 
-    def normalize_label(self, label):
+    def normalize_label(self,label):
         label = str(label).lower().strip()
-        label = re.sub(r"[^a-z0-9 ]+", " ", label)
-        label = re.sub(r"\b(the|a|an)\b", " ", label)
-        return re.sub(r"\s+", " ", label).strip()
+        label =re.sub(r"[^a-z0-9 ]+"," ",label)
+        label = re.sub(r"\b(the|a|an)\b"," ",label)
+        return re.sub(r"\s+"," ", label).strip()
 
-    def marker_to_pose_stamped(self, marker, target_frame):
+    def marker_to_pose_stamped(self,marker,target_frame):
         pose = PoseStamped()
         source_frame = marker.header.frame_id or target_frame
         pose.header.frame_id = source_frame
         pose.header.stamp = self.get_clock().now().to_msg()
         pose.pose.position.x = marker.pose.position.x
         pose.pose.position.y = marker.pose.position.y
+
         pose.pose.position.z = marker.pose.position.z
         pose.pose.orientation.w = 1.0
+
         if source_frame == target_frame:
             return pose
 
@@ -1093,8 +1160,8 @@ class LowLevelExecutionNode(Node):
         except TransformException as exc:
             raise RuntimeError(f"Failed TF transform {source_frame}->{target_frame}: {exc}") from exc
 
-        x, y, z = self.apply_transform(
-            (pose.pose.position.x, pose.pose.position.y, pose.pose.position.z),
+        x, y,z = self.apply_transform(
+            (pose.pose.position.x,pose.pose.position.y,pose.pose.position.z),
             transform,
         )
         pose.header.frame_id = target_frame
@@ -1105,7 +1172,7 @@ class LowLevelExecutionNode(Node):
 
     def current_robot_pose(self):
         map_frame = self.get_parameter("map_frame").value
-        base_frame = self.get_parameter("base_frame").value
+        base_frame =self.get_parameter("base_frame").value
         try:
             transform = self.tf_buffer.lookup_transform(
                 map_frame,
@@ -1136,7 +1203,7 @@ class LowLevelExecutionNode(Node):
         warned = False
         while rclpy.ok() and time.monotonic() < deadline:
             try:
-                transform = self.tf_buffer.lookup_transform(
+                transform=self.tf_buffer.lookup_transform(
                     map_frame,
                     base_frame,
                     Time(),
@@ -1148,10 +1215,12 @@ class LowLevelExecutionNode(Node):
                     self.get_logger().warn(
                         f"Waiting for robot pose TF {map_frame}->{base_frame}: {exc}"
                     )
-                    warned = True
+
+                    warned=True
+
                 rclpy.spin_once(self, timeout_sec=0.1)
                 continue
-            pose = PoseStamped()
+            pose =PoseStamped()
             pose.header.frame_id = map_frame
             pose.header.stamp = self.get_clock().now().to_msg()
             pose.pose.position.x = transform.transform.translation.x
@@ -1169,21 +1238,21 @@ class LowLevelExecutionNode(Node):
         )
         return None
 
-    def apply_transform(self, point, transform):
-        rotated = self.rotate_vector(point, transform.transform.rotation)
-        translation = transform.transform.translation
+    def apply_transform(self,point,transform):
+        rotated = self.rotate_vector(point,transform.transform.rotation)
+        translation =transform.transform.translation
         return (
-            rotated[0] + translation.x,
-            rotated[1] + translation.y,
-            rotated[2] + translation.z,
+            rotated[0]+translation.x,
+            rotated[1]+translation.y,
+            rotated[2]+translation.z,
         )
 
-    def rotate_vector(self, vector, quaternion):
+    def rotate_vector(self,vector,quaternion):
         x = quaternion.x
         y = quaternion.y
-        z = quaternion.z
+        z= quaternion.z
         w = quaternion.w
-        norm = math.sqrt(x * x + y * y + z * z + w * w)
+        norm = math.sqrt(x* x+y*y + z * z + w * w)
         if norm == 0.0:
             return vector
         x /= norm
@@ -1192,34 +1261,36 @@ class LowLevelExecutionNode(Node):
         w /= norm
 
         vx, vy, vz = vector
-        uvx = y * vz - z * vy
-        uvy = z * vx - x * vz
-        uvz = x * vy - y * vx
-        uuvx = y * uvz - z * uvy
-        uuvy = z * uvx - x * uvz
-        uuvz = x * uvy - y * uvx
+        uvx = y*vz - z * vy
+
+        uvy = z*vx - x*vz
+        uvz = x*vy - y * vx
+        uuvx = y*uvz - z * uvy
+        uuvy=z*uvx-x*uvz
+        uuvz= x * uvy - y * uvx
         return (
-            vx + 2.0 * (w * uvx + uuvx),
+            vx +2.0 * (w*uvx+uuvx),
             vy + 2.0 * (w * uvy + uuvy),
-            vz + 2.0 * (w * uvz + uuvz),
+            vz + 2.0 * (w * uvz+uuvz),
         )
 
-    def yaw_from_quaternion(self, quaternion):
+    def yaw_from_quaternion(self,quaternion):
         x = quaternion.x
         y = quaternion.y
-        z = quaternion.z
+        z= quaternion.z
         w = quaternion.w
-        siny_cosp = 2.0 * (w * z + x * y)
-        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        siny_cosp = 2.0 * (w * z + x*y)
+        cosy_cosp = 1.0 - 2.0 * (y * y + z* z)
+
         return math.atan2(siny_cosp, cosy_cosp)
 
     def quaternion_from_yaw(self, yaw):
         quaternion = Quaternion()
-        quaternion.z = math.sin(yaw / 2.0)
+        quaternion.z = math.sin(yaw/ 2.0)
         quaternion.w = math.cos(yaw / 2.0)
         return quaternion
 
-    def format_step(self, step):
+    def format_step(self,step):
         parts = [str(step.get("action", ""))]
         if step.get("target"):
             parts.append(str(step["target"]))

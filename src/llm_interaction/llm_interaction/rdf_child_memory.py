@@ -1,14 +1,11 @@
-#RDF/SPARQL child personalization memory for HRI activities
-
-
 import os
 import re
 from datetime import datetime
 from pathlib import Path
 
 try:
-    from rdflib import Graph, Literal, Namespace, URIRef
-    from rdflib.namespace import RDF, RDFS
+    from rdflib import Graph,Literal, Namespace, URIRef
+    from rdflib.namespace import RDF,RDFS
 except ImportError:
     Graph = None
     Literal = str
@@ -18,18 +15,18 @@ except ImportError:
         def __getattr__(self, name):
             return f"{self}{name}"
 
-        def __getitem__(self, name):
+        def __getitem__(self,name):
             return f"{self}{name}"
 
-    class _RdfFallback:
+    class RdfFallback:
         type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
-    class _RdfsFallback:
+    class RdfsFallback:
         Class = "http://www.w3.org/2000/01/rdf-schema#Class"
         label = "http://www.w3.org/2000/01/rdf-schema#label"
 
-    RDF = _RdfFallback()
-    RDFS = _RdfsFallback()
+    RDF = RdfFallback()
+    RDFS = RdfsFallback()
 
 HRI = Namespace("http://example.org/hri#")
 CHILD = Namespace("http://example.org/child/")
@@ -38,7 +35,8 @@ CONCEPT = Namespace("http://example.org/concept/")
 
 
 def slug(text):
-    slug = re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
+
+    slug = re.sub(r"[^a-z0-9]+","_", text.strip().lower()).strip("_")
     return slug or "unknown"
 
 
@@ -51,7 +49,7 @@ def unique_preserve_order(values):
     result = []
     for value in values:
         cleaned = value.strip()
-        key = cleaned.lower()
+        key =cleaned.lower()
         if cleaned and key not in seen:
             seen.add(key)
             result.append(cleaned)
@@ -59,9 +57,8 @@ def unique_preserve_order(values):
 
 
 class RdfChildMemoryStore:
-    #Persistent Turtle-backed child memory queried with SPARQL
 
-    _PREDICATE_TO_BUCKET = {
+    PREDICATE_TO_BUCKET = {
         str(HRI.likesStoryTheme): "story_preferences",
         str(HRI.likesStoryCharacter): "story_preferences",
         str(HRI.likesStorySetting): "story_preferences",
@@ -88,14 +85,17 @@ class RdfChildMemoryStore:
         self.bind_namespaces()
 
         if self.rdf_path.exists():
+
             self.graph.parse(self.rdf_path, format="turtle")
             if seed_if_missing and self.ensure_default_child_aliases():
                 self.save()
+
             if seed_if_missing and self.ensure_default_activity_preferences():
                 self.save()
             if seed_if_missing and self.ensure_default_attention_recall_preferences():
                 self.save()
         elif seed_if_missing:
+
             self.rdf_path.parent.mkdir(parents=True, exist_ok=True)
             self.seed_graph()
             self.save()
@@ -103,13 +103,13 @@ class RdfChildMemoryStore:
     def bind_namespaces(self):
         self.graph.bind("hri", HRI)
         self.graph.bind("child", CHILD)
-        self.graph.bind("session", SESSION)
-        self.graph.bind("concept", CONCEPT)
+        self.graph.bind("session",SESSION)
+        self.graph.bind("concept",CONCEPT)
         self.graph.bind("rdfs", RDFS)
 
     def save(self):
         self.rdf_path.parent.mkdir(parents=True, exist_ok=True)
-        self.graph.serialize(destination=str(self.rdf_path), format="turtle")
+        self.graph.serialize(destination=str(self.rdf_path),format="turtle")
 
     def seed_graph(self):
         for rdf_class in (
@@ -126,18 +126,18 @@ class RdfChildMemoryStore:
             HRI.AttentionRecallGuidance,
             HRI.Preference,
         ):
-            self.graph.add((rdf_class, RDF.type, RDFS.Class))
+            self.graph.add((rdf_class, RDF.type,RDFS.Class))
 
         self.add_child(
             "Luca",
-            story_themes=["dinosaurs", "space", "robots"],
-            story_characters=["friendly robot", "small dinosaur"],
-            story_settings=["moon", "jungle"],
+            story_themes=["dinosaurs","space","robots"],
+            story_characters=["friendly robot","small dinosaur"],
+            story_settings=["moon","jungle"],
             story_endings=["happy ending"],
-            emotion_topics=["happy", "curious", "brave"],
+            emotion_topics=["happy", "curious","brave"],
             recognizes_well=["happy", "sad"],
             needs_support=["scared", "surprised"],
-            recognition_stimuli=["clear face pictures", "cartoon faces"],
+            recognition_stimuli=["clear face pictures","cartoon faces"],
             activity_types=["storytelling"],
             attention_recall_strategies=["continue_without_recall"],
             attention_recall_styles=["do not interrupt for brief attention loss"],
@@ -146,16 +146,17 @@ class RdfChildMemoryStore:
                 "his own; continue the activity without an attention recall."
             ],
         )
+
         self.add_child(
             "Sofia",
             aliases=["Sophia"],
             story_themes=["animals", "magic forest", "teddy bear adventures"],
-            story_characters=["teddy bear", "cat", "fairy"],
-            story_settings=["enchanted world", "bedroom", "garden"],
+            story_characters=["teddy bear","cat", "fairy"],
+            story_settings=["enchanted world","bedroom", "garden"],
             story_endings=["calm ending"],
-            emotion_topics=["calm", "proud", "kind"],
+            emotion_topics=["calm","proud", "kind"],
             recognizes_well=["happy", "angry"],
-            needs_support=["scared", "disgusted"],
+            needs_support=["scared","disgusted"],
             recognition_stimuli=["animal characters", "illustrated faces"],
             activity_types=["computer_emotion_recognition"],
             attention_recall_strategies=["gentle_recall"],
@@ -170,13 +171,14 @@ class RdfChildMemoryStore:
             "Luca": ["storytelling"],
             "Sofia": ["computer_emotion_recognition"],
         }
-        changed = False
-        for display_name, activity_types in defaults.items():
+        changed= False
+        for display_name,activity_types in defaults.items():
             child_uri = CHILD[slug(display_name)]
             if (child_uri, RDF.type, HRI.Child) not in self.graph:
                 continue
-            existing = list(self.graph.objects(child_uri, HRI.prefersActivityType))
+            existing= list(self.graph.objects(child_uri,HRI.prefersActivityType))
             existing_labels = {self.value_label(value) for value in existing}
+
             desired_labels = set(activity_types)
             if existing_labels == desired_labels:
                 continue
@@ -193,6 +195,7 @@ class RdfChildMemoryStore:
                 activity_types,
                 HRI.ActivityType,
             )
+
             changed = True
         return changed
 
@@ -202,30 +205,32 @@ class RdfChildMemoryStore:
             "Luca": {"storytelling"},
             "Sofia": {"mood_check_teddy"},
         }
-        return existing_labels == expected_seeded_values.get(display_name, set())
+        return existing_labels == expected_seeded_values.get(display_name,set())
 
     def ensure_default_child_aliases(self):
         defaults = {
             "Sofia": ["Sophia"],
         }
         changed = False
-        for display_name, aliases in defaults.items():
+        for display_name,aliases in defaults.items():
             child_uri = CHILD[slug(display_name)]
-            if (child_uri, RDF.type, HRI.Child) not in self.graph:
+            if (child_uri, RDF.type,HRI.Child) not in self.graph:
                 continue
+
             existing = {
                 str(value).strip().lower()
-                for value in self.graph.objects(child_uri, HRI.aliasName)
+                for value in self.graph.objects(child_uri,HRI.aliasName)
                 if str(value).strip()
             }
             for alias in aliases:
                 if alias.lower() in existing:
                     continue
                 self.graph.add((child_uri, HRI.aliasName, Literal(alias)))
-                changed = True
+                changed =True
         return changed
 
     def ensure_default_attention_recall_preferences(self):
+
         defaults = {
             "Luca": {
                 "strategies": ["continue_without_recall"],
@@ -237,7 +242,7 @@ class RdfChildMemoryStore:
             },
             "Sofia": {
                 "strategies": ["gentle_recall"],
-                "styles": ["gentle", "soft invitation"],
+                "styles": ["gentle","soft invitation"],
                 "guidance": [
                     "Sofia benefits from a gentle attention recall when she loses focus."
                 ],
@@ -249,15 +254,16 @@ class RdfChildMemoryStore:
             HRI.AttentionRecallStyle,
             HRI.AttentionRecallGuidance,
         ):
-            if (rdf_class, RDF.type, RDFS.Class) not in self.graph:
-                self.graph.add((rdf_class, RDF.type, RDFS.Class))
+            if (rdf_class,RDF.type,RDFS.Class) not in self.graph:
+
+                self.graph.add((rdf_class,RDF.type,RDFS.Class))
                 changed = True
         for display_name, values in defaults.items():
             child_uri = CHILD[slug(display_name)]
             if (child_uri, RDF.type, HRI.Child) not in self.graph:
                 continue
             has_attention_recall = any(
-                any(True for _ in self.graph.objects(child_uri, predicate))
+                any(True for _ in self.graph.objects(child_uri,predicate))
                 for predicate in (
                     HRI.prefersAttentionRecallStrategy,
                     HRI.prefersAttentionRecallStyle,
@@ -284,13 +290,15 @@ class RdfChildMemoryStore:
                 values["guidance"],
                 HRI.AttentionRecallGuidance,
             )
-            changed = True
+            changed =True
         return changed
 
     def concept(self, label, rdf_class):
-        uri = CONCEPT[slug(label)]
+        uri= CONCEPT[slug(label)]
+
         self.graph.add((uri, RDF.type, rdf_class))
         self.graph.add((uri, RDFS.label, Literal(label)))
+
         return uri
 
     def add_values(
@@ -300,8 +308,9 @@ class RdfChildMemoryStore:
         values,
         rdf_class,
     ):
+
         for value in values:
-            self.graph.add((child_uri, predicate, self.concept(value, rdf_class)))
+            self.graph.add((child_uri,predicate, self.concept(value, rdf_class)))
 
     def add_child(
         self,
@@ -321,35 +330,40 @@ class RdfChildMemoryStore:
         attention_recall_styles=None,
         attention_recall_guidance=None,
     ):
+
         aliases = aliases or []
         attention_recall_strategies = attention_recall_strategies or []
-        attention_recall_styles = attention_recall_styles or []
+        attention_recall_styles= attention_recall_styles or []
+
         attention_recall_guidance = attention_recall_guidance or []
         child_uri = CHILD[slug(display_name)]
-        self.graph.add((child_uri, RDF.type, HRI.Child))
-        self.graph.add((child_uri, HRI.displayName, Literal(display_name)))
-        self.graph.add((child_uri, RDFS.label, Literal(display_name)))
+        self.graph.add((child_uri,RDF.type, HRI.Child))
+
+        self.graph.add((child_uri, HRI.displayName,Literal(display_name)))
+        self.graph.add((child_uri,RDFS.label, Literal(display_name)))
         for alias in aliases:
-            self.graph.add((child_uri, HRI.aliasName, Literal(alias)))
-        self.add_values(child_uri, HRI.likesStoryTheme, story_themes, HRI.StoryTheme)
+            self.graph.add((child_uri,HRI.aliasName, Literal(alias)))
+        self.add_values(child_uri,HRI.likesStoryTheme,story_themes, HRI.StoryTheme)
+
         self.add_values(
             child_uri,
             HRI.likesStoryCharacter,
             story_characters,
             HRI.StoryCharacter,
         )
-        self.add_values(child_uri, HRI.likesStorySetting, story_settings, HRI.StorySetting)
+        self.add_values(child_uri, HRI.likesStorySetting,story_settings, HRI.StorySetting)
         self.add_values(child_uri, HRI.prefersStoryEnding, story_endings, HRI.StoryEnding)
         self.add_values(child_uri, HRI.likesEmotionTopic, emotion_topics, HRI.Emotion)
-        self.add_values(child_uri, HRI.recognizesEmotionWell, recognizes_well, HRI.Emotion)
-        self.add_values(child_uri, HRI.needsSupportWithEmotion, needs_support, HRI.Emotion)
+        self.add_values(child_uri,HRI.recognizesEmotionWell,recognizes_well, HRI.Emotion)
+        self.add_values(child_uri, HRI.needsSupportWithEmotion,needs_support,HRI.Emotion)
         self.add_values(
             child_uri,
             HRI.likesEmotionRecognitionStimulus,
             recognition_stimuli,
             HRI.EmotionRecognitionStimulus,
         )
-        self.add_values(child_uri, HRI.prefersActivityType, activity_types, HRI.ActivityType)
+        self.add_values(child_uri,HRI.prefersActivityType,activity_types, HRI.ActivityType)
+
         self.add_values(
             child_uri,
             HRI.prefersAttentionRecallStrategy,
@@ -431,7 +445,7 @@ class RdfChildMemoryStore:
             }
 
         display_name = str(rows[0].displayName)
-        memory = {
+        memory ={
             "child_name": display_name,
             "found": True,
             "story_preferences": [],
@@ -452,11 +466,11 @@ class RdfChildMemoryStore:
         for row in rows:
             if row.predicate is None or row.value is None:
                 continue
-            bucket = self._PREDICATE_TO_BUCKET.get(str(row.predicate))
+            bucket = self.PREDICATE_TO_BUCKET.get(str(row.predicate))
             if not bucket:
                 continue
             label = str(row.label) if row.label is not None else self.label_from_uri(row.value)
-            if bucket in {"recognizes_well", "needs_support_with", "preferred_stimuli"}:
+            if bucket in {"recognizes_well","needs_support_with","preferred_stimuli"}:
                 memory["emotion_recognition"][bucket].append(label)
             elif bucket == "attention_recall_strategy":
                 memory["attention_recall"]["strategies"].append(label)
@@ -469,15 +483,16 @@ class RdfChildMemoryStore:
 
         memory["story_preferences"] = unique_preserve_order(memory["story_preferences"])
         memory["emotion_preferences"] = unique_preserve_order(memory["emotion_preferences"])
+
         memory["preferred_activity_types"] = unique_preserve_order(
             memory["preferred_activity_types"]
         )
         for key, values in memory["emotion_recognition"].items():
             memory["emotion_recognition"][key] = unique_preserve_order(values)
-        for key, values in memory["attention_recall"].items():
+        for key,values in memory["attention_recall"].items():
             memory["attention_recall"][key] = unique_preserve_order(values)
 
-        memory["prompt_text"] = self.build_prompt_text(memory, activity_type, max_facts)
+        memory["prompt_text"] = self.build_prompt_text(memory,activity_type,max_facts)
         return memory
 
     @staticmethod
@@ -486,8 +501,9 @@ class RdfChildMemoryStore:
         return text.replace("_", " ")
 
     def value_label(self, value):
-        labels = list(self.graph.objects(value, RDFS.label))
+        labels= list(self.graph.objects(value, RDFS.label))
         if labels:
+
             return str(labels[0])
         return self.label_from_uri(value)
 
@@ -497,17 +513,21 @@ class RdfChildMemoryStore:
         activity_type,
         max_facts,
     ):
-        max_facts = max(1, int(max_facts))
-        child_name = memory.get("child_name", "the child")
+        max_facts = max(1,int(max_facts))
+        child_name = memory.get("child_name","the child")
         facts_used = 0
         lines = [f"The child is {child_name}."]
 
         attention_recall = memory.get("attention_recall", {})
-        recall_strategies = attention_recall.get("strategies", [])
+        recall_strategies = attention_recall.get("strategies",[])
         recall_styles = attention_recall.get("styles", [])
-        recall_guidance = attention_recall.get("guidance", [])
+
+        recall_guidance = attention_recall.get("guidance",[])
+
         if recall_strategies or recall_styles or recall_guidance:
+
             lines.append("")
+
             lines.append("Known attention-recall preferences:")
             if recall_strategies:
                 lines.append(f"- strategy: {', '.join(recall_strategies)}")
@@ -517,23 +537,23 @@ class RdfChildMemoryStore:
 
         def take(values):
             nonlocal facts_used
-            remaining = max_facts - facts_used
+            remaining= max_facts - facts_used
             if remaining <= 0:
                 return []
             selected = list(values)[:remaining]
             facts_used += len(selected)
             return selected
 
-        story_values = take(memory.get("story_preferences", []))
+        story_values = take(memory.get("story_preferences",[]))
         if story_values:
             lines.append("")
             lines.append("Known story preferences:")
             lines.extend(f"- {item}" for item in story_values)
 
-        emotion_values = take(memory.get("emotion_preferences", []))
+        emotion_values = take(memory.get("emotion_preferences",[]))
         emotion_recognition = memory.get("emotion_recognition", {})
-        recognizes_well = take(emotion_recognition.get("recognizes_well", []))
-        needs_support = take(emotion_recognition.get("needs_support_with", []))
+        recognizes_well= take(emotion_recognition.get("recognizes_well",[]))
+        needs_support =take(emotion_recognition.get("needs_support_with",[]))
         preferred_stimuli = take(emotion_recognition.get("preferred_stimuli", []))
         if emotion_values or recognizes_well or needs_support or preferred_stimuli:
             lines.append("")
@@ -571,7 +591,7 @@ class RdfChildMemoryStore:
         }
         lines.append("")
         lines.append(
-            activity_guidance.get(activity_type, activity_guidance["generic_child_activity"])
+            activity_guidance.get(activity_type,activity_guidance["generic_child_activity"])
         )
         lines.append(
             "Use this memory only to personalize story content, examples, characters, "
@@ -597,19 +617,23 @@ class RdfChildMemoryStore:
 
 def format_memory_for_report(memory_context):
     if not memory_context:
+
         return "Memory was disabled or unavailable."
     if not memory_context.get("found"):
         return memory_context.get("prompt_text", "No stored memory found for this child.")
-    return str(memory_context.get("prompt_text", "Stored memory was found."))
+    return str(memory_context.get("prompt_text","Stored memory was found."))
 
 
-def _format_scores_section(scores):
-    if not isinstance(scores, dict):
+def format_scores_section(scores):
+    if not isinstance(scores,dict):
         return "No session scores were computed."
+
     lines = []
     for key in ("attention", "emotion", "participation", "overall"):
+
         value = scores.get(key)
         if value is not None:
+
             lines.append(f"- {key}: {value}")
     return "\n".join(lines) if lines else "No session scores were computed."
 
@@ -630,6 +654,7 @@ def generate_child_memory_report(
 ):
     """Create a Markdown session report without modifying RDF memory."""
     now = now or datetime.now()
+
     child_name = str(context.get("child_name", "") or "unknown").strip() or "unknown"
     activity_type = str(context.get("activity_type", "generic_child_activity"))
     filename = (
@@ -638,11 +663,13 @@ def generate_child_memory_report(
         "memory_report.md"
     )
     output_dir = Path(report_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    report_path = output_dir / filename
+    output_dir.mkdir(parents=True,exist_ok=True)
+
+    report_path = output_dir/filename
 
     summary = deterministic_session_summary(transcript)
     llm_notes = ""
+
     if llm_client is not None and transcript:
         llm_notes = try_generate_report_notes(
             llm_client=llm_client,
@@ -656,14 +683,14 @@ def generate_child_memory_report(
             summary = llm_notes
 
     transcript_text = compact_transcript(transcript)
-    candidate_memory_updates = candidate_updates(transcript, memory_context)
-    scores_section = _format_scores_section(scores)
+    candidate_memory_updates= candidate_updates(transcript,memory_context)
+    scores_section = format_scores_section(scores)
     body = f"""# Child Memory Session Report
 
 Child name: {child_name}
 Activity type: {activity_type}
-Task: {context.get("task", "")}
-Activity description: {context.get("activity_description", "")}
+Task: {context.get("task","")}
+Activity description: {context.get("activity_description","")}
 Date/time: {now.isoformat(timespec="seconds")}
 Number of turns: {turns}
 Completion reason: {completion_reason}
@@ -726,7 +753,7 @@ def try_generate_report_notes(
     try:
         return llm_client.chat(
             messages=[
-                {"role": "system", "content": system},
+                {"role": "system","content": system},
                 {"role": "user", "content": user},
             ],
             temperature=temperature,
@@ -757,9 +784,9 @@ def compact_transcript(
     lines = []
     for item in transcript[-max_items:]:
         role = item.get("role", "unknown")
-        content = re.sub(r"\s+", " ", item.get("content", "")).strip()
+        content =re.sub(r"\s+"," ",item.get("content","")).strip()
         if len(content) > max_chars:
-            content = content[: max_chars - 3].rstrip() + "..."
+            content = content[: max_chars -3].rstrip()+"..."
         lines.append(f"- {role}: {content}")
     return "\n".join(lines)
 
@@ -770,7 +797,8 @@ def candidate_updates(
 ):
     if not transcript:
         return "- No candidate updates; no transcript was captured."
-    if memory_context and not memory_context.get("found", False):
+    if memory_context and not memory_context.get("found",False):
+
         return (
             "- Therapist may validate whether this child should be added to the RDF "
             "memory in a future workflow."
